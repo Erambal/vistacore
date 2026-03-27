@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_gravity="bottom"
+    android:orientation="vertical"
+    android:background="#CC000000"
+    android:padding="24dp">
+
+    <!-- Channel name -->
+    <TextView
+        android:id="@+id/ctrl_channel_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="24sp"
+        android:textColor="@color/text_primary"
+        android:fontFamily="sans-serif-medium"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Control buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center">
+
+        <ImageButton
+            android:id="@+id/btn_prev_channel"
+            android:layout_width="@dimen/player_control_size"
+            android:layout_height="@dimen/player_control_size"
+            android:src="@drawable/ic_skip_previous"
+            android:background="@drawable/card_selector"
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:contentDescription="Previous channel"
+            android:focusable="true" />
+
+        <ImageButton
+            android:id="@+id/btn_play_pause"
+            android:layout_width="@dimen/player_control_size"
+            android:layout_height="@dimen/player_control_size"
+            android:src="@drawable/ic_pause"
+            android:background="@drawable/card_selector"
+            android:padding="12dp"
+            android:layout_marginStart="24dp"
+            android:layout_marginEnd="24dp"
+            android:scaleType="centerInside"
+            android:contentDescription="Play/Pause"
+            android:focusable="true" />
+
+        <ImageButton
+            android:id="@+id/btn_next_channel"
+            android:layout_width="@dimen/player_control_size"
+            android:layout_height="@dimen/player_control_size"
+            android:src="@drawable/ic_skip_next"
+            android:background="@drawable/card_selector"
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:contentDescription="Next channel"
+            android:focusable="true" />
+    </LinearLayout>
+</LinearLayout>

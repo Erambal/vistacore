@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@color/background_dark">
+
+    <!-- Left Sidebar -->
+    <LinearLayout
+        android:id="@+id/kids_sidebar"
+        android:layout_width="210dp"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingTop="36dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="12dp"
+        android:background="@color/surface_dark">
+
+        <ImageView
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:src="@drawable/ic_kids"
+            android:scaleType="fitCenter"
+            android:layout_marginBottom="6dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Kids Zone"
+            android:textColor="@color/text_primary"
+            android:textSize="20sp"
+            android:fontFamily="sans-serif-medium"
+            android:layout_marginBottom="32dp" />
+
+        <!-- Movies Tab -->
+        <LinearLayout
+            android:id="@+id/kids_tab_movies"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:focusable="true"
+            android:clickable="true"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
+
+            <ImageView
+                android:id="@+id/kids_tab_movies_icon"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:src="@drawable/ic_movies"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/kids_tab_movies_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Movies"
+                android:textColor="@color/text_secondary"
+                android:textSize="17sp"
+                android:layout_marginStart="14dp" />
+        </LinearLayout>
+
+        <!-- Shows Tab -->
+        <LinearLayout
+            android:id="@+id/kids_tab_shows"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:focusable="true"
+            android:clickable="true"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
+
+            <ImageView
+                android:id="@+id/kids_tab_shows_icon"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:src="@drawable/ic_tv_shows"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/kids_tab_shows_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Shows"
+                android:textColor="@color/text_secondary"
+                android:textSize="17sp"
+                android:layout_marginStart="14dp" />
+        </LinearLayout>
+
+        <!-- Live TV Tab -->
+        <LinearLayout
+            android:id="@+id/kids_tab_live"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:focusable="true"
+            android:clickable="true"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
+
+            <ImageView
+                android:id="@+id/kids_tab_live_icon"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:src="@drawable/ic_iptv"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/kids_tab_live_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Live TV"
+                android:textColor="@color/text_secondary"
+                android:textSize="17sp"
+                android:layout_marginStart="14dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Separator -->
+    <View
+        android:layout_width="1dp"
+        android:layout_height="match_parent"
+        android:background="#22FFFFFF" />
+
+    <!-- Content Area -->
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/kids_content_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingTop="64dp"
+            android:paddingBottom="40dp"
+            android:clipToPadding="false"
+            android:overScrollMode="never" />
+
+        <!-- Search bar — floats at top -->
+        <LinearLayout
+            android:id="@+id/kids_search_overlay"
+            android:layout_width="320dp"
+            android:layout_height="44dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="24dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/search_bar_background"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_voice_search"
+                android:scaleType="centerInside"
+                android:alpha="0.4"
+                android:contentDescription="Search" />
+
+            <EditText
+                android:id="@+id/kids_search_input"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:hint="Search kids…"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_hint"
+                android:background="@android:color/transparent"
+                android:fontFamily="sans-serif-light"
+                android:layout_marginStart="10dp"
+                android:inputType="text"
+                android:imeOptions="actionSearch"
+                android:singleLine="true" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/kids_loading"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:background="@color/background_dark"
+            android:visibility="gone">
+
+            <ProgressBar
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:indeterminateTint="@color/kids_yellow" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Loading…"
+                android:textSize="18sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginTop="12dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/kids_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="No kids content found."
+            android:textSize="20sp"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone" />
+
+    </FrameLayout>
+
+</LinearLayout>

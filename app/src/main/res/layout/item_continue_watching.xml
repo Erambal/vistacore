@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="220dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_marginEnd="16dp"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <!-- Poster with progress bar -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="130dp">
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/card_background">
+
+            <ImageView
+                android:id="@+id/cw_poster"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:contentDescription="Poster" />
+        </androidx.cardview.widget.CardView>
+
+        <!-- Progress bar at bottom -->
+        <ProgressBar
+            android:id="@+id/cw_progress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_gravity="bottom"
+            android:max="100"
+            android:progressTint="@color/accent_gold"
+            android:progressBackgroundTint="#44FFFFFF" />
+    </FrameLayout>
+
+    <!-- Title -->
+    <TextView
+        android:id="@+id/cw_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="@color/text_primary"
+        android:fontFamily="sans-serif-medium"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:layout_marginTop="6dp" />
+
+    <!-- Time remaining -->
+    <TextView
+        android:id="@+id/cw_remaining"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="12sp"
+        android:textColor="@color/text_hint"
+        android:fontFamily="sans-serif-light"
+        android:maxLines="1"
+        android:layout_marginTop="2dp" />
+
+</LinearLayout>

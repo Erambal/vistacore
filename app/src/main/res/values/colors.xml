@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Core Dark Theme -->
+    <color name="background_dark">#FF0D1117</color>
+    <color name="surface_dark">#FF161B22</color>
+    <color name="card_background">#FF1C2333</color>
+    <color name="card_background_elevated">#FF242D3D</color>
+
+    <!-- Accent Colors -->
+    <color name="accent_gold">#FFFFB300</color>
+    <color name="accent_gold_light">#FFFFD54F</color>
+    <color name="accent_teal">#FF00BCD4</color>
+    <color name="accent_blue">#FF4FC3F7</color>
+
+    <!-- Focus & Selection -->
+    <color name="focus_ring">#FFFFB300</color>
+    <color name="focus_glow">#66FFB300</color>
+    <color name="selected_overlay">#33FFB300</color>
+
+    <!-- Text -->
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#CCB0B8C8</color>
+    <color name="text_hint">#99788896</color>
+
+    <!-- App Card Brand Colors -->
+    <color name="disney_blue">#FF1A1D76</color>
+    <color name="espn_red">#FFCC0000</color>
+    <color name="roku_purple">#FF662D91</color>
+    <color name="iptv_teal">#FF00897B</color>
+    <color name="settings_gray">#FF455A64</color>
+
+    <!-- VOD Brand Colors -->
+    <color name="movies_amber">#FFE65100</color>
+    <color name="shows_indigo">#FF3949AB</color>
+    <color name="kids_yellow">#FFFFC107</color>
+
+    <!-- Status -->
+    <color name="status_online">#FF4CAF50</color>
+    <color name="status_offline">#FFF44336</color>
+
+    <!-- Clock -->
+    <color name="clock_text">#FFFFFFFF</color>
+    <color name="date_text">#CCB0B8C8</color>
+</resources>

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/surface_dark"
+    android:orientation="vertical"
+    android:padding="@dimen/screen_margin_horizontal">
+
+    <!-- Title -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Choose Background"
+        android:textSize="32sp"
+        android:textColor="@color/text_primary"
+        android:fontFamily="sans-serif-light"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="32dp" />
+
+    <!-- Preset backgrounds grid -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Preset Backgrounds"
+        style="@style/SettingsTitle"
+        android:layout_marginBottom="16dp" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/presets_grid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:clipChildren="false" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#22FFFFFF"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Custom wallpaper section -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Custom Image"
+        style="@style/SettingsTitle"
+        android:layout_marginBottom="16dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <Button
+            android:id="@+id/btn_pick_image"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Choose Image"
+            style="@style/LargeButton"
+            android:layout_marginEnd="16dp" />
+
+        <Button
+            android:id="@+id/btn_remove_custom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Remove"
+            style="@style/LargeButton"
+            android:backgroundTint="@color/status_offline"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- Dim level slider -->
+    <LinearLayout
+        android:id="@+id/dim_section"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="24dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Dim Level"
+            style="@style/SettingsTitle"
+            android:layout_marginBottom="8dp" />
+
+        <SeekBar
+            android:id="@+id/dim_slider"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:min="0"
+            android:max="95"
+            android:progress="70"
+            android:progressTint="@color/accent_gold"
+            android:thumbTint="@color/accent_gold" />
+
+        <TextView
+            android:id="@+id/dim_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="70%"
+            android:textSize="18sp"
+            android:textColor="@color/text_secondary" />
+    </LinearLayout>
+</LinearLayout>

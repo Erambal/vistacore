@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_dark"
+    android:orientation="vertical"
+    android:padding="32dp">
+
+    <!-- Search input -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/search_bar_background"
+        android:paddingStart="20dp"
+        android:paddingEnd="16dp"
+        android:layout_marginBottom="16dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_voice_search"
+            android:scaleType="centerInside"
+            android:alpha="0.5"
+            android:contentDescription="Search" />
+
+        <EditText
+            android:id="@+id/search_input"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:hint="Search movies, shows, channels…"
+            android:textSize="20sp"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_hint"
+            android:background="@android:color/transparent"
+            android:fontFamily="sans-serif-light"
+            android:layout_marginStart="14dp"
+            android:inputType="text"
+            android:imeOptions="actionSearch"
+            android:singleLine="true" />
+    </LinearLayout>
+
+    <!-- Deep link app buttons -->
+    <LinearLayout
+        android:id="@+id/app_search_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="16dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Also search in:"
+            android:textSize="14sp"
+            android:textColor="@color/text_hint"
+            android:layout_marginEnd="12dp" />
+
+        <Button
+            android:id="@+id/btn_search_disney"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Disney+"
+            android:textSize="14sp"
+            android:background="@drawable/card_selector"
+            android:textColor="@color/text_primary"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:layout_marginEnd="8dp"
+            android:focusable="true"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btn_search_espn"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="ESPN"
+            android:textSize="14sp"
+            android:background="@drawable/card_selector"
+            android:textColor="@color/text_primary"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:layout_marginEnd="8dp"
+            android:focusable="true"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btn_search_roku"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Roku"
+            android:textSize="14sp"
+            android:background="@drawable/card_selector"
+            android:textColor="@color/text_primary"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:focusable="true"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- Results count -->
+    <TextView
+        android:id="@+id/results_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="16sp"
+        android:textColor="@color/text_secondary"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Results list -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/search_results"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false" />
+
+    <!-- No results -->
+    <TextView
+        android:id="@+id/no_results"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="Type to search across all your content."
+        android:textSize="20sp"
+        android:textColor="@color/text_secondary"
+        android:lineSpacingExtra="8dp" />
+
+</LinearLayout>

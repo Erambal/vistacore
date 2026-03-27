@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Required on Android 11+ to see and launch other installed apps -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Declare this is a TV app -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="true" />
+
+    <!-- TV does not require touchscreen -->
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
+    <!-- Microphone for voice search (optional) -->
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+
+    <!-- PiP support (optional) -->
+    <uses-feature
+        android:name="android.software.picture_in_picture"
+        android:required="false" />
+
+    <!-- Declare packages we need to query/launch -->
+    <queries>
+        <!-- Disney+ -->
+        <package android:name="com.disney.disneyplus" />
+        <package android:name="com.disney.disneyplus.tv" />
+        <package android:name="com.disney.disneyplus_goo" />
+        <!-- ESPN -->
+        <package android:name="com.espn.score_center" />
+        <package android:name="com.espn.score_center.tv" />
+        <package android:name="com.espn.espn" />
+        <!-- Roku -->
+        <package android:name="com.roku.remote" />
+        <package android:name="com.roku.remote.tv" />
+        <package android:name="com.roku.channelstore" />
+        <package android:name="com.roku.web.trc" />
+        <!-- Allow querying all launchers (for Add App feature) -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:banner="@drawable/banner"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.VistaCore"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:largeHeap="true"
+        tools:targetApi="31">
+
+        <!-- Splash Screen (entry point) -->
+        <activity
+            android:name=".ui.SplashActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.VistaCore.Player">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Setup Wizard (first run) -->
+        <activity
+            android:name=".ui.SetupActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.VistaCore" />
+
+        <!-- Main Launcher Activity -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation" />
+
+        <!-- Settings -->
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.VistaCore.Settings" />
+
+        <!-- IPTV Channel Browser (legacy) -->
+        <activity
+            android:name=".ui.IPTVBrowserActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <!-- Live TV (DirecTV style) -->
+        <activity
+            android:name=".ui.LiveTVActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <!-- IPTV Player (with PiP support) -->
+        <activity
+            android:name=".ui.IPTVPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.VistaCore.Player"
+            android:supportsPictureInPicture="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation" />
+
+        <!-- VOD Browser (Movies & TV Shows — Netflix style) -->
+        <activity
+            android:name=".ui.VODBrowserActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <!-- Show Detail (seasons & episodes) -->
+        <activity
+            android:name=".ui.ShowDetailActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <!-- Kids Browser -->
+        <activity
+            android:name=".ui.KidsBrowserActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <!-- EPG TV Guide -->
+        <activity
+            android:name=".ui.EpgGuideActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <!-- Voice Search Results -->
+        <activity
+            android:name=".ui.VoiceSearchActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <!-- Wallpaper Picker -->
+        <activity
+            android:name=".ui.WallpaperPickerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.VistaCore.Settings" />
+
+        <!-- Screen Saver -->
+        <activity
+            android:name=".ui.ScreenSaverActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.VistaCore.Player" />
+
+        <!-- Remote Help -->
+        <activity
+            android:name=".ui.RemoteHelpActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.VistaCore.Settings" />
+
+        <!-- FileProvider for sharing downloaded APK updates -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- Home Capture: redirect Home button to VistaCore -->
+        <service
+            android:name=".system.HomeCaptureService"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- Boot Receiver: auto-launch on device startup -->
+        <receiver
+            android:name=".system.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>

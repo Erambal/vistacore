@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Base dark theme for TV -->
+    <style name="Theme.VistaCore" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/background_dark</item>
+        <item name="android:colorBackground">@color/background_dark</item>
+        <item name="android:colorPrimary">@color/accent_gold</item>
+        <item name="android:colorAccent">@color/accent_gold</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:fontFamily">sans-serif-light</item>
+    </style>
+
+    <!-- Settings theme -->
+    <style name="Theme.VistaCore.Settings">
+        <item name="android:windowBackground">@color/surface_dark</item>
+    </style>
+
+    <!-- Dialog theme for TV -->
+    <style name="Theme.VistaCore.Dialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:windowBackground">@color/surface_dark</item>
+        <item name="android:colorBackground">@color/surface_dark</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:colorAccent">@color/accent_gold</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+
+    <!-- Fullscreen player theme -->
+    <style name="Theme.VistaCore.Player">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+
+    <!-- Clock at top of home screen -->
+    <style name="ClockStyle">
+        <item name="android:textSize">@dimen/text_clock</item>
+        <item name="android:textColor">@color/clock_text</item>
+        <item name="android:fontFamily">sans-serif-thin</item>
+        <item name="android:letterSpacing">0.05</item>
+    </style>
+
+    <style name="DateStyle">
+        <item name="android:textSize">@dimen/text_date</item>
+        <item name="android:textColor">@color/date_text</item>
+        <item name="android:fontFamily">sans-serif-light</item>
+    </style>
+
+    <!-- Section header -->
+    <style name="SectionHeader">
+        <item name="android:textSize">@dimen/text_section_header</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:paddingBottom">16dp</item>
+    </style>
+
+    <!-- App card label -->
+    <style name="AppCardLabel">
+        <item name="android:textSize">@dimen/text_app_label</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:gravity">center</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <!-- Settings item styles -->
+    <style name="SettingsTitle">
+        <item name="android:textSize">@dimen/text_settings_title</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="SettingsSummary">
+        <item name="android:textSize">@dimen/text_settings_summary</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:fontFamily">sans-serif-light</item>
+    </style>
+
+    <!-- Large input fields for seniors -->
+    <style name="LargeEditText" parent="@android:style/Widget.EditText">
+        <item name="android:textSize">20sp</item>
+        <item name="android:padding">16dp</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textColorHint">@color/text_hint</item>
+        <item name="android:background">@drawable/edit_text_background</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:minHeight">56dp</item>
+    </style>
+
+    <!-- Large button -->
+    <style name="LargeButton">
+        <item name="android:textSize">20sp</item>
+        <item name="android:padding">16dp</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/background_dark</item>
+        <item name="android:background">@drawable/button_background</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+    </style>
+
+    <!-- Channel list item -->
+    <style name="ChannelItemStyle">
+        <item name="android:minHeight">@dimen/channel_item_height</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:background">@drawable/channel_item_background</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+    </style>
+
+</resources>

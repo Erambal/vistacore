@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/surface_dark"
+    android:padding="@dimen/screen_margin_horizontal">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
+
+        <!-- Title -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Remote Help"
+            android:textSize="36sp"
+            android:textColor="@color/text_primary"
+            android:fontFamily="sans-serif-light"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Let a family member set up your TV remotely."
+            android:textSize="20sp"
+            android:textColor="@color/text_secondary"
+            android:fontFamily="sans-serif-light"
+            android:gravity="center"
+            android:layout_marginBottom="24dp" />
+
+        <!-- How It Works -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_default"
+            android:padding="24dp"
+            android:layout_marginBottom="24dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="How It Works"
+                android:textSize="20sp"
+                android:textColor="@color/accent_gold"
+                android:fontFamily="sans-serif-medium"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1. Share the code below with your family member\n2. They open the helper website on their phone or computer\n3. They enter the code and your TV settings\n4. This screen is already listening — settings will appear automatically!"
+                android:textSize="17sp"
+                android:textColor="@color/text_secondary"
+                android:fontFamily="sans-serif-light"
+                android:lineSpacingExtra="6dp" />
+        </LinearLayout>
+
+        <!-- Pairing Code Display -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/card_default"
+            android:padding="40dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Your Code"
+                android:textSize="18sp"
+                android:textColor="@color/text_secondary"
+                android:textAllCaps="true"
+                android:letterSpacing="0.15"
+                android:layout_marginBottom="12dp" />
+
+            <!-- Hidden raw code for programmatic use -->
+            <TextView
+                android:id="@+id/pairing_code"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="gone" />
+
+            <!-- Formatted display code -->
+            <TextView
+                android:id="@+id/pairing_code_formatted"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="64sp"
+                android:textColor="@color/accent_gold"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.3" />
+        </LinearLayout>
+
+        <!-- Relay server URL display -->
+        <TextView
+            android:id="@+id/relay_url_display"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="15sp"
+            android:textColor="@color/text_hint"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Buttons row -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginBottom="16dp">
+
+            <Button
+                android:id="@+id/btn_refresh_code"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="New Code"
+                style="@style/LargeButton"
+                android:backgroundTint="@color/settings_gray"
+                android:layout_marginEnd="16dp" />
+
+            <Button
+                android:id="@+id/btn_start_listening"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Restart Listening"
+                style="@style/LargeButton" />
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/listening_progress"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:indeterminateTint="@color/accent_gold"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Status -->
+        <TextView
+            android:id="@+id/status_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="20sp"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#22FFFFFF"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Relay Server URL setting -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Relay Server URL"
+            style="@style/SettingsTitle"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="The helper website URL. Your family member opens this in a browser."
+            style="@style/SettingsSummary"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/input_relay_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://your-relay-server.com"
+            android:inputType="textUri"
+            android:autofillHints="no"
+            style="@style/LargeEditText"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btn_save_relay"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Save Relay URL"
+            style="@style/LargeButton"
+            android:backgroundTint="@color/settings_gray"
+            android:layout_marginBottom="32dp" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#22FFFFFF"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Manual config paste -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Or Paste Config Manually"
+            style="@style/SettingsTitle"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="If you don't have a relay server, your family member can text you the config JSON to paste here."
+            style="@style/SettingsSummary"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/input_manual_config"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="{&quot;m3u_url&quot;: &quot;http://...&quot;, &quot;dispatcharr_api_key&quot;: &quot;...&quot;}"
+            android:inputType="textMultiLine"
+            android:minLines="3"
+            android:maxLines="6"
+            android:autofillHints="no"
+            style="@style/LargeEditText"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btn_apply_manual"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Apply Config"
+            style="@style/LargeButton"
+            android:layout_marginBottom="48dp" />
+    </LinearLayout>
+</ScrollView>

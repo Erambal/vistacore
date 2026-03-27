@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="52dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/channel_item_background"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
+    android:layout_marginBottom="4dp">
+
+    <!-- Move up -->
+    <ImageButton
+        android:id="@+id/btn_move_up"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@android:drawable/arrow_up_float"
+        android:background="@drawable/card_selector"
+        android:scaleType="centerInside"
+        android:contentDescription="Move up"
+        android:focusable="true" />
+
+    <!-- Move down -->
+    <ImageButton
+        android:id="@+id/btn_move_down"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@android:drawable/arrow_down_float"
+        android:background="@drawable/card_selector"
+        android:scaleType="centerInside"
+        android:contentDescription="Move down"
+        android:focusable="true"
+        android:layout_marginEnd="8dp" />
+
+    <!-- Toggle checkbox + label -->
+    <CheckBox
+        android:id="@+id/cb_app_toggle"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:textSize="18sp"
+        android:textColor="@color/text_primary"
+        android:buttonTint="@color/accent_gold"
+        android:gravity="center_vertical"
+        android:focusable="true" />
+
+</LinearLayout>

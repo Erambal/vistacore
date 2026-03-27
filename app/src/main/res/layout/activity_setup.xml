@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_dark"
+    android:padding="48dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:maxWidth="600dp">
+
+        <!-- Logo -->
+        <ImageView
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:src="@drawable/splash_logo"
+            android:scaleType="fitCenter"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Welcome to VistaCore"
+            android:textSize="32sp"
+            android:textColor="@color/text_primary"
+            android:fontFamily="sans-serif-light"
+            android:gravity="center"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Let's set up your TV. Enter your IPTV details below."
+            android:textSize="18sp"
+            android:textColor="@color/text_secondary"
+            android:fontFamily="sans-serif-light"
+            android:gravity="center"
+            android:layout_marginBottom="36dp" />
+
+        <!-- Source type toggle -->
+        <RadioGroup
+            android:id="@+id/setup_source_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="24dp">
+
+            <RadioButton
+                android:id="@+id/setup_radio_m3u"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="M3U Playlist"
+                android:textSize="18sp"
+                android:textColor="@color/text_primary"
+                android:buttonTint="@color/accent_gold"
+                android:padding="12dp"
+                android:checked="true" />
+
+            <RadioButton
+                android:id="@+id/setup_radio_xtream"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="Xtream Codes"
+                android:textSize="18sp"
+                android:textColor="@color/text_primary"
+                android:buttonTint="@color/accent_gold"
+                android:padding="12dp" />
+        </RadioGroup>
+
+        <!-- M3U input -->
+        <LinearLayout
+            android:id="@+id/setup_m3u_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <EditText
+                android:id="@+id/setup_m3u_url"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Enter your M3U playlist URL"
+                android:inputType="textUri"
+                style="@style/LargeEditText"
+                android:layout_marginBottom="16dp" />
+        </LinearLayout>
+
+        <!-- Xtream inputs -->
+        <LinearLayout
+            android:id="@+id/setup_xtream_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/setup_xtream_server"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Server URL (http://server:port)"
+                android:inputType="textUri"
+                style="@style/LargeEditText"
+                android:layout_marginBottom="12dp" />
+
+            <EditText
+                android:id="@+id/setup_xtream_user"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Username"
+                android:inputType="text"
+                style="@style/LargeEditText"
+                android:layout_marginBottom="12dp" />
+
+            <EditText
+                android:id="@+id/setup_xtream_pass"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Password"
+                android:inputType="textPassword"
+                style="@style/LargeEditText"
+                android:layout_marginBottom="16dp" />
+        </LinearLayout>
+
+        <!-- EPG (optional) -->
+        <EditText
+            android:id="@+id/setup_epg_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="EPG / TV Guide URL (optional)"
+            android:inputType="textUri"
+            style="@style/LargeEditText"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Status / progress -->
+        <ProgressBar
+            android:id="@+id/setup_progress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="8dp"
+            android:max="100"
+            android:progressTint="@color/accent_gold"
+            android:progressBackgroundTint="#22FFFFFF"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/setup_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textColor="@color/text_secondary"
+            android:fontFamily="sans-serif-light"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <Button
+                android:id="@+id/setup_btn_skip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Skip for Now"
+                style="@style/LargeButton"
+                android:backgroundTint="@color/settings_gray"
+                android:layout_marginEnd="16dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+
+            <Button
+                android:id="@+id/setup_btn_connect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Connect &amp; Download"
+                style="@style/LargeButton"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+        </LinearLayout>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#22FFFFFF"
+            android:layout_marginTop="32dp"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Remote Setup -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Need help? Have tech support set this up remotely."
+            android:textSize="16sp"
+            android:textColor="@color/text_secondary"
+            android:fontFamily="sans-serif-light"
+            android:gravity="center"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/setup_btn_remote"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Remote Setup"
+            style="@style/LargeButton"
+            android:backgroundTint="@color/accent_teal"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:layout_marginBottom="32dp" />
+
+    </LinearLayout>
+</ScrollView>

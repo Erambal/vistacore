@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="68dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/channel_item_background"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:layout_marginStart="4dp"
+    android:layout_marginEnd="4dp"
+    android:layout_marginBottom="2dp"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <!-- Channel number -->
+    <TextView
+        android:id="@+id/ch_number"
+        android:layout_width="44dp"
+        android:layout_height="wrap_content"
+        android:textSize="18sp"
+        android:textColor="@color/accent_gold"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center" />
+
+    <!-- Channel logo -->
+    <ImageView
+        android:id="@+id/ch_logo"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:scaleType="centerCrop"
+        android:layout_marginStart="8dp"
+        android:contentDescription="Logo" />
+
+    <!-- Channel info -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginStart="12dp">
+
+        <TextView
+            android:id="@+id/ch_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textColor="@color/text_primary"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <!-- EPG now playing (optional) -->
+        <TextView
+            android:id="@+id/ch_now_playing"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="13sp"
+            android:textColor="@color/text_hint"
+            android:fontFamily="sans-serif-light"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- Favorite indicator (not focusable — long press the row to toggle) -->
+    <ImageView
+        android:id="@+id/ch_fav_icon"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:scaleType="centerInside"
+        android:contentDescription="Favorite"
+        android:visibility="gone" />
+
+</LinearLayout>

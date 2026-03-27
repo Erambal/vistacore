@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/surface_dark"
+    android:padding="@dimen/screen_margin_horizontal">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:maxWidth="600dp">
+
+        <!-- Title -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_title"
+            android:textSize="36sp"
+            android:textColor="@color/text_primary"
+            android:fontFamily="sans-serif-light"
+            android:layout_marginBottom="32dp"
+            android:layout_marginTop="24dp" />
+
+        <!-- ==================== SECTION: Home Screen Apps ==================== -->
+        <TextView
+            android:id="@+id/header_apps"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="▸  Home Screen Apps"
+            android:textSize="22sp"
+            android:textColor="@color/accent_gold"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:background="@drawable/channel_item_background"
+            android:paddingStart="16dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+
+        <LinearLayout
+            android:id="@+id/body_apps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="24dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Toggle apps on/off. Use arrows to reorder."
+                style="@style/SettingsSummary"
+                android:layout_marginBottom="12dp" />
+
+            <!-- App list built programmatically -->
+            <LinearLayout
+                android:id="@+id/apps_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <Button
+                android:id="@+id/btn_add_app"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="+ Add App"
+                style="@style/LargeButton"
+                android:backgroundTint="@color/settings_gray"
+                android:layout_marginTop="12dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+        </LinearLayout>
+
+        <!-- ==================== SECTION: IPTV Connection ==================== -->
+        <TextView
+            android:id="@+id/header_iptv"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="▸  IPTV Connection"
+            android:textSize="22sp"
+            android:textColor="@color/accent_gold"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:background="@drawable/channel_item_background"
+            android:paddingStart="16dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+
+        <LinearLayout
+            android:id="@+id/body_iptv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="16dp"
+            android:paddingBottom="24dp"
+            android:visibility="gone">
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_source_type" style="@style/SettingsTitle" android:layout_marginBottom="12dp" />
+
+            <RadioGroup android:id="@+id/source_type_group" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="24dp">
+                <RadioButton android:id="@+id/radio_m3u" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:text="@string/settings_source_m3u" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:padding="12dp" android:checked="true" />
+                <RadioButton android:id="@+id/radio_xtream" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:text="@string/settings_source_xtream" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:padding="12dp" />
+            </RadioGroup>
+
+            <LinearLayout android:id="@+id/m3u_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_iptv_header" style="@style/SettingsTitle" android:layout_marginBottom="8dp" />
+                <EditText android:id="@+id/input_m3u_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/settings_iptv_url_hint" android:inputType="textUri" android:autofillHints="no" style="@style/LargeEditText" android:layout_marginBottom="16dp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/xtream_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_xtream_header" style="@style/SettingsTitle" android:layout_marginBottom="8dp" />
+                <EditText android:id="@+id/input_xtream_server" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/settings_xtream_server_hint" android:inputType="textUri" android:autofillHints="no" style="@style/LargeEditText" android:layout_marginBottom="12dp" />
+                <EditText android:id="@+id/input_xtream_username" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/settings_xtream_username" android:inputType="text" android:autofillHints="username" style="@style/LargeEditText" android:layout_marginBottom="12dp" />
+                <EditText android:id="@+id/input_xtream_password" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/settings_xtream_password" android:inputType="textPassword" android:autofillHints="password" style="@style/LargeEditText" android:layout_marginBottom="12dp" />
+                <EditText android:id="@+id/input_dispatcharr_api_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Dispatcharr API Key (for VOD)" android:inputType="text" android:autofillHints="no" style="@style/LargeEditText" android:layout_marginBottom="16dp" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="end">
+                <Button android:id="@+id/btn_test" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_test_connection" style="@style/LargeButton" android:layout_marginEnd="16dp" android:backgroundTint="@color/settings_gray" />
+                <Button android:id="@+id/btn_save" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_save" style="@style/LargeButton" />
+            </LinearLayout>
+
+            <TextView android:id="@+id/status_message" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="18sp" android:textColor="@color/status_online" android:visibility="gone" android:layout_marginTop="12dp" android:gravity="center" />
+        </LinearLayout>
+
+        <!-- ==================== SECTION: TV Guide ==================== -->
+        <TextView
+            android:id="@+id/header_epg"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="▾  TV Guide (EPG)"
+            android:textSize="22sp"
+            android:textColor="@color/accent_gold"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:background="@drawable/channel_item_background"
+            android:paddingStart="16dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+
+        <LinearLayout
+            android:id="@+id/body_epg"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="24dp"
+            android:visibility="gone">
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Add an XMLTV URL to see what\'s on now and upcoming shows." style="@style/SettingsSummary" android:layout_marginBottom="12dp" />
+            <EditText android:id="@+id/input_epg_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Enter XMLTV EPG URL" android:inputType="textUri" android:autofillHints="no" style="@style/LargeEditText" android:layout_marginBottom="16dp" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="16dp">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Show EPG in Channel List" style="@style/SettingsTitle" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Show what\'s playing next to each channel" style="@style/SettingsSummary" />
+                </LinearLayout>
+                <Switch android:id="@+id/switch_epg_in_list" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+            </LinearLayout>
+
+            <Button android:id="@+id/btn_open_guide" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Open TV Guide" style="@style/LargeButton" android:backgroundTint="@color/iptv_teal" />
+        </LinearLayout>
+
+        <!-- ==================== SECTION: Content Loading ==================== -->
+        <TextView
+            android:id="@+id/header_content"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="▸  Content Loading"
+            android:textSize="22sp"
+            android:textColor="@color/accent_gold"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:background="@drawable/channel_item_background"
+            android:paddingStart="16dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+
+        <LinearLayout
+            android:id="@+id/body_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="24dp"
+            android:visibility="gone">
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Choose what to load on startup. Disabling speeds up launch time." style="@style/SettingsSummary" android:layout_marginBottom="12dp" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="12dp">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Load Movies" style="@style/SettingsTitle" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Preload movie library on startup" style="@style/SettingsSummary" />
+                </LinearLayout>
+                <Switch android:id="@+id/switch_load_movies" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="12dp">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Load TV Shows" style="@style/SettingsTitle" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Preload TV show library on startup" style="@style/SettingsSummary" />
+                </LinearLayout>
+                <Switch android:id="@+id/switch_load_shows" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Load Kids" style="@style/SettingsTitle" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Preload kids content on startup" style="@style/SettingsSummary" />
+                </LinearLayout>
+                <Switch android:id="@+id/switch_load_kids" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+            </LinearLayout>
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="20dp" android:layout_marginBottom="20dp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Hidden Categories" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Hide categories you don't want to see in Movies or Shows." style="@style/SettingsSummary" android:layout_marginBottom="12dp" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+
+                <Button
+                    android:id="@+id/btn_hide_movie_cats"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Movie Categories"
+                    style="@style/LargeButton"
+                    android:backgroundTint="@color/settings_gray"
+                    android:layout_marginEnd="12dp"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true" />
+
+                <Button
+                    android:id="@+id/btn_hide_show_cats"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Show Categories"
+                    style="@style/LargeButton"
+                    android:backgroundTint="@color/settings_gray"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/hidden_cats_summary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textColor="@color/text_hint"
+                android:fontFamily="sans-serif-light"
+                android:layout_marginTop="8dp" />
+        </LinearLayout>
+
+        <!-- ==================== SECTION: Display ==================== -->
+        <TextView
+            android:id="@+id/header_display"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="▾  Display"
+            android:textSize="22sp"
+            android:textColor="@color/accent_gold"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:background="@drawable/channel_item_background"
+            android:paddingStart="16dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+
+        <LinearLayout
+            android:id="@+id/body_display"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="24dp"
+            android:visibility="gone">
+
+            <Button android:id="@+id/btn_wallpaper" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Choose Background" style="@style/LargeButton" android:layout_marginBottom="24dp" />
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginBottom="16dp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Text Size" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Adjust text size across the entire app" style="@style/SettingsSummary" android:layout_marginBottom="12dp" />
+            <RadioGroup android:id="@+id/ui_scale_group" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="16dp">
+                <RadioButton android:id="@+id/radio_scale_small" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1" android:text="Small" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:padding="8dp" />
+                <RadioButton android:id="@+id/radio_scale_medium" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1" android:text="Medium" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:padding="8dp" android:checked="true" />
+                <RadioButton android:id="@+id/radio_scale_large" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1" android:text="Large" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:padding="8dp" />
+            </RadioGroup>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Screen Saver" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Minutes of idle before screen saver. 0 = off." style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                <SeekBar android:id="@+id/screensaver_slider" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:min="0" android:max="30" android:progress="10" android:progressTint="@color/accent_gold" android:thumbTint="@color/accent_gold" />
+                <TextView android:id="@+id/screensaver_label" android:layout_width="80dp" android:layout_height="wrap_content" android:text="10 min" android:textSize="20sp" android:textColor="@color/text_primary" android:gravity="center" android:layout_marginStart="16dp" />
+            </LinearLayout>
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="16dp" android:layout_marginBottom="16dp" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Launch on Startup" style="@style/SettingsTitle" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto-open VistaCore when TV turns on" style="@style/SettingsSummary" />
+                </LinearLayout>
+                <Switch android:id="@+id/switch_auto_launch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+            </LinearLayout>
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="16dp" android:layout_marginBottom="16dp" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Home Button → VistaCore" style="@style/SettingsTitle" />
+                    <TextView android:id="@+id/home_capture_summary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Redirect Home button to VistaCore (requires accessibility permission)" style="@style/SettingsSummary" />
+                </LinearLayout>
+                <Button android:id="@+id/btn_home_capture" android:layout_width="wrap_content" android:layout_height="44dp" android:text="Enable" android:textSize="14sp" android:textColor="@color/text_primary" android:background="@drawable/channel_item_background" android:paddingStart="20dp" android:paddingEnd="20dp" android:focusable="true" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ==================== SECTION: Advanced ==================== -->
+        <TextView
+            android:id="@+id/header_advanced"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="▾  Advanced"
+            android:textSize="22sp"
+            android:textColor="@color/accent_gold"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:background="@drawable/channel_item_background"
+            android:paddingStart="16dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+
+        <LinearLayout
+            android:id="@+id/body_advanced"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="24dp"
+            android:visibility="gone">
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="20dp">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto-Update Channels" style="@style/SettingsTitle" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Refresh channel list every 6 hours" style="@style/SettingsSummary" />
+                </LinearLayout>
+                <Switch android:id="@+id/switch_auto_update" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+            </LinearLayout>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Catch-Up / Timeshift" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="URL pattern for rewinding past programs." style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
+            <RadioGroup android:id="@+id/catchup_type_group" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                <RadioButton android:id="@+id/radio_catchup_xtream" android:layout_width="match_parent" android:layout_height="44dp" android:text="Xtream Codes (most common)" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:checked="true" />
+                <RadioButton android:id="@+id/radio_catchup_flussonic" android:layout_width="match_parent" android:layout_height="44dp" android:text="Flussonic" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" />
+                <RadioButton android:id="@+id/radio_catchup_append" android:layout_width="match_parent" android:layout_height="44dp" android:text="Append (timeshift path)" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" />
+                <RadioButton android:id="@+id/radio_catchup_shift" android:layout_width="match_parent" android:layout_height="44dp" android:text="Shift (start/end params)" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" />
+            </RadioGroup>
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="20dp" android:layout_marginBottom="20dp" />
+
+            <Button android:id="@+id/btn_remote_help" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Open Remote Help" style="@style/LargeButton" android:backgroundTint="@color/accent_teal" />
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="20dp" android:layout_marginBottom="20dp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Settings PIN Lock" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Require a 4-digit PIN to open Settings. Prevents accidental changes." style="@style/SettingsSummary" android:layout_marginBottom="12dp" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="12dp">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Enable PIN Lock" style="@style/SettingsTitle" />
+                    <TextView android:id="@+id/pin_status_text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Off" style="@style/SettingsSummary" />
+                </LinearLayout>
+                <Switch android:id="@+id/switch_pin_enabled" android:layout_width="wrap_content" android:layout_height="wrap_content" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+            </LinearLayout>
+
+            <Button android:id="@+id/btn_change_pin" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Change PIN" style="@style/LargeButton" android:backgroundTint="@color/settings_gray" android:visibility="gone" android:focusable="true" android:focusableInTouchMode="true" />
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="20dp" android:layout_marginBottom="20dp" />
+
+            <!-- App Updates -->
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="App Updates" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+            <TextView android:id="@+id/app_version_text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Current version: …" style="@style/SettingsSummary" android:layout_marginBottom="12dp" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="16dp">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto-Update App" style="@style/SettingsTitle" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Check for new versions automatically" style="@style/SettingsSummary" />
+                </LinearLayout>
+                <Switch android:id="@+id/switch_app_auto_update" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+            </LinearLayout>
+
+            <Button android:id="@+id/btn_check_update" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Check for Updates" style="@style/LargeButton" android:backgroundTint="@color/accent_teal" android:focusable="true" android:focusableInTouchMode="true" android:layout_marginBottom="8dp" />
+
+            <TextView android:id="@+id/update_status_text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="" style="@style/SettingsSummary" android:visibility="gone" android:layout_marginBottom="8dp" />
+
+            <Button android:id="@+id/btn_install_update" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Download &amp; Install Update" style="@style/LargeButton" android:backgroundTint="@color/accent_gold" android:visibility="gone" android:focusable="true" android:focusableInTouchMode="true" android:layout_marginBottom="12dp" />
+
+            <EditText android:id="@+id/input_update_url" android:layout_width="match_parent" android:layout_height="48dp" android:hint="GitHub repo (owner/repo)" android:textSize="16sp" android:textColor="@color/text_primary" android:textColorHint="@color/text_secondary" android:background="@drawable/edit_text_background" android:paddingStart="12dp" android:paddingEnd="12dp" android:inputType="textUri" android:singleLine="true" android:layout_marginBottom="8dp" />
+        </LinearLayout>
+
+        <!-- ==================== SECTION: Sports ==================== -->
+        <TextView
+            android:id="@+id/header_sports"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="▾  Upcoming Games"
+            android:textSize="22sp"
+            android:textColor="@color/accent_gold"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:background="@drawable/channel_item_background"
+            android:paddingStart="16dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+
+        <LinearLayout
+            android:id="@+id/body_sports"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="48dp"
+            android:visibility="gone">
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_sports_summary" style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
+            <CheckBox android:id="@+id/cb_basketball" android:layout_width="match_parent" android:layout_height="44dp" android:text="@string/settings_sport_basketball" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:checked="true" android:focusable="true" />
+            <CheckBox android:id="@+id/cb_football" android:layout_width="match_parent" android:layout_height="44dp" android:text="@string/settings_sport_football" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:checked="true" android:focusable="true" />
+            <CheckBox android:id="@+id/cb_baseball" android:layout_width="match_parent" android:layout_height="44dp" android:text="@string/settings_sport_baseball" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:checked="true" android:focusable="true" />
+            <CheckBox android:id="@+id/cb_hockey" android:layout_width="match_parent" android:layout_height="44dp" android:text="@string/settings_sport_hockey" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:checked="true" android:focusable="true" />
+            <CheckBox android:id="@+id/cb_soccer" android:layout_width="match_parent" android:layout_height="44dp" android:text="@string/settings_sport_soccer" android:textSize="18sp" android:textColor="@color/text_primary" android:buttonTint="@color/accent_gold" android:checked="true" android:focusable="true" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

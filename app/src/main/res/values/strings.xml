@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VistaCore</string>
+    <string name="app_tagline">Your Theater Launcher</string>
+
+    <!-- Section Headers -->
+    <string name="section_favorites">Your Apps</string>
+    <string name="section_iptv">Live TV</string>
+    <string name="section_all_apps">All Apps</string>
+    <string name="section_whats_on">What\'s On Now</string>
+    <string name="section_upcoming_games">Upcoming Games</string>
+    <string name="section_recently_watched">Recently Watched</string>
+    <string name="section_favorite_channels">Favorite Channels</string>
+
+    <!-- App Labels -->
+    <string name="app_disney">Disney+</string>
+    <string name="app_espn">ESPN</string>
+    <string name="app_roku">Roku</string>
+    <string name="app_iptv">Live TV</string>
+    <string name="app_movies">Movies</string>
+    <string name="app_tv_shows">TV Shows</string>
+    <string name="app_kids">Kids</string>
+    <string name="app_settings">Settings</string>
+
+    <!-- Settings: Home Screen Apps -->
+    <string name="settings_apps_title">Home Screen Apps</string>
+    <string name="settings_apps_summary">Choose which apps appear on your home screen.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_iptv_header">Live TV Setup</string>
+    <string name="settings_iptv_url">Playlist URL (M3U)</string>
+    <string name="settings_iptv_url_hint">Enter your M3U playlist URL</string>
+    <string name="settings_xtream_header">Xtream Login</string>
+    <string name="settings_xtream_server">Server URL</string>
+    <string name="settings_xtream_server_hint">http://your-server.com:port</string>
+    <string name="settings_xtream_username">Username</string>
+    <string name="settings_xtream_password">Password</string>
+    <string name="settings_xtream_connect">Connect</string>
+    <string name="settings_source_type">Source Type</string>
+    <string name="settings_source_m3u">M3U Playlist</string>
+    <string name="settings_source_xtream">Xtream Codes</string>
+    <string name="settings_save">Save</string>
+    <string name="settings_saved">Settings saved!</string>
+    <string name="settings_test_connection">Test Connection</string>
+    <string name="settings_connection_success">Connected successfully!</string>
+    <string name="settings_connection_failed">Connection failed. Check your details.</string>
+    <string name="settings_wallpaper">Background</string>
+
+    <!-- IPTV Browser -->
+    <string name="iptv_browser_title">Live TV Channels</string>
+    <string name="iptv_all_channels">All Channels</string>
+    <string name="iptv_favorites">Favorites</string>
+    <string name="iptv_no_channels">No channels found.\nGo to Settings to add your playlist.</string>
+    <string name="iptv_loading">Loading channels…</string>
+    <string name="iptv_error">Could not load channels.\nPlease check your connection.</string>
+
+    <!-- Player -->
+    <string name="player_loading">Loading…</string>
+    <string name="player_error">Could not play this channel.\nPress Back to return.</string>
+    <string name="player_no_url">No stream URL provided.</string>
+
+    <!-- Errors -->
+    <string name="error_app_not_installed">App is not installed.\nPlease install it from the app store.</string>
+    <string name="error_no_internet">No internet connection.</string>
+
+    <!-- Sports Settings -->
+    <string name="settings_sports_title">Upcoming Games</string>
+    <string name="settings_sports_summary">Choose which sports appear on your home screen.</string>
+    <string name="settings_sport_basketball">Basketball (NBA)</string>
+    <string name="settings_sport_football">Football (NFL)</string>
+    <string name="settings_sport_baseball">Baseball (MLB)</string>
+    <string name="settings_sport_hockey">Hockey (NHL)</string>
+    <string name="settings_sport_soccer">Soccer (MLS)</string>
+
+    <!-- Notifications -->
+    <string name="toast_settings_saved">Settings saved successfully</string>
+    <string name="toast_connection_success">Connection successful!</string>
+    <string name="toast_connection_failed">Connection failed. Check your details.</string>
+
+    <!-- Accessibility -->
+    <string name="accessibility_service_description">Allows VistaCore to handle the Home button so it opens VistaCore instead of the default launcher.</string>
+    <string name="cd_app_icon">App icon</string>
+    <string name="cd_settings">Open settings</string>
+    <string name="cd_channel_logo">Channel logo</string>
+    <string name="cd_remote_help">Remote help</string>
+</resources>

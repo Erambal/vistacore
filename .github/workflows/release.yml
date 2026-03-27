@@ -23,7 +23,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build release APK
-        run: ./gradlew assembleRelease
+        run: chmod +x gradlew && ./gradlew assembleRelease
 
       - name: Rename APK
         run: mv app/build/outputs/apk/release/app-release-unsigned.apk vistacore-${{ github.ref_name }}.apk

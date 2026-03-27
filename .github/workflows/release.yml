@@ -27,11 +27,11 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build release APK
-        run: gradle assembleRelease
+      - name: Build debug APK
+        run: gradle assembleDebug
 
       - name: Rename APK
-        run: mv app/build/outputs/apk/release/app-release-unsigned.apk vistacore-${{ github.ref_name }}.apk
+        run: mv app/build/outputs/apk/debug/app-debug.apk vistacore-${{ github.ref_name }}.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

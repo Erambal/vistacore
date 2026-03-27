@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="180dp"
+    android:layout_height="100dp"
+    android:layout_marginEnd="16dp"
+    android:layout_marginBottom="8dp"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:background="@drawable/card_selector"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <!-- Image preview -->
+    <ImageView
+        android:id="@+id/image_preview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop" />
+
+    <!-- Name label -->
+    <TextView
+        android:id="@+id/image_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="#88000000"
+        android:textSize="16sp"
+        android:textColor="@color/text_primary"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:padding="6dp" />
+
+    <!-- Selected check -->
+    <ImageView
+        android:id="@+id/image_check"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="6dp"
+        android:src="@drawable/ic_check"
+        android:scaleType="centerInside"
+        android:visibility="gone"
+        android:contentDescription="Selected" />
+</FrameLayout>

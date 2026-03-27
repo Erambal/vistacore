@@ -39,6 +39,28 @@
         android:layout_marginTop="24dp"
         android:layout_marginBottom="24dp" />
 
+    <!-- Image preset backgrounds -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Photo Backgrounds"
+        style="@style/SettingsTitle"
+        android:layout_marginBottom="16dp" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/image_presets_grid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:clipChildren="false" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#22FFFFFF"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="24dp" />
+
     <!-- Custom wallpaper section -->
     <TextView
         android:layout_width="wrap_content"

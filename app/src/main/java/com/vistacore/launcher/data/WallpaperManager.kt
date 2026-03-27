@@ -14,7 +14,7 @@ import java.io.FileOutputStream
 
 /**
  * Manages custom wallpaper backgrounds for the launcher.
- * Supports built-in presets and user-uploaded images.
+ * Supports built-in gradient presets, built-in image presets, and user-uploaded images.
  */
 class WallpaperManager(private val context: Context) {
 
@@ -22,12 +22,14 @@ class WallpaperManager(private val context: Context) {
         private const val PREFS_NAME = "vistacore_wallpaper"
         private const val KEY_WALLPAPER_TYPE = "wallpaper_type"
         private const val KEY_WALLPAPER_PRESET = "wallpaper_preset"
+        private const val KEY_WALLPAPER_IMAGE_PRESET = "wallpaper_image_preset"
         private const val KEY_WALLPAPER_CUSTOM = "wallpaper_custom_path"
         private const val KEY_WALLPAPER_DIM = "wallpaper_dim"
         private const val CUSTOM_WALLPAPER_FILE = "custom_wallpaper.jpg"
 
         const val TYPE_PRESET = 0
         const val TYPE_CUSTOM = 1
+        const val TYPE_IMAGE = 2
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -39,6 +41,10 @@ class WallpaperManager(private val context: Context) {
     var presetIndex: Int
         get() = prefs.getInt(KEY_WALLPAPER_PRESET, 0)
         set(value) = prefs.edit().putInt(KEY_WALLPAPER_PRESET, value).apply()
+
+    var imagePresetIndex: Int
+        get() = prefs.getInt(KEY_WALLPAPER_IMAGE_PRESET, 0)
+        set(value) = prefs.edit().putInt(KEY_WALLPAPER_IMAGE_PRESET, value).apply()
 
     var dimLevel: Float
         get() = prefs.getFloat(KEY_WALLPAPER_DIM, 0.7f)
@@ -88,6 +94,25 @@ class WallpaperManager(private val context: Context) {
         )
     )
 
+    // Built-in image presets (from assets/wallpapers/)
+    val imagePresets: List<ImagePreset> = listOf(
+        ImagePreset("Aurora", "wallpapers/aurora.jpg"),
+        ImagePreset("Spectrum", "wallpapers/spectrum.jpg"),
+        ImagePreset("Nebula", "wallpapers/nebula.jpg"),
+        ImagePreset("Mountains", "wallpapers/mountains.jpg"),
+        ImagePreset("Night Sky", "wallpapers/night_sky.jpg"),
+        ImagePreset("Treeline", "wallpapers/treeline.jpg"),
+        ImagePreset("Dark Leaves", "wallpapers/dark_leaves.jpg"),
+        ImagePreset("Golden Field", "wallpapers/golden_field.jpg"),
+        ImagePreset("Lakeside", "wallpapers/lakeside.jpg"),
+        ImagePreset("Ocean Shore", "wallpapers/ocean_shore.jpg"),
+        ImagePreset("Storm Clouds", "wallpapers/storm_clouds.jpg"),
+        ImagePreset("Abstract Waves", "wallpapers/abstract_waves.jpg"),
+        ImagePreset("Sunflower", "wallpapers/sunflower.jpg"),
+        ImagePreset("Marble", "wallpapers/marble.jpg"),
+        ImagePreset("Primate", "wallpapers/primate.jpg")
+    )
+
     /**
      * Apply the current wallpaper to a view.
      */
@@ -97,22 +122,76 @@ class WallpaperManager(private val context: Context) {
                 val preset = presets.getOrElse(presetIndex) { presets[0] }
                 val gradient = GradientDrawable(preset.angle, preset.colors)
                 rootView.background = gradient
+                rootView.foreground = null
+            }
+            TYPE_IMAGE -> {
+                val imagePreset = imagePresets.getOrElse(imagePresetIndex) { imagePresets[0] }
+                val bitmap = loadAssetBitmap(imagePreset.assetPath)
+                if (bitmap != null) {
+                    val drawable = BitmapDrawable(context.resources, bitmap)
+                    rootView.background = drawable
+                    rootView.foreground = GradientDrawable().apply {
+                        setColor(((dimLevel * 255).toInt() shl 24))
+                    }
+                } else {
+                    val preset = presets[0]
+                    rootView.background = GradientDrawable(preset.angle, preset.colors)
+                    rootView.foreground = null
+                }
             }
             TYPE_CUSTOM -> {
                 val bitmap = loadCustomWallpaper()
                 if (bitmap != null) {
                     val drawable = BitmapDrawable(context.resources, bitmap)
                     rootView.background = drawable
-                    // Apply dim overlay
                     rootView.foreground = GradientDrawable().apply {
                         setColor(((dimLevel * 255).toInt() shl 24))
                     }
                 } else {
-                    // Fallback to default preset
                     val preset = presets[0]
                     rootView.background = GradientDrawable(preset.angle, preset.colors)
+                    rootView.foreground = null
                 }
             }
+        }
+    }
+
+    /**
+     * Load a bitmap from the assets folder, scaled to TV resolution.
+     */
+    fun loadAssetBitmap(assetPath: String): Bitmap? {
+        return try {
+            val inputStream = context.assets.open(assetPath)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream.close()
+            if (bitmap != null) scaleBitmap(bitmap, 1920, 1080) else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Load a thumbnail from assets (smaller for the picker grid).
+     */
+    fun loadAssetThumbnail(assetPath: String): Bitmap? {
+        return try {
+            val inputStream = context.assets.open(assetPath)
+            // Decode bounds first
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeStream(inputStream, null, opts)
+            inputStream.close()
+
+            // Calculate sample size for ~360px wide thumbnail
+            val targetWidth = 360
+            opts.inSampleSize = (opts.outWidth / targetWidth).coerceAtLeast(1)
+            opts.inJustDecodeBounds = false
+
+            val thumbStream = context.assets.open(assetPath)
+            val bitmap = BitmapFactory.decodeStream(thumbStream, null, opts)
+            thumbStream.close()
+            bitmap
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -127,7 +206,6 @@ class WallpaperManager(private val context: Context) {
 
             if (bitmap == null) return false
 
-            // Scale down if too large (TV resolution max)
             val scaled = scaleBitmap(bitmap, 1920, 1080)
 
             val file = File(context.filesDir, CUSTOM_WALLPAPER_FILE)
@@ -187,3 +265,8 @@ data class WallpaperPreset(
 
     override fun hashCode() = name.hashCode()
 }
+
+data class ImagePreset(
+    val name: String,
+    val assetPath: String
+)

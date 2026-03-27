@@ -37,3 +37,6 @@ local.properties
 # OS files
 Thumbs.db
 .DS_Store
+
+# Source wallpapers (copies live in app/src/main/assets/wallpapers/)
+/wallpapers/

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
+import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -24,7 +25,7 @@ object PinDialogHelper {
         val prefs = PrefsManager(activity)
         val input = createPinInput(activity)
 
-        AlertDialog.Builder(activity, R.style.Theme_VistaCore_Dialog)
+        val dialog = AlertDialog.Builder(activity, R.style.Theme_VistaCore_Dialog)
             .setTitle(title)
             .setView(input)
             .setPositiveButton("OK") { _, _ ->
@@ -39,6 +40,13 @@ object PinDialogHelper {
             .setCancelable(false)
             .show()
 
+        input.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_GO) {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                true
+            } else false
+        }
+
         input.requestFocus()
     }
 
@@ -51,7 +59,7 @@ object PinDialogHelper {
     ) {
         val input = createPinInput(activity)
 
-        AlertDialog.Builder(activity, R.style.Theme_VistaCore_Dialog)
+        val dialog = AlertDialog.Builder(activity, R.style.Theme_VistaCore_Dialog)
             .setTitle("Set a 4-digit PIN")
             .setView(input)
             .setPositiveButton("Next") { _, _ ->
@@ -60,12 +68,18 @@ object PinDialogHelper {
                     Toast.makeText(activity, "PIN must be 4 digits", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                // Confirm step
                 showConfirmPinDialog(activity, pin, onSet)
             }
             .setNegativeButton("Cancel", null)
             .setCancelable(false)
             .show()
+
+        input.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_GO) {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                true
+            } else false
+        }
 
         input.requestFocus()
     }
@@ -77,7 +91,7 @@ object PinDialogHelper {
     ) {
         val input = createPinInput(activity)
 
-        AlertDialog.Builder(activity, R.style.Theme_VistaCore_Dialog)
+        val dialog = AlertDialog.Builder(activity, R.style.Theme_VistaCore_Dialog)
             .setTitle("Confirm PIN")
             .setView(input)
             .setPositiveButton("Set PIN") { _, _ ->
@@ -92,13 +106,22 @@ object PinDialogHelper {
             .setCancelable(false)
             .show()
 
+        input.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_GO) {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                true
+            } else false
+        }
+
         input.requestFocus()
     }
 
     private fun createPinInput(activity: Activity): EditText {
         return EditText(activity).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            imeOptions = EditorInfo.IME_ACTION_DONE
             maxLines = 1
+            isSingleLine = true
             filters = arrayOf(InputFilter.LengthFilter(4))
             textSize = 32f
             gravity = Gravity.CENTER

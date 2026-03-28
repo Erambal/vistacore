@@ -93,7 +93,9 @@
                 android:paddingTop="4dp"
                 android:paddingBottom="4dp"
                 android:clipToPadding="false"
-                android:background="#11FFFFFF" />
+                android:background="#11FFFFFF"
+                android:nextFocusRight="@id/category_chips"
+                android:nextFocusLeft="@id/category_chips" />
 
             <!-- Channel list -->
             <FrameLayout

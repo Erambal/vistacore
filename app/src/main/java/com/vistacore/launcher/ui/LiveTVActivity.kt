@@ -38,10 +38,6 @@ import java.util.*
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class LiveTVActivity : BaseActivity() {
 
-    companion object {
-        const val EXTRA_SEARCH_QUERY = "extra_search_query"
-    }
-
     private lateinit var binding: ActivityLivetvBinding
     private lateinit var prefs: PrefsManager
     private lateinit var recents: RecentChannelsManager
@@ -49,9 +45,18 @@ class LiveTVActivity : BaseActivity() {
 
     private var player: ExoPlayer? = null
     private var allChannels: List<Channel> = emptyList()
+    private var categoryChannels: List<Channel> = emptyList() // channels filtered by category
     private var displayedChannels: List<Channel> = emptyList()
     private var currentChannel: Channel? = null
     private var epgData: EpgData? = null
+    private var selectedCategory: String = CATEGORY_ALL
+
+    companion object {
+        const val EXTRA_SEARCH_QUERY = "extra_search_query"
+        private const val CATEGORY_ALL = "All"
+        private const val CATEGORY_RECENT = "Recent"
+        private const val CATEGORY_FAVORITES = "Favorites"
+    }
 
     private val httpDataSourceFactory by lazy {
         DefaultHttpDataSource.Factory()
@@ -87,9 +92,6 @@ class LiveTVActivity : BaseActivity() {
         }
     }
 
-    private var numberPad: ChannelNumberPad? = null
-    private var showingFavorites = false
-
     private fun setupSearch() {
         // Prevent keyboard from popping up on launch
         binding.channelSearch.clearFocus()
@@ -114,21 +116,8 @@ class LiveTVActivity : BaseActivity() {
         }
         binding.btnToggleEpg.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
 
-        // Favorites toggle
-        binding.btnFavorites.setOnClickListener {
-            showingFavorites = !showingFavorites
-            if (showingFavorites) {
-                binding.btnFavorites.setTextColor(getColor(R.color.accent_gold))
-                val favChannels = com.vistacore.launcher.data.FavoritesManager(this).filterFavorites(allChannels)
-                displayedChannels = favChannels
-            } else {
-                binding.btnFavorites.setTextColor(getColor(R.color.text_hint))
-                displayedChannels = allChannels
-            }
-            binding.channelSearch.setText("")
-            updateChannelList()
-        }
-        binding.btnFavorites.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+        // Category chips — horizontal scrollable filter
+        binding.categoryChips.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
     }
 
     private fun showNumberPadOverlay() {
@@ -177,14 +166,15 @@ class LiveTVActivity : BaseActivity() {
     }
 
     private fun filterChannels(query: String) {
+        val base = categoryChannels
         displayedChannels = if (query.isBlank()) {
-            allChannels
+            base
         } else {
             val asNum = query.toIntOrNull()
             if (asNum != null) {
-                allChannels.filter { it.number.toString().startsWith(query) }
+                base.filter { it.number.toString().startsWith(query) }
             } else {
-                allChannels.filter { channel ->
+                base.filter { channel ->
                     channel.name.contains(query, ignoreCase = true) ||
                     channel.category.contains(query, ignoreCase = true) ||
                     // Also search EPG now-playing program titles
@@ -197,6 +187,33 @@ class LiveTVActivity : BaseActivity() {
             }
         }
         updateChannelList()
+    }
+
+    private fun selectCategory(name: String) {
+        selectedCategory = name
+        categoryChannels = when (name) {
+            CATEGORY_ALL -> allChannels
+            CATEGORY_RECENT -> recents.getRecentChannels(allChannels)
+            CATEGORY_FAVORITES -> favoritesManager.filterFavorites(allChannels)
+            else -> allChannels.filter { it.category == name }
+        }
+        binding.channelSearch.setText("")
+        displayedChannels = categoryChannels
+        updateChannelList()
+        updateCategoryChips()
+    }
+
+    private fun buildCategories(): List<String> {
+        val cats = mutableListOf(CATEGORY_ALL)
+        if (recents.hasRecents()) cats.add(CATEGORY_RECENT)
+        if (favoritesManager.getFavoriteChannelIds().isNotEmpty()) cats.add(CATEGORY_FAVORITES)
+        allChannels.map { it.category }.distinct().sorted().forEach { cats.add(it) }
+        return cats
+    }
+
+    private fun updateCategoryChips() {
+        val cats = buildCategories()
+        binding.categoryChips.adapter = CategoryChipAdapter(cats, selectedCategory) { selectCategory(it) }
     }
 
     private fun setupPlayer() {
@@ -249,7 +266,11 @@ class LiveTVActivity : BaseActivity() {
 
             if (loadedChannels.isNotEmpty()) {
                 allChannels = loadedChannels.sortedBy { it.number }
+                categoryChannels = allChannels
                 showLoading(false)
+
+                // Build category chips
+                updateCategoryChips()
 
                 // Apply any pre-filled search query (e.g. from Upcoming Games)
                 val pendingQuery = binding.channelSearch.text?.toString()?.trim() ?: ""
@@ -479,17 +500,17 @@ class LiveTVActivity : BaseActivity() {
                 true
             }
             KeyEvent.KEYCODE_DPAD_UP -> {
-                // If focus is on the player, tune to previous channel
+                // If focus is on the player, tune to previous channel within current view
                 if (binding.miniPlayer.hasFocus()) {
-                    val idx = allChannels.indexOf(currentChannel)
-                    if (idx > 0) tuneToChannel(allChannels[idx - 1])
+                    val idx = displayedChannels.indexOf(currentChannel)
+                    if (idx > 0) tuneToChannel(displayedChannels[idx - 1])
                     true
                 } else super.onKeyDown(keyCode, event)
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
                 if (binding.miniPlayer.hasFocus()) {
-                    val idx = allChannels.indexOf(currentChannel)
-                    if (idx < allChannels.size - 1) tuneToChannel(allChannels[idx + 1])
+                    val idx = displayedChannels.indexOf(currentChannel)
+                    if (idx < displayedChannels.size - 1) tuneToChannel(displayedChannels[idx + 1])
                     true
                 } else super.onKeyDown(keyCode, event)
             }
@@ -613,4 +634,34 @@ class LiveChannelAdapter(
     }
 
     override fun getItemCount() = channels.size
+}
+
+// --- Category Chip Adapter ---
+
+class CategoryChipAdapter(
+    private val categories: List<String>,
+    private val selected: String,
+    private val onClick: (String) -> Unit
+) : RecyclerView.Adapter<CategoryChipAdapter.VH>() {
+
+    inner class VH(val label: TextView) : RecyclerView.ViewHolder(label)
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_category_chip, parent, false) as TextView
+        return VH(view)
+    }
+
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        val cat = categories[position]
+        holder.label.text = cat
+        holder.label.isSelected = cat == selected
+        holder.label.setTextColor(holder.label.context.getColor(
+            if (cat == selected) R.color.accent_gold else R.color.text_primary
+        ))
+        holder.label.setOnClickListener { onClick(cat) }
+        holder.label.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+    }
+
+    override fun getItemCount() = categories.size
 }

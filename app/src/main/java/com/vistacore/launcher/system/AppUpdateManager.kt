@@ -113,8 +113,10 @@ class AppUpdateManager(private val context: Context) {
 
                 val release = Gson().fromJson(body, GitHubRelease::class.java)
 
-                // Find the .apk asset
-                val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk") }
+                // Find the matching .apk asset for this flavor (a=modern, b=legacy)
+                val suffix = if (com.vistacore.launcher.BuildConfig.LEGACY_TLS) "b.apk" else "a.apk"
+                val apkAsset = release.assets.firstOrNull { it.name.endsWith(suffix) }
+                    ?: release.assets.firstOrNull { it.name.endsWith(".apk") }
                     ?: return@withContext UpdateCheckResult(
                         available = false,
                         currentVersionName = currentVersionName,

@@ -25,8 +25,22 @@ android {
         applicationId = "com.vistacore.launcher"
         minSdk = 21
         targetSdk = 34
-        versionCode = 15
-        versionName = "1.1.4"
+        versionCode = 16
+        versionName = "1.1.5"
+    }
+
+    flavorDimensions += "device"
+    productFlavors {
+        create("modern") {
+            dimension = "device"
+            versionNameSuffix = "a"
+            buildConfigField("boolean", "LEGACY_TLS", "false")
+        }
+        create("legacy") {
+            dimension = "device"
+            versionNameSuffix = "b"
+            buildConfigField("boolean", "LEGACY_TLS", "true")
+        }
     }
 
     signingConfigs {

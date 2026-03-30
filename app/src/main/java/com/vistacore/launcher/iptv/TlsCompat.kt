@@ -8,28 +8,22 @@ import java.security.cert.X509Certificate
 import javax.net.ssl.*
 
 /**
- * TLS compatibility for OkHttp clients across Google TV, FireStick,
- * and other Android TV devices.
+ * TLS compatibility for OkHttp clients.
  *
- * Two modes:
- *  - [apply]       — enables all TLS versions/ciphers but still validates
- *                    server certificates. Use for first-party services
- *                    (GitHub, relay server, etc.).
- *  - [applyTrustAll] — additionally trusts ALL server certificates.
- *                    Use for user-configured IPTV servers, which commonly
- *                    have self-signed or poorly-chained certificates that
- *                    FireStick's limited CA store rejects.
+ * Behavior is controlled by BuildConfig.LEGACY_TLS:
+ *  - legacy build (b): enables all TLS versions/ciphers and wraps sockets
+ *  - modern build (a): no TLS customization beyond trust-all for IPTV servers
  */
 object TlsCompat {
 
     private const val TAG = "TlsCompat"
 
     /**
-     * Standard TLS compat: enables all protocol versions and cipher suites
-     * but still validates server certificates normally.
+     * Standard TLS compat: on legacy builds enables all protocol versions
+     * and cipher suites. On modern builds, returns the builder untouched.
      */
     fun apply(builder: OkHttpClient.Builder): OkHttpClient.Builder {
-        if (!needsCompat()) return builder
+        if (!com.vistacore.launcher.BuildConfig.LEGACY_TLS) return builder
 
         try {
             val trustManagerFactory = TrustManagerFactory.getInstance(
@@ -53,8 +47,7 @@ object TlsCompat {
 
     /**
      * Permissive TLS: trusts ALL server certificates unconditionally.
-     * Intended for user-configured IPTV/Xtream servers which often use
-     * self-signed, expired, or improperly-chained certificates.
+     * On legacy builds, also wraps with AllTlsSocketFactory for broad protocol support.
      */
     fun applyTrustAll(builder: OkHttpClient.Builder): OkHttpClient.Builder {
         try {
@@ -67,7 +60,7 @@ object TlsCompat {
             val sslContext = SSLContext.getInstance("TLS")
             sslContext.init(null, arrayOf(trustManager), null)
 
-            if (needsCompat()) {
+            if (com.vistacore.launcher.BuildConfig.LEGACY_TLS) {
                 val socketFactory = AllTlsSocketFactory(sslContext.socketFactory)
                 builder.sslSocketFactory(socketFactory, trustManager)
             } else {
@@ -79,11 +72,6 @@ object TlsCompat {
         }
 
         return applyConnectionSpecs(builder)
-    }
-
-    private fun needsCompat(): Boolean {
-        val manufacturer = android.os.Build.MANUFACTURER.lowercase()
-        return manufacturer == "amazon" || android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.N
     }
 
     private fun applyConnectionSpecs(builder: OkHttpClient.Builder): OkHttpClient.Builder {
@@ -100,7 +88,7 @@ object TlsCompat {
 
 /**
  * SSLSocketFactory wrapper that explicitly enables every TLS version
- * and cipher suite the device supports.
+ * and cipher suite the device supports. Only used in legacy builds.
  */
 private class AllTlsSocketFactory(
     private val delegate: SSLSocketFactory
@@ -127,13 +115,8 @@ private class AllTlsSocketFactory(
 
     private fun enableAllTls(socket: java.net.Socket) {
         if (socket is SSLSocket) {
-            val manufacturer = android.os.Build.MANUFACTURER.lowercase()
-            if (manufacturer == "amazon" || android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.N) {
-                // Only force all protocols/ciphers on old or broken TLS stacks
-                socket.enabledProtocols = socket.supportedProtocols
-                socket.enabledCipherSuites = socket.supportedCipherSuites
-            }
-            // Newer devices: leave defaults alone — they already negotiate correctly
+            socket.enabledProtocols = socket.supportedProtocols
+            socket.enabledCipherSuites = socket.supportedCipherSuites
         }
     }
 }

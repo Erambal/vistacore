@@ -34,6 +34,9 @@ class PrefsManager(context: Context) {
         private const val KEY_PIN_ENABLED = "settings_pin_enabled"
         private const val KEY_APP_UPDATE_REPO = "app_update_github_repo"
         private const val KEY_APP_AUTO_UPDATE = "app_auto_update_enabled"
+        private const val KEY_APP_LANGUAGE = "app_language"
+        private const val KEY_PREFERRED_AUDIO_LANG = "preferred_audio_language"
+        private const val KEY_PREFERRED_SUBTITLE_LANG = "preferred_subtitle_language"
 
         const val SOURCE_M3U = 0
         const val SOURCE_XTREAM = 1
@@ -186,6 +189,21 @@ class PrefsManager(context: Context) {
     var appAutoUpdateEnabled: Boolean
         get() = prefs.getBoolean(KEY_APP_AUTO_UPDATE, true)
         set(value) = prefs.edit().putBoolean(KEY_APP_AUTO_UPDATE, value).apply()
+
+    /** App UI language code (e.g. "en", "es", "fr"). Default "en". */
+    var appLanguage: String
+        get() = prefs.getString(KEY_APP_LANGUAGE, "en") ?: "en"
+        set(value) = prefs.edit().putString(KEY_APP_LANGUAGE, value).apply()
+
+    /** Preferred audio track language code. Empty = use stream default. */
+    var preferredAudioLanguage: String
+        get() = prefs.getString(KEY_PREFERRED_AUDIO_LANG, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PREFERRED_AUDIO_LANG, value).apply()
+
+    /** Preferred subtitle language code. Empty = subtitles off. */
+    var preferredSubtitleLanguage: String
+        get() = prefs.getString(KEY_PREFERRED_SUBTITLE_LANG, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PREFERRED_SUBTITLE_LANG, value).apply()
 
     fun hasIptvConfig(): Boolean {
         return when (sourceType) {

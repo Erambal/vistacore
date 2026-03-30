@@ -56,6 +56,7 @@ class SettingsActivity : BaseActivity() {
         setupCatchUpType()
         setupSportsPreferences()
         setupUiScale()
+        setupLanguage()
         setupPinLock()
         setupAppUpdate()
     }
@@ -633,6 +634,29 @@ class SettingsActivity : BaseActivity() {
             }
             if (newScale != prefs.uiScale) {
                 prefs.uiScale = newScale
+                recreate()
+            }
+        }
+    }
+
+    private fun setupLanguage() {
+        when (prefs.appLanguage) {
+            "es" -> binding.radioLangEs.isChecked = true
+            "fr" -> binding.radioLangFr.isChecked = true
+            "pt" -> binding.radioLangPt.isChecked = true
+            "de" -> binding.radioLangDe.isChecked = true
+            else -> binding.radioLangEn.isChecked = true
+        }
+        binding.languageGroup.setOnCheckedChangeListener { _, checkedId ->
+            val newLang = when (checkedId) {
+                R.id.radio_lang_es -> "es"
+                R.id.radio_lang_fr -> "fr"
+                R.id.radio_lang_pt -> "pt"
+                R.id.radio_lang_de -> "de"
+                else -> "en"
+            }
+            if (newLang != prefs.appLanguage) {
+                prefs.appLanguage = newLang
                 recreate()
             }
         }

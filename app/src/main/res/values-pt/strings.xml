@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_tagline">Seu Centro de Entretenimento</string>
+
+    <string name="section_favorites">Seus Aplicativos</string>
+    <string name="section_iptv">TV ao Vivo</string>
+    <string name="section_all_apps">Todos os Aplicativos</string>
+    <string name="section_whats_on">No Ar Agora</string>
+    <string name="section_upcoming_games">Próximos Jogos</string>
+    <string name="section_recently_watched">Assistidos Recentemente</string>
+    <string name="section_favorite_channels">Canais Favoritos</string>
+
+    <string name="app_iptv">TV ao Vivo</string>
+    <string name="app_movies">Filmes</string>
+    <string name="app_tv_shows">Séries</string>
+    <string name="app_kids">Infantil</string>
+    <string name="app_settings">Configurações</string>
+
+    <string name="settings_apps_title">Aplicativos da Tela Inicial</string>
+    <string name="settings_apps_summary">Escolha quais aplicativos aparecem na tela inicial.</string>
+    <string name="settings_title">Configurações</string>
+    <string name="settings_iptv_header">Configuração de TV ao Vivo</string>
+    <string name="settings_iptv_url">URL da Lista (M3U)</string>
+    <string name="settings_iptv_url_hint">Digite sua URL da lista M3U</string>
+    <string name="settings_xtream_header">Acesso Xtream</string>
+    <string name="settings_xtream_server">URL do Servidor</string>
+    <string name="settings_xtream_server_hint">http://seu-servidor.com:porta</string>
+    <string name="settings_xtream_username">Usuário</string>
+    <string name="settings_xtream_password">Senha</string>
+    <string name="settings_xtream_connect">Conectar</string>
+    <string name="settings_source_type">Tipo de Fonte</string>
+    <string name="settings_source_m3u">Lista M3U</string>
+    <string name="settings_source_xtream">Xtream Codes</string>
+    <string name="settings_save">Salvar</string>
+    <string name="settings_saved">Configurações salvas!</string>
+    <string name="settings_test_connection">Testar Conexão</string>
+    <string name="settings_connection_success">Conexão bem-sucedida!</string>
+    <string name="settings_connection_failed">Falha na conexão. Verifique os dados.</string>
+    <string name="settings_wallpaper">Plano de Fundo</string>
+
+    <string name="iptv_browser_title">Canais de TV ao Vivo</string>
+    <string name="iptv_all_channels">Todos os Canais</string>
+    <string name="iptv_favorites">Favoritos</string>
+    <string name="iptv_no_channels">Nenhum canal encontrado.\nVá para Configurações para adicionar sua lista.</string>
+    <string name="iptv_loading">Carregando canais…</string>
+    <string name="iptv_error">Não foi possível carregar os canais.\nVerifique sua conexão.</string>
+
+    <string name="player_loading">Carregando…</string>
+    <string name="player_error">Não foi possível reproduzir este canal.\nPressione Voltar para retornar.</string>
+    <string name="player_no_url">URL de transmissão não fornecida.</string>
+
+    <string name="error_app_not_installed">O aplicativo não está instalado.\nInstale-o pela loja.</string>
+    <string name="error_no_internet">Sem conexão com a internet.</string>
+
+    <string name="settings_sports_title">Próximos Jogos</string>
+    <string name="settings_sports_summary">Escolha quais esportes aparecem na tela inicial.</string>
+    <string name="settings_sport_basketball">Basquete (NBA)</string>
+    <string name="settings_sport_football">Futebol Americano (NFL)</string>
+    <string name="settings_sport_baseball">Beisebol (MLB)</string>
+    <string name="settings_sport_hockey">Hóquei (NHL)</string>
+    <string name="settings_sport_soccer">Futebol (MLS)</string>
+
+    <string name="toast_settings_saved">Configurações salvas com sucesso</string>
+    <string name="toast_connection_success">Conexão bem-sucedida!</string>
+    <string name="toast_connection_failed">Falha na conexão. Verifique os dados.</string>
+
+    <string name="cd_app_icon">Ícone do aplicativo</string>
+    <string name="cd_settings">Abrir configurações</string>
+    <string name="cd_channel_logo">Logo do canal</string>
+    <string name="cd_remote_help">Ajuda remota</string>
+</resources>

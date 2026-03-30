@@ -15,16 +15,20 @@ import android.widget.ImageButton
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.vistacore.launcher.R
+import com.vistacore.launcher.data.PrefsManager
 import com.vistacore.launcher.data.RecentChannelsManager
 import com.vistacore.launcher.databinding.ActivityIptvPlayerBinding
 import com.vistacore.launcher.iptv.Channel
@@ -50,6 +54,8 @@ class IPTVPlayerActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityIptvPlayerBinding
     private var player: ExoPlayer? = null
+    private var trackSelector: DefaultTrackSelector? = null
+    private lateinit var prefs: PrefsManager
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var recentChannels: RecentChannelsManager
     private lateinit var watchHistory: com.vistacore.launcher.data.WatchHistoryManager
@@ -98,6 +104,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
         setContentView(binding.root)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        prefs = PrefsManager(this)
         recentChannels = RecentChannelsManager(this)
         watchHistory = com.vistacore.launcher.data.WatchHistoryManager(this)
 
@@ -158,8 +165,12 @@ class IPTVPlayerActivity : AppCompatActivity() {
         binding.btnPrevChannel.setOnClickListener { switchToPreviousChannel() }
         binding.btnNextChannel.setOnClickListener { switchToNextChannel() }
 
+        binding.btnAudioTrack.setOnClickListener { showAudioTrackPicker() }
+        binding.btnSubtitleTrack.setOnClickListener { showSubtitlePicker() }
+
         // Focus animations
-        listOf(binding.btnPrevChannel, binding.btnPlayPause, binding.btnNextChannel).forEach { btn ->
+        listOf(binding.btnPrevChannel, binding.btnPlayPause, binding.btnNextChannel,
+               binding.btnAudioTrack, binding.btnSubtitleTrack).forEach { btn ->
             btn.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         }
 
@@ -257,8 +268,12 @@ class IPTVPlayerActivity : AppCompatActivity() {
             }
         })
 
+        binding.scrubAudioTrack.setOnClickListener { showAudioTrackPicker() }
+        binding.scrubSubtitleTrack.setOnClickListener { showSubtitlePicker() }
+
         // Focus animations
-        listOf(binding.scrubRewind, binding.scrubPlayPause, binding.scrubForward).forEach { btn ->
+        listOf(binding.scrubRewind, binding.scrubPlayPause, binding.scrubForward,
+               binding.scrubAudioTrack, binding.scrubSubtitleTrack).forEach { btn ->
             btn.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         }
 
@@ -374,13 +389,32 @@ class IPTVPlayerActivity : AppCompatActivity() {
     private fun setupPlayer() {
         showLoading(true)
 
+        val selector = DefaultTrackSelector(this).also { ts ->
+            trackSelector = ts
+            val params = ts.buildUponParameters()
+            val audioLang = prefs.preferredAudioLanguage
+            if (audioLang.isNotBlank()) {
+                params.setPreferredAudioLanguage(audioLang)
+            }
+            val subLang = prefs.preferredSubtitleLanguage
+            if (subLang.isNotBlank()) {
+                params.setPreferredTextLanguage(subLang)
+                    .setRendererDisabled(C.TRACK_TYPE_TEXT, false)
+            } else {
+                params.setRendererDisabled(C.TRACK_TYPE_TEXT, true)
+            }
+            ts.setParameters(params)
+        }
+
         player = ExoPlayer.Builder(this)
+            .setTrackSelector(selector)
             .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
             .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
             .build().also { exo ->
             // Allow seeking to any position (not just keyframes)
             exo.setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
             binding.playerView.player = exo
+            binding.playerView.subtitleView?.setApplyEmbeddedStyles(true)
 
             exo.addListener(object : Player.Listener {
                 private var hasResumed = false
@@ -561,11 +595,106 @@ class IPTVPlayerActivity : AppCompatActivity() {
         }
     }
 
+    // --- Audio / Subtitle Track Pickers ---
+
+    private fun showAudioTrackPicker() {
+        val exo = player ?: return
+        val tracks = exo.currentTracks
+        val audioGroups = mutableListOf<Pair<String, TrackSelectionOverride>>()
+
+        for (group in tracks.groups) {
+            if (group.type != C.TRACK_TYPE_AUDIO) continue
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                val lang = format.language ?: "und"
+                val label = format.label
+                    ?: java.util.Locale(lang).displayLanguage.replaceFirstChar { it.uppercase() }
+                audioGroups.add(label to TrackSelectionOverride(group.mediaTrackGroup, i))
+            }
+        }
+
+        if (audioGroups.isEmpty()) {
+            android.widget.Toast.makeText(this, "No audio tracks available", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val names = audioGroups.map { it.first }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Audio Language")
+            .setItems(names) { _, which ->
+                val override = audioGroups[which].second
+                trackSelector?.setParameters(
+                    trackSelector!!.buildUponParameters()
+                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                        .addOverride(override)
+                )
+                // Save preference
+                val format = override.mediaTrackGroup.getFormat(override.trackIndices.first())
+                prefs.preferredAudioLanguage = format.language ?: ""
+            }
+            .show()
+    }
+
+    private fun showSubtitlePicker() {
+        val exo = player ?: return
+        val tracks = exo.currentTracks
+        val subGroups = mutableListOf<Pair<String, TrackSelectionOverride?>>()
+        subGroups.add("Off" to null)
+
+        for (group in tracks.groups) {
+            if (group.type != C.TRACK_TYPE_TEXT) continue
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                val lang = format.language ?: "und"
+                val label = format.label
+                    ?: java.util.Locale(lang).displayLanguage.replaceFirstChar { it.uppercase() }
+                subGroups.add(label to TrackSelectionOverride(group.mediaTrackGroup, i))
+            }
+        }
+
+        if (subGroups.size <= 1) {
+            android.widget.Toast.makeText(this, "No subtitles available", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val names = subGroups.map { it.first }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Subtitles")
+            .setItems(names) { _, which ->
+                val override = subGroups[which].second
+                if (override == null) {
+                    // Off
+                    trackSelector?.setParameters(
+                        trackSelector!!.buildUponParameters()
+                            .setRendererDisabled(C.TRACK_TYPE_TEXT, true)
+                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    )
+                    prefs.preferredSubtitleLanguage = ""
+                } else {
+                    trackSelector?.setParameters(
+                        trackSelector!!.buildUponParameters()
+                            .setRendererDisabled(C.TRACK_TYPE_TEXT, false)
+                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                            .addOverride(override)
+                    )
+                    val format = override.mediaTrackGroup.getFormat(override.trackIndices.first())
+                    prefs.preferredSubtitleLanguage = format.language ?: ""
+                }
+            }
+            .show()
+    }
+
     // --- Key Handling ---
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (!isVodMode && numberPad?.handleKeyEvent(keyCode) == true) {
             return true
+        }
+
+        // Audio/subtitle shortcuts — work in both modes
+        when (keyCode) {
+            KeyEvent.KEYCODE_PROG_RED -> { showAudioTrackPicker(); return true }
+            KeyEvent.KEYCODE_PROG_GREEN -> { showSubtitlePicker(); return true }
         }
 
         // VOD mode key handling

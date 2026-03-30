@@ -665,6 +665,9 @@ class SettingsActivity : BaseActivity() {
             }
             if (newLang != prefs.appLanguage) {
                 prefs.appLanguage = newLang
+                // Cascade: audio, subtitles, and content all follow the app language
+                prefs.preferredAudioLanguage = if (newLang == "en") "" else newLang
+                prefs.preferredSubtitleLanguage = if (newLang == "en") "" else newLang
                 recreate()
             }
         }

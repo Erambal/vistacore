@@ -195,9 +195,14 @@ class VODBrowserActivity : BaseActivity() {
         val grouped = displayItems.groupBy { it.category }
             .filter { !tracker.isCategoryHidden(it.key) } // Remove hidden categories
 
-        // Sort: most-used categories first, then by content count
+        // Boost categories matching the app language, then most-used, then by size
+        val langKeywords = languageKeywords()
         val sortedCategories = grouped.entries.sortedWith(
-            compareByDescending<Map.Entry<String, List<Channel>>> { tracker.getCategoryUsage(it.key) }
+            compareByDescending<Map.Entry<String, List<Channel>>> { entry ->
+                val catLower = entry.key.lowercase()
+                if (langKeywords.any { catLower.contains(it) }) 1 else 0
+            }
+                .thenByDescending { tracker.getCategoryUsage(it.key) }
                 .thenByDescending { it.value.size }
         ).take(25)
 
@@ -206,6 +211,18 @@ class VODBrowserActivity : BaseActivity() {
         }
 
         return rows
+    }
+
+    /** Returns keywords for boosting categories that match the app language. */
+    private fun languageKeywords(): List<String> {
+        val lang = com.vistacore.launcher.data.PrefsManager(this).appLanguage
+        return when (lang) {
+            "es" -> listOf("spanish", "español", "latino", "latina")
+            "fr" -> listOf("french", "français", "francais")
+            "pt" -> listOf("portuguese", "português", "portugues", "brasileiro", "brazil")
+            "de" -> listOf("german", "deutsch")
+            else -> emptyList() // English — no boost needed
+        }
     }
 
     /** Apply pre-built rows to the UI — must run on main thread */

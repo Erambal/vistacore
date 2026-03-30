@@ -30,6 +30,7 @@ local.properties
 # Signing configs
 *.jks
 *.keystore
+keystore.properties
 
 # Log files
 *.log

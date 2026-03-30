@@ -188,16 +188,24 @@ class SetupActivity : BaseActivity() {
                 goToMain()
 
             } catch (e: Exception) {
-                updateProgress("Connection failed: ${e.message ?: "Unknown error"}", 0)
+                val detail = e.cause?.message ?: e.message ?: "Unknown error"
+                updateProgress("Connection failed: $detail", 0)
                 binding.setupBtnConnect.isEnabled = true
                 binding.setupBtnSkip.isEnabled = true
+                // Focus the Connect button so seniors know to press it again
+                binding.setupBtnConnect.requestFocus()
+                Toast.makeText(this@SetupActivity,
+                    "Check your settings and press Connect to try again",
+                    Toast.LENGTH_LONG).show()
             }
         }
     }
 
     private fun updateProgress(text: String, percent: Int) {
         binding.setupStatus.text = text
-        binding.setupProgress.progress = percent
+        android.animation.ObjectAnimator.ofInt(binding.setupProgress, "progress", percent)
+            .setDuration(400)
+            .start()
     }
 
     private fun goToMain() {

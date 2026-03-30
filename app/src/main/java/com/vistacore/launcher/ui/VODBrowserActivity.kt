@@ -141,7 +141,7 @@ class VODBrowserActivity : BaseActivity() {
             } else {
                 ChannelUpdateWorker.refreshNow(this@VODBrowserActivity)
                 showLoading(false)
-                binding.netflixEmpty.text = "Content is loading for the first time.\nGo back and try again in a moment."
+                binding.netflixEmpty.text = "Content is being downloaded.\nThis may take 2–3 minutes. Please wait or press Back and try again."
                 showEmpty()
             }
         }

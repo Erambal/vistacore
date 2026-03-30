@@ -69,6 +69,13 @@ class SettingsActivity : BaseActivity() {
                 val arrow = if (visible) "▸" else "▾"
                 val label = header.text.toString().substring(3) // strip old arrow + spaces
                 header.text = "$arrow  $label"
+                // Auto-focus the first focusable child when expanding
+                if (!visible) {
+                    body.post {
+                        val first = body.findFocus() ?: findFirstFocusable(body)
+                        first?.requestFocus()
+                    }
+                }
             }
             header.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         }
@@ -814,6 +821,17 @@ class SettingsActivity : BaseActivity() {
         binding.statusMessage.text = message
         binding.statusMessage.setTextColor(getColor(if (success) R.color.status_online else R.color.status_offline))
         binding.statusMessage.visibility = View.VISIBLE
+    }
+
+    private fun findFirstFocusable(view: View): View? {
+        if (view.isFocusable) return view
+        if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) {
+                val found = findFirstFocusable(view.getChildAt(i))
+                if (found != null) return found
+            }
+        }
+        return null
     }
 
     override fun onDestroy() {

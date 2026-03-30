@@ -113,10 +113,17 @@ class MainActivity : BaseActivity() {
         val timeout = prefs.screenSaverTimeout
         if (timeout <= 0) return
 
+        val delayMs = timeout * 60 * 1000L
+        // Show a warning 30 seconds before screen saver kicks in
+        val warningMs = (delayMs - 30000L).coerceAtLeast(delayMs / 2)
+        handler.postDelayed({
+            Toast.makeText(this, "Screen saver starting soon — press any button", Toast.LENGTH_LONG).show()
+        }, warningMs)
+
         screenSaverRunnable = Runnable {
             startActivity(Intent(this, ScreenSaverActivity::class.java))
         }
-        handler.postDelayed(screenSaverRunnable!!, timeout * 60 * 1000L)
+        handler.postDelayed(screenSaverRunnable!!, delayMs)
     }
 
     private fun cancelScreenSaverTimer() {
@@ -131,8 +138,8 @@ class MainActivity : BaseActivity() {
                 return true
             }
             backPressedOnce = true
-            Toast.makeText(this, "Press back again to exit", Toast.LENGTH_SHORT).show()
-            handler.postDelayed({ backPressedOnce = false }, 2000)
+            Toast.makeText(this, "Press back again to exit", Toast.LENGTH_LONG).show()
+            handler.postDelayed({ backPressedOnce = false }, 3500)
             return true
         }
         return super.onKeyDown(keyCode, event)
@@ -165,6 +172,8 @@ class MainActivity : BaseActivity() {
             adapter = AppCardAdapter(apps) { onAppClicked(it) }
             clipChildren = false
             clipToPadding = false
+            // Auto-focus the first app card so remote navigation works immediately
+            post { findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() }
         }
     }
 

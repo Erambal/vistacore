@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import android.util.Rational
 import android.view.KeyEvent
 import android.view.View
@@ -51,7 +52,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
         const val EXTRA_IS_VOD = "is_vod"
         const val EXTRA_CONTENT_YEAR = "content_year"
         private const val OVERLAY_DISPLAY_MS = 4000L
-        private const val SCRUB_HIDE_DELAY_MS = 6000L
+        private const val SCRUB_HIDE_DELAY_MS = 15000L
         private const val SEEK_INCREMENT_MS = 10000L
         private const val TAG = "IPTVPlayer"
     }
@@ -66,6 +67,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
     private var numberPad: ChannelNumberPad? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    private var backPressedOnce = false
     private var streamUrl: String = ""
     private var channelName: String = ""
     private var channelId: String = ""
@@ -212,6 +214,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
         controlsVisible = false
         binding.controlsOverlay.visibility = View.GONE
         handler.removeCallbacks(hideControlsRunnable)
+        binding.playerView.requestFocus()
     }
 
     // --- VOD Scrub Bar ---
@@ -301,6 +304,12 @@ class IPTVPlayerActivity : AppCompatActivity() {
         exo.seekTo(newPos)
         updateScrubPosition()
         resetScrubTimer()
+        // Show brief seek feedback
+        val secs = (deltaMs / 1000).toInt()
+        val label = if (secs > 0) "+${secs}s" else "${secs}s"
+        binding.scrubSpeed.text = label
+        binding.scrubSpeed.visibility = View.VISIBLE
+        handler.postDelayed({ binding.scrubSpeed.visibility = View.GONE }, 800)
     }
 
     private fun showScrubBar() {
@@ -320,6 +329,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
         binding.scrubOverlay.visibility = View.GONE
         handler.removeCallbacks(hideScrubRunnable)
         stopFastSeek()
+        binding.playerView.requestFocus()
     }
 
     private fun toggleScrubBar() {
@@ -555,15 +565,26 @@ class IPTVPlayerActivity : AppCompatActivity() {
         binding.playerLoading.visibility = View.GONE
         binding.playerError.visibility = View.VISIBLE
 
-        // Show the actual error details so user can diagnose
         val err = lastError
-        if (err != null) {
-            val cause = err.cause?.message ?: err.message ?: "Unknown error"
-            val code = "Error code: ${err.errorCode}"
-            binding.errorDetails.text = "$cause\n$code"
+        val friendly = if (err != null) {
+            val msg = (err.cause?.message ?: err.message ?: "").lowercase()
+            when {
+                msg.contains("403") || msg.contains("forbidden") ->
+                    "Access denied. Your subscription may have expired."
+                msg.contains("404") || msg.contains("not found") ->
+                    "This stream is no longer available."
+                msg.contains("timeout") || msg.contains("timed out") ->
+                    "The stream is too slow or not responding."
+                msg.contains("unable to connect") || msg.contains("failed to connect") ->
+                    "Could not connect to the server. Check your internet."
+                msg.contains("source error") || msg.contains("no valid") ->
+                    "This stream format is not supported."
+                else -> err.cause?.message ?: err.message ?: "The stream could not be loaded."
+            }
         } else {
-            binding.errorDetails.text = "The stream could not be loaded."
+            "The stream could not be loaded."
         }
+        binding.errorDetails.text = friendly
         binding.errorUrl.text = streamUrl
 
         binding.btnRetry.requestFocus()
@@ -925,6 +946,11 @@ class IPTVPlayerActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_BACK -> {
                 if (controlsVisible) {
                     hideControls()
+                    true
+                } else if (!backPressedOnce) {
+                    backPressedOnce = true
+                    Toast.makeText(this, "Press back again to exit", Toast.LENGTH_LONG).show()
+                    handler.postDelayed({ backPressedOnce = false }, 3000)
                     true
                 } else {
                     finish()

@@ -10,7 +10,9 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
+import android.widget.Toast
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
@@ -100,6 +102,15 @@ class SplashActivity : BaseActivity() {
     private lateinit var bgBack: ImageView
     private var bgTransitionJob: Job? = null
     private var shuffledBackgrounds = splashBackgrounds.toList().shuffled()
+    private var keyPressAcknowledged = false
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (!keyPressAcknowledged && !isFinishing) {
+            keyPressAcknowledged = true
+            Toast.makeText(this, "Loading in progress — please wait", Toast.LENGTH_SHORT).show()
+        }
+        return true
+    }
     private var bgIndex = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {

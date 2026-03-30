@@ -16,15 +16,15 @@ import java.util.concurrent.TimeUnit
 
 class XtreamClient(private val auth: XtreamAuth) {
 
-    private val client = OkHttpClient.Builder()
+    private val client = TlsCompat.apply(OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS))
         .build()
 
     // VOD responses can be 10-20MB — needs a much longer timeout
-    private val vodClient = OkHttpClient.Builder()
+    private val vodClient = TlsCompat.apply(OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(300, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS))
         .build()
 
     private val gson = Gson()

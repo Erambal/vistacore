@@ -42,9 +42,9 @@ class AppUpdateManager(private val context: Context) {
         const val DEFAULT_GITHUB_REPO = "Erambal/vistacore"
     }
 
-    private val client = OkHttpClient.Builder()
+    private val client = com.vistacore.launcher.iptv.TlsCompat.apply(OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS))
         .build()
 
     /** Mirrors the GitHub Releases API response (only fields we need). */

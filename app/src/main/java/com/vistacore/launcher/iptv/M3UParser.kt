@@ -40,11 +40,11 @@ class M3UParser {
         "family movie", "kids movie", "new release", "featured"
     )
 
-    private val client = OkHttpClient.Builder()
+    private val client = TlsCompat.apply(OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .followRedirects(true)
-        .followSslRedirects(true)
+        .followSslRedirects(true))
         .build()
 
     suspend fun parse(url: String): List<Channel> = withContext(Dispatchers.IO) {

@@ -48,9 +48,9 @@ data class UpcomingGame(
 
 class SportsDataManager {
 
-    private val client = OkHttpClient.Builder()
+    private val client = TlsCompat.apply(OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS))
         .build()
 
     private val gson = Gson()

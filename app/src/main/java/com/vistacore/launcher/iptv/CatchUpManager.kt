@@ -117,9 +117,9 @@ class CatchUpManager {
      */
     suspend fun testCatchUp(url: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val client = OkHttpClient.Builder()
+            val client = TlsCompat.apply(OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.SECONDS))
                 .build()
 
             val request = Request.Builder().url(url).head().build()

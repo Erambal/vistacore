@@ -22,9 +22,9 @@ class EpgParser {
         private const val TAG = "EpgParser"
     }
 
-    private val client = OkHttpClient.Builder()
+    private val client = TlsCompat.apply(OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS))
         .build()
 
     private val dateFormat = SimpleDateFormat("yyyyMMddHHmmss Z", Locale.US).apply {

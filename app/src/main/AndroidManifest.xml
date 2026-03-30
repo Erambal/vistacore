@@ -58,6 +58,7 @@
     </queries>
 
     <application
+        android:name=".VistaCoreApp"
         android:allowBackup="true"
         android:banner="@drawable/banner"
         android:icon="@mipmap/ic_launcher"

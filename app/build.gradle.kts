@@ -16,8 +16,8 @@ android {
         applicationId = "com.vistacore.launcher"
         minSdk = 21
         targetSdk = 34
-        versionCode = 9
-        versionName = "1.0.8"
+        versionCode = 10
+        versionName = "1.0.9"
     }
 
     buildTypes {
@@ -75,6 +75,10 @@ dependencies {
 
     // OkHttp for IPTV API
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Conscrypt — modern TLS provider for Fire OS / older Android TV
+    // Handles TLS renegotiation that stock Fire OS SSL rejects
+    implementation("org.conscrypt:conscrypt-android:2.5.2")
 
     // Material Design
     implementation("com.google.android.material:material:1.11.0")

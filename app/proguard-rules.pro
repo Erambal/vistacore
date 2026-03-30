@@ -9,6 +9,10 @@
 -keep class com.vistacore.launcher.system.AppUpdateManager$GitHubAsset { *; }
 -keep class com.vistacore.launcher.system.AppUpdateManager$UpdateInfo { *; }
 
+# Keep Conscrypt TLS provider (native JNI + reflection)
+-keep class org.conscrypt.** { *; }
+-dontwarn org.conscrypt.**
+
 # Keep Glide
 -keep public class * implements com.bumptech.glide.module.GlideModule
 -keep class * extends com.bumptech.glide.module.AppGlideModule { <init>(...); }

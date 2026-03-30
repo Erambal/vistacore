@@ -1,13 +1,11 @@
 # Keep ExoPlayer classes
 -keep class androidx.media3.** { *; }
 
-# Keep Gson models
--keep class com.vistacore.launcher.iptv.models.** { *; }
-
-# Keep app update models (deserialized by Gson)
--keep class com.vistacore.launcher.system.AppUpdateManager$GitHubRelease { *; }
--keep class com.vistacore.launcher.system.AppUpdateManager$GitHubAsset { *; }
--keep class com.vistacore.launcher.system.AppUpdateManager$UpdateInfo { *; }
+# Keep all Gson-deserialized data classes and Gson internals
+-keep class com.vistacore.launcher.** { *; }
+-keep class com.google.gson.** { *; }
+-keepattributes Signature
+-keepattributes *Annotation*
 
 # Keep Conscrypt TLS provider (native JNI + reflection)
 -keep class org.conscrypt.** { *; }

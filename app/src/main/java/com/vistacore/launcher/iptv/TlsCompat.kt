@@ -29,6 +29,8 @@ object TlsCompat {
      * but still validates server certificates normally.
      */
     fun apply(builder: OkHttpClient.Builder): OkHttpClient.Builder {
+        if (!needsCompat()) return builder
+
         try {
             val trustManagerFactory = TrustManagerFactory.getInstance(
                 TrustManagerFactory.getDefaultAlgorithm()
@@ -65,14 +67,23 @@ object TlsCompat {
             val sslContext = SSLContext.getInstance("TLS")
             sslContext.init(null, arrayOf(trustManager), null)
 
-            val socketFactory = AllTlsSocketFactory(sslContext.socketFactory)
-            builder.sslSocketFactory(socketFactory, trustManager)
+            if (needsCompat()) {
+                val socketFactory = AllTlsSocketFactory(sslContext.socketFactory)
+                builder.sslSocketFactory(socketFactory, trustManager)
+            } else {
+                builder.sslSocketFactory(sslContext.socketFactory, trustManager)
+            }
             builder.hostnameVerifier { _, _ -> true }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to install trust-all TLS", e)
         }
 
         return applyConnectionSpecs(builder)
+    }
+
+    private fun needsCompat(): Boolean {
+        val manufacturer = android.os.Build.MANUFACTURER.lowercase()
+        return manufacturer == "amazon" || android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.N
     }
 
     private fun applyConnectionSpecs(builder: OkHttpClient.Builder): OkHttpClient.Builder {

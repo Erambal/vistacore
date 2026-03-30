@@ -116,8 +116,13 @@ private class AllTlsSocketFactory(
 
     private fun enableAllTls(socket: java.net.Socket) {
         if (socket is SSLSocket) {
-            socket.enabledProtocols = socket.supportedProtocols
-            socket.enabledCipherSuites = socket.supportedCipherSuites
+            val manufacturer = android.os.Build.MANUFACTURER.lowercase()
+            if (manufacturer == "amazon" || android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.N) {
+                // Only force all protocols/ciphers on old or broken TLS stacks
+                socket.enabledProtocols = socket.supportedProtocols
+                socket.enabledCipherSuites = socket.supportedCipherSuites
+            }
+            // Newer devices: leave defaults alone — they already negotiate correctly
         }
     }
 }

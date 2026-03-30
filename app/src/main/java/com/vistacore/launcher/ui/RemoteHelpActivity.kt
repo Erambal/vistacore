@@ -143,7 +143,7 @@ class RemoteHelpActivity : BaseActivity() {
         binding.btnStartListening.isEnabled = false
 
         listeningJob = scope.launch {
-            val client = com.vistacore.launcher.iptv.TlsCompat.applyTrustAll(OkHttpClient.Builder()
+            val client = com.vistacore.launcher.iptv.TlsCompat.apply(OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS))
                 .build()

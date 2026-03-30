@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- IPTV streams use plain HTTP - allow cleartext traffic to all domains -->
+    <!-- IPTV streams use plain HTTP - allow cleartext traffic to all domains.
+         Trust both system and user-installed certificates (Fire OS may
+         place some certs in the user store). -->
     <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
+            <certificates src="user" />
         </trust-anchors>
     </base-config>
 </network-security-config>

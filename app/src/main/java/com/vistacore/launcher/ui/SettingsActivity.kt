@@ -403,9 +403,11 @@ class SettingsActivity : BaseActivity() {
                         }
                     }
                 }
-            } catch (_: Exception) {
-                showStatus(getString(R.string.settings_connection_failed), false)
-                Toast.makeText(this@SettingsActivity, getString(R.string.toast_connection_failed), Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                val detail = e.cause?.message ?: e.message ?: "Unknown error"
+                android.util.Log.e("Settings", "Connection test failed", e)
+                showStatus("Failed: $detail", false)
+                Toast.makeText(this@SettingsActivity, "Failed: $detail", Toast.LENGTH_LONG).show()
             }
         }
     }

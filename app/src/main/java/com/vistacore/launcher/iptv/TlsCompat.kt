@@ -8,22 +8,26 @@ import java.security.cert.X509Certificate
 import javax.net.ssl.*
 
 /**
- * Enables broad TLS compatibility for OkHttp clients.
+ * TLS compatibility for OkHttp clients across Google TV, FireStick,
+ * and other Android TV devices.
  *
- * FireStick devices (Fire OS) have a different/limited certificate store
- * compared to Google TV and may fail TLS handshakes even on newer API
- * levels. This helper:
- *   1. Creates a custom SSLSocketFactory that enables ALL supported
- *      TLS protocol versions on every socket.
- *   2. Uses permissive connection specs (modern + compatible + cleartext).
- *
- * Applied on ALL API levels because Fire OS can diverge from AOSP
- * regardless of its reported SDK version.
+ * Two modes:
+ *  - [apply]       — enables all TLS versions/ciphers but still validates
+ *                    server certificates. Use for first-party services
+ *                    (GitHub, relay server, etc.).
+ *  - [applyTrustAll] — additionally trusts ALL server certificates.
+ *                    Use for user-configured IPTV servers, which commonly
+ *                    have self-signed or poorly-chained certificates that
+ *                    FireStick's limited CA store rejects.
  */
 object TlsCompat {
 
     private const val TAG = "TlsCompat"
 
+    /**
+     * Standard TLS compat: enables all protocol versions and cipher suites
+     * but still validates server certificates normally.
+     */
     fun apply(builder: OkHttpClient.Builder): OkHttpClient.Builder {
         try {
             val trustManagerFactory = TrustManagerFactory.getInstance(
@@ -42,7 +46,36 @@ object TlsCompat {
             Log.w(TAG, "Failed to install custom TLS socket factory", e)
         }
 
-        // Accept both modern and compatible connection specs
+        return applyConnectionSpecs(builder)
+    }
+
+    /**
+     * Permissive TLS: trusts ALL server certificates unconditionally.
+     * Intended for user-configured IPTV/Xtream servers which often use
+     * self-signed, expired, or improperly-chained certificates.
+     */
+    fun applyTrustAll(builder: OkHttpClient.Builder): OkHttpClient.Builder {
+        try {
+            val trustManager = object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+            }
+
+            val sslContext = SSLContext.getInstance("TLS")
+            sslContext.init(null, arrayOf(trustManager), null)
+
+            val socketFactory = AllTlsSocketFactory(sslContext.socketFactory)
+            builder.sslSocketFactory(socketFactory, trustManager)
+            builder.hostnameVerifier { _, _ -> true }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to install trust-all TLS", e)
+        }
+
+        return applyConnectionSpecs(builder)
+    }
+
+    private fun applyConnectionSpecs(builder: OkHttpClient.Builder): OkHttpClient.Builder {
         builder.connectionSpecs(
             listOf(
                 ConnectionSpec.MODERN_TLS,
@@ -50,16 +83,13 @@ object TlsCompat {
                 ConnectionSpec.CLEARTEXT
             )
         )
-
         return builder
     }
 }
 
 /**
  * SSLSocketFactory wrapper that explicitly enables every TLS version
- * the device supports. Fire OS and older Android TV builds may not
- * enable TLS 1.2/1.3 by default even when the underlying SSL library
- * supports them.
+ * and cipher suite the device supports.
  */
 private class AllTlsSocketFactory(
     private val delegate: SSLSocketFactory
@@ -86,9 +116,7 @@ private class AllTlsSocketFactory(
 
     private fun enableAllTls(socket: java.net.Socket) {
         if (socket is SSLSocket) {
-            // Enable every protocol the device supports
             socket.enabledProtocols = socket.supportedProtocols
-            // Enable every cipher suite the device supports
             socket.enabledCipherSuites = socket.supportedCipherSuites
         }
     }

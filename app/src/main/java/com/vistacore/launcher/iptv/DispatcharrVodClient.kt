@@ -14,7 +14,7 @@ class DispatcharrVodClient(
 ) {
     private val base = serverUrl.trimEnd('/')
 
-    private val client = TlsCompat.apply(OkHttpClient.Builder()
+    private val client = TlsCompat.applyTrustAll(OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS))
         .build()

@@ -48,7 +48,7 @@ data class UpcomingGame(
 
 class SportsDataManager {
 
-    private val client = TlsCompat.apply(OkHttpClient.Builder()
+    private val client = TlsCompat.applyTrustAll(OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS))
         .build()

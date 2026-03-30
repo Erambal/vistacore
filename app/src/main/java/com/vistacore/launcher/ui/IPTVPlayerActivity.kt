@@ -26,7 +26,10 @@ import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import com.vistacore.launcher.iptv.OpenSubtitlesClient
+import kotlinx.coroutines.*
 import com.vistacore.launcher.R
 import com.vistacore.launcher.data.PrefsManager
 import com.vistacore.launcher.data.RecentChannelsManager
@@ -46,6 +49,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
         const val EXTRA_ALL_CHANNELS_JSON = "all_channels_json"
         const val EXTRA_RESUME_POSITION = "resume_position"
         const val EXTRA_IS_VOD = "is_vod"
+        const val EXTRA_CONTENT_YEAR = "content_year"
         private const val OVERLAY_DISPLAY_MS = 4000L
         private const val SCRUB_HIDE_DELAY_MS = 6000L
         private const val SEEK_INCREMENT_MS = 10000L
@@ -60,10 +64,12 @@ class IPTVPlayerActivity : AppCompatActivity() {
     private lateinit var recentChannels: RecentChannelsManager
     private lateinit var watchHistory: com.vistacore.launcher.data.WatchHistoryManager
     private var numberPad: ChannelNumberPad? = null
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private var streamUrl: String = ""
     private var channelName: String = ""
     private var channelId: String = ""
+    private var contentYear: String = ""
     private var isInPipMode = false
     private var isVodMode = false
     private var allChannels: List<Channel> = emptyList()
@@ -111,6 +117,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
         streamUrl = intent.getStringExtra(EXTRA_STREAM_URL) ?: ""
         channelName = intent.getStringExtra(EXTRA_CHANNEL_NAME) ?: ""
         channelId = intent.getStringExtra(EXTRA_CHANNEL_ID) ?: ""
+        contentYear = intent.getStringExtra(EXTRA_CONTENT_YEAR) ?: ""
         isVodMode = intent.getBooleanExtra(EXTRA_IS_VOD, false) || channelId.isBlank()
 
         if (streamUrl.isBlank()) {
@@ -652,36 +659,160 @@ class IPTVPlayerActivity : AppCompatActivity() {
             }
         }
 
-        if (subGroups.size <= 1) {
-            android.widget.Toast.makeText(this, "No subtitles available", android.widget.Toast.LENGTH_SHORT).show()
-            return
-        }
+        // Build options: embedded tracks + online search
+        val names = subGroups.map { it.first }.toMutableList()
+        if (isVodMode) names.add("Search Online...")
 
-        val names = subGroups.map { it.first }.toTypedArray()
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Subtitles")
-            .setItems(names) { _, which ->
-                val override = subGroups[which].second
-                if (override == null) {
-                    // Off
-                    trackSelector?.setParameters(
-                        trackSelector!!.buildUponParameters()
-                            .setRendererDisabled(C.TRACK_TYPE_TEXT, true)
-                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                    )
-                    prefs.preferredSubtitleLanguage = ""
+            .setItems(names.toTypedArray()) { _, which ->
+                if (which < subGroups.size) {
+                    val override = subGroups[which].second
+                    if (override == null) {
+                        trackSelector?.setParameters(
+                            trackSelector!!.buildUponParameters()
+                                .setRendererDisabled(C.TRACK_TYPE_TEXT, true)
+                                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                        )
+                        prefs.preferredSubtitleLanguage = ""
+                    } else {
+                        trackSelector?.setParameters(
+                            trackSelector!!.buildUponParameters()
+                                .setRendererDisabled(C.TRACK_TYPE_TEXT, false)
+                                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                .addOverride(override)
+                        )
+                        val format = override.mediaTrackGroup.getFormat(override.trackIndices.first())
+                        prefs.preferredSubtitleLanguage = format.language ?: ""
+                    }
                 } else {
-                    trackSelector?.setParameters(
-                        trackSelector!!.buildUponParameters()
-                            .setRendererDisabled(C.TRACK_TYPE_TEXT, false)
-                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                            .addOverride(override)
-                    )
-                    val format = override.mediaTrackGroup.getFormat(override.trackIndices.first())
-                    prefs.preferredSubtitleLanguage = format.language ?: ""
+                    // "Search Online..."
+                    searchOnlineSubtitles()
                 }
             }
             .show()
+    }
+
+    private fun searchOnlineSubtitles() {
+        val apiKey = prefs.openSubtitlesApiKey
+        if (apiKey.isBlank()) {
+            android.widget.Toast.makeText(this,
+                "Set your OpenSubtitles API key in Settings > Content",
+                android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val (cleanTitle, extractedYear) = OpenSubtitlesClient.cleanTitle(channelName)
+        val year = contentYear.ifBlank { extractedYear }
+        val searchLang = prefs.preferredSubtitleLanguage.ifBlank {
+            prefs.appLanguage.ifBlank { null }
+        }
+
+        val progress = android.app.ProgressDialog(this).apply {
+            setMessage("Searching subtitles...")
+            setCancelable(true)
+            show()
+        }
+
+        scope.launch {
+            val client = OpenSubtitlesClient(apiKey)
+            val results = client.search(cleanTitle, year, searchLang)
+
+            progress.dismiss()
+
+            if (results.isEmpty()) {
+                // Retry without language filter
+                val allResults = if (searchLang != null) {
+                    client.search(cleanTitle, year)
+                } else emptyList()
+
+                if (allResults.isEmpty()) {
+                    android.widget.Toast.makeText(this@IPTVPlayerActivity,
+                        "No subtitles found for \"$cleanTitle\"",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                showSubtitleResults(allResults, client)
+            } else {
+                showSubtitleResults(results, client)
+            }
+        }
+    }
+
+    private fun showSubtitleResults(
+        results: List<com.vistacore.launcher.iptv.SubtitleResult>,
+        client: OpenSubtitlesClient
+    ) {
+        // Group by language, sort by download count
+        val sorted = results.sortedByDescending { it.downloadCount }
+        val labels = sorted.map { result ->
+            val langName = java.util.Locale(result.language).displayLanguage
+                .replaceFirstChar { it.uppercase() }
+            "$langName — ${result.title}"
+        }.toTypedArray()
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Online Subtitles")
+            .setItems(labels) { _, which ->
+                downloadAndApplySubtitle(sorted[which], client)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun downloadAndApplySubtitle(
+        result: com.vistacore.launcher.iptv.SubtitleResult,
+        client: OpenSubtitlesClient
+    ) {
+        val progress = android.app.ProgressDialog(this).apply {
+            setMessage("Downloading subtitle...")
+            setCancelable(false)
+            show()
+        }
+
+        scope.launch {
+            val path = client.download(result.fileId, cacheDir)
+            progress.dismiss()
+
+            if (path == null) {
+                android.widget.Toast.makeText(this@IPTVPlayerActivity,
+                    "Failed to download subtitle",
+                    android.widget.Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            loadExternalSubtitle(path, result.language)
+        }
+    }
+
+    private fun loadExternalSubtitle(srtPath: String, languageCode: String) {
+        val exo = player ?: return
+        val position = exo.currentPosition
+
+        val subtitleUri = android.net.Uri.fromFile(java.io.File(srtPath))
+        val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+            .setMimeType(MimeTypes.APPLICATION_SUBRIP)
+            .setLanguage(languageCode)
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            .build()
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(streamUrl)
+            .setSubtitleConfigurations(listOf(subtitleConfig))
+            .build()
+
+        exo.setMediaItem(mediaItem)
+        exo.prepare()
+        exo.seekTo(position)
+        exo.playWhenReady = true
+
+        // Enable subtitle rendering
+        trackSelector?.setParameters(
+            trackSelector!!.buildUponParameters()
+                .setRendererDisabled(C.TRACK_TYPE_TEXT, false)
+        )
+
+        android.widget.Toast.makeText(this, "Subtitles loaded", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     // --- Key Handling ---
@@ -887,6 +1018,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        scope.cancel()
         handler.removeCallbacksAndMessages(null)
         numberPad?.destroy()
         player?.release()

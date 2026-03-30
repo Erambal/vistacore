@@ -329,11 +329,16 @@ class VODBrowserActivity : BaseActivity() {
                 ShowDetailActivity.launch(this, showName, item.category, item.logoUrl, episodes)
             }
         } else {
+            // Extract year from title if present, e.g. "The Matrix (1999)"
+            val yearMatch = Regex("""\((\d{4})\)""").find(item.name)
             val intent = Intent(this, IPTVPlayerActivity::class.java).apply {
                 putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
                 putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, item.name)
                 putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, item.logoUrl)
                 putExtra(IPTVPlayerActivity.EXTRA_IS_VOD, true)
+                if (yearMatch != null) {
+                    putExtra(IPTVPlayerActivity.EXTRA_CONTENT_YEAR, yearMatch.groupValues[1])
+                }
             }
             startActivity(intent)
         }

@@ -194,6 +194,14 @@ class SettingsActivity : BaseActivity() {
         binding.switchLoadMovies.setOnCheckedChangeListener { _, checked -> prefs.loadMoviesEnabled = checked }
         binding.switchLoadShows.setOnCheckedChangeListener { _, checked -> prefs.loadShowsEnabled = checked }
         binding.switchLoadKids.setOnCheckedChangeListener { _, checked -> prefs.loadKidsEnabled = checked }
+
+        // OpenSubtitles API key
+        binding.inputOpensubtitlesKey.setText(prefs.openSubtitlesApiKey)
+        binding.inputOpensubtitlesKey.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                prefs.openSubtitlesApiKey = binding.inputOpensubtitlesKey.text.toString().trim()
+            }
+        }
     }
 
     private fun setupHiddenCategories() {

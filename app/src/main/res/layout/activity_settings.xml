@@ -257,6 +257,24 @@
                 android:textColor="@color/text_hint"
                 android:fontFamily="sans-serif-light"
                 android:layout_marginTop="8dp" />
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="20dp" android:layout_marginBottom="20dp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="OpenSubtitles" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="API key for online subtitle search. Get one free at opensubtitles.com" style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
+            <EditText
+                android:id="@+id/input_opensubtitles_key"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="OpenSubtitles API key"
+                android:textSize="16sp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_hint"
+                android:background="@drawable/edit_text_background"
+                android:fontFamily="monospace"
+                android:inputType="text"
+                android:singleLine="true"
+                android:padding="12dp" />
         </LinearLayout>
 
         <!-- ==================== SECTION: Display ==================== -->

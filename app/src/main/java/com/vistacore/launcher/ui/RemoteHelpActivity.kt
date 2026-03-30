@@ -174,8 +174,9 @@ class RemoteHelpActivity : BaseActivity() {
                         Toast.makeText(this@RemoteHelpActivity, "Configuration applied!", Toast.LENGTH_LONG).show()
                         return@launch
                     }
-                } catch (_: Exception) {
-                    // Network error — keep trying
+                } catch (e: Exception) {
+                    android.util.Log.e("RemoteHelp", "Poll failed: ${e.javaClass.simpleName}: ${e.message}")
+                    binding.statusText.text = "Connecting… (${e.javaClass.simpleName}: ${e.message})"
                 }
 
                 delay(5000)

@@ -108,6 +108,8 @@ class MainActivity : BaseActivity() {
 
     // --- Screen Saver Idle Timer ---
 
+    private var screenSaverWarningRunnable: Runnable? = null
+
     private fun resetScreenSaverTimer() {
         cancelScreenSaverTimer()
         val timeout = prefs.screenSaverTimeout
@@ -116,9 +118,10 @@ class MainActivity : BaseActivity() {
         val delayMs = timeout * 60 * 1000L
         // Show a warning 30 seconds before screen saver kicks in
         val warningMs = (delayMs - 30000L).coerceAtLeast(delayMs / 2)
-        handler.postDelayed({
+        screenSaverWarningRunnable = Runnable {
             Toast.makeText(this, "Screen saver starting soon — press any button", Toast.LENGTH_LONG).show()
-        }, warningMs)
+        }
+        handler.postDelayed(screenSaverWarningRunnable!!, warningMs)
 
         screenSaverRunnable = Runnable {
             startActivity(Intent(this, ScreenSaverActivity::class.java))
@@ -127,6 +130,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun cancelScreenSaverTimer() {
+        screenSaverWarningRunnable?.let { handler.removeCallbacks(it) }
         screenSaverRunnable?.let { handler.removeCallbacks(it) }
     }
 

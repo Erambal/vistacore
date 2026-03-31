@@ -869,14 +869,30 @@ class IPTVPlayerActivity : AppCompatActivity() {
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    if (!scrubVisible) showScrubBar()
-                    seekBy(-SEEK_INCREMENT_MS)
-                    true
+                    if (!scrubVisible) {
+                        showScrubBar()
+                        seekBy(-SEEK_INCREMENT_MS)
+                        true
+                    } else if (binding.scrubSeekbar.hasFocus()) {
+                        seekBy(-SEEK_INCREMENT_MS)
+                        true
+                    } else {
+                        resetScrubTimer()
+                        super.onKeyDown(keyCode, event)
+                    }
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (!scrubVisible) showScrubBar()
-                    seekBy(SEEK_INCREMENT_MS)
-                    true
+                    if (!scrubVisible) {
+                        showScrubBar()
+                        seekBy(SEEK_INCREMENT_MS)
+                        true
+                    } else if (binding.scrubSeekbar.hasFocus()) {
+                        seekBy(SEEK_INCREMENT_MS)
+                        true
+                    } else {
+                        resetScrubTimer()
+                        super.onKeyDown(keyCode, event)
+                    }
                 }
                 KeyEvent.KEYCODE_DPAD_UP -> {
                     if (scrubVisible) {

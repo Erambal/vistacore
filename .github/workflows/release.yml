@@ -40,7 +40,7 @@ jobs:
           EOF
 
       - name: Build release APKs
-        run: gradle assembleModernRelease assembleLegacyRelease
+        run: gradle assembleModernRelease assembleLegacyRelease --info
 
       - name: Rename APKs
         run: |

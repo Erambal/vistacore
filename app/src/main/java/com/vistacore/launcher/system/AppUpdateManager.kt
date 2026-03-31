@@ -258,10 +258,13 @@ class AppUpdateManager(private val context: Context) {
 
     private data class SemVer(val major: Int, val minor: Int, val patch: Int)
 
-    /** Parse "v1.2.3" or "1.2.3" into SemVer. */
+    /** Parse "v1.2.3", "1.2.3", "1.2.3a", "1.2.3b" into SemVer. */
     private fun parseVersion(tag: String): SemVer {
         val clean = tag.removePrefix("v").trim()
-        val parts = clean.split(".").mapNotNull { it.toIntOrNull() }
+        // Strip flavor suffixes (a, b, etc.) and extract only digits from each part
+        val parts = clean.split(".").map { part ->
+            part.filter { it.isDigit() }.toIntOrNull() ?: 0
+        }
         return SemVer(
             parts.getOrElse(0) { 0 },
             parts.getOrElse(1) { 0 },

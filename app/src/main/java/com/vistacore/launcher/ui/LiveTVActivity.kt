@@ -117,8 +117,16 @@ class LiveTVActivity : BaseActivity() {
         }
         binding.btnToggleEpg.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
 
-        // Category chips — horizontal scrollable filter
-        binding.categoryChips.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        // Category chips — horizontal scrollable filter with contained focus
+        binding.categoryChips.layoutManager = object : LinearLayoutManager(this, HORIZONTAL, false) {
+            override fun onInterceptFocusSearch(focused: View, direction: Int): View? {
+                // Block focus from leaving the chip row horizontally
+                val pos = getPosition(focused)
+                if (direction == View.FOCUS_RIGHT && pos >= itemCount - 1) return focused
+                if (direction == View.FOCUS_LEFT && pos <= 0) return focused
+                return super.onInterceptFocusSearch(focused, direction)
+            }
+        }
     }
 
     private fun showNumberPadOverlay() {

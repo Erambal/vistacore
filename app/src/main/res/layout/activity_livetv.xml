@@ -20,8 +20,7 @@
             android:orientation="vertical"
             android:background="@color/surface_dark"
             android:descendantFocusability="beforeDescendants"
-            android:focusableInTouchMode="true"
-            android:nextFocusRight="@id/channel_sidebar">
+            android:focusableInTouchMode="true">
 
             <!-- Search / channel number input -->
             <LinearLayout
@@ -55,7 +54,8 @@
                     android:layout_marginStart="10dp"
                     android:inputType="text"
                     android:imeOptions="actionSearch"
-                    android:singleLine="true" />
+                    android:singleLine="true"
+                    android:nextFocusRight="@id/btn_toggle_epg" />
 
                 <!-- Open TV Guide -->
                 <Button
@@ -72,7 +72,8 @@
                     android:minHeight="36dp"
                     android:layout_marginEnd="4dp"
                     android:focusable="true"
-                    android:focusableInTouchMode="true" />
+                    android:focusableInTouchMode="true"
+                    android:nextFocusRight="@id/btn_toggle_epg" />
 
                 <TextView
                     android:id="@+id/channel_count_label"
@@ -95,8 +96,7 @@
                 android:paddingBottom="4dp"
                 android:clipToPadding="false"
                 android:background="#11FFFFFF"
-                android:nextFocusRight="@id/category_chips"
-                android:nextFocusLeft="@id/category_chips"
+                android:descendantFocusability="afterDescendants"
                 android:requiresFadingEdge="horizontal"
                 android:fadingEdgeLength="40dp" />
 

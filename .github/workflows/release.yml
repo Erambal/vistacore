@@ -32,15 +32,13 @@ jobs:
 
       - name: Create keystore.properties
         run: |
-          cat > keystore.properties <<EOF
-          storeFile=keystore.jks
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          EOF
+          printf 'storeFile=keystore.jks\n' > keystore.properties
+          printf 'storePassword=${{ secrets.KEYSTORE_PASSWORD }}\n' >> keystore.properties
+          printf 'keyAlias=${{ secrets.KEY_ALIAS }}\n' >> keystore.properties
+          printf 'keyPassword=${{ secrets.KEY_PASSWORD }}\n' >> keystore.properties
 
       - name: Build release APKs
-        run: gradle assembleModernRelease assembleLegacyRelease --info
+        run: gradle assembleModernRelease assembleLegacyRelease --stacktrace
 
       - name: Rename APKs
         run: |

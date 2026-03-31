@@ -300,10 +300,15 @@ class SplashActivity : BaseActivity() {
             scope.launch {
                 try {
                     val updateManager = AppUpdateManager(this@SplashActivity)
+                    // Clear stale cache if we're already on the cached version
+                    val cached = updateManager.getCachedUpdateVersion()
+                    val current = updateManager.getCurrentVersionName().replace(Regex("[a-zA-Z]+$"), "")
+                    if (cached != null && cached == current) {
+                        updateManager.clearCachedUpdate()
+                    }
                     val result = updateManager.checkForUpdate(prefs.appUpdateRepo)
                     if (result.available && result.info != null) {
                         Log.d(TAG, "App update available: v${result.info.versionName}")
-                        // Auto-download and prompt install
                         updateManager.downloadAndInstall(result.info.apkUrl)
                     }
                 } catch (e: Exception) {

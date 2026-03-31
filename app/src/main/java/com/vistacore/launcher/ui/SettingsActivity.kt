@@ -742,14 +742,18 @@ class SettingsActivity : BaseActivity() {
             }
         }
 
-        // Check if we already have a cached available update
+        // Check if we already have a cached available update that's actually newer
         val cachedVersion = updateManager.getCachedUpdateVersion()
-        if (cachedVersion != null) {
+        val currentVersion = updateManager.getCurrentVersionName()
+        if (cachedVersion != null && cachedVersion != currentVersion.replace(Regex("[a-zA-Z]+$"), "")) {
             val changelog = updateManager.getCachedChangelog() ?: ""
             binding.updateStatusText.text = "Update available: v$cachedVersion" +
                 if (changelog.isNotBlank()) "\n$changelog" else ""
             binding.updateStatusText.visibility = android.view.View.VISIBLE
             binding.btnInstallUpdate.visibility = android.view.View.VISIBLE
+        } else if (cachedVersion != null) {
+            // Stale cache — clear it
+            updateManager.clearCachedUpdate()
         }
 
         // Check for updates button

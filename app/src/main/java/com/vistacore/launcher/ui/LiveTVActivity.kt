@@ -117,14 +117,29 @@ class LiveTVActivity : BaseActivity() {
         }
         binding.btnToggleEpg.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
 
-        // Category chips — horizontal scrollable filter with contained focus
+        // Category chips — horizontal scrollable filter with contained focus.
+        // Two overrides work together:
+        //   onInterceptFocusSearch — blocks at known boundaries (first/last chip)
+        //   onFocusSearchFailed   — catches all other escape attempts (recycled
+        //                           views, unlaid-out chips, rapid key repeats)
         binding.categoryChips.layoutManager = object : LinearLayoutManager(this, HORIZONTAL, false) {
             override fun onInterceptFocusSearch(focused: View, direction: Int): View? {
-                // Block focus from leaving the chip row horizontally
-                val pos = getPosition(focused)
-                if (direction == View.FOCUS_RIGHT && pos >= itemCount - 1) return focused
-                if (direction == View.FOCUS_LEFT && pos <= 0) return focused
+                if (direction == View.FOCUS_RIGHT || direction == View.FOCUS_LEFT) {
+                    val pos = getPosition(focused)
+                    if (direction == View.FOCUS_RIGHT && (pos == -1 || pos >= itemCount - 1)) return focused
+                    if (direction == View.FOCUS_LEFT && (pos == -1 || pos <= 0)) return focused
+                }
                 return super.onInterceptFocusSearch(focused, direction)
+            }
+
+            override fun onFocusSearchFailed(focused: View, direction: Int,
+                recycler: RecyclerView.Recycler, state: RecyclerView.State): View? {
+                // Last line of defense — if RecyclerView couldn't find a next
+                // chip, return the current one instead of letting focus escape
+                if (direction == View.FOCUS_RIGHT || direction == View.FOCUS_LEFT) {
+                    return focused
+                }
+                return super.onFocusSearchFailed(focused, direction, recycler, state)
             }
         }
     }

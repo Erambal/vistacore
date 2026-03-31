@@ -134,10 +134,11 @@ class LiveTVActivity : BaseActivity() {
 
             override fun onFocusSearchFailed(focused: View, direction: Int,
                 recycler: RecyclerView.Recycler, state: RecyclerView.State): View? {
-                // Last line of defense — if RecyclerView couldn't find a next
-                // chip, return the current one instead of letting focus escape
                 if (direction == View.FOCUS_RIGHT || direction == View.FOCUS_LEFT) {
-                    return focused
+                    // Let the default implementation try to scroll and lay out the next chip
+                    val result = super.onFocusSearchFailed(focused, direction, recycler, state)
+                    // If it found a next chip, use it. If not, stay on the current one.
+                    return result ?: focused
                 }
                 return super.onFocusSearchFailed(focused, direction, recycler, state)
             }

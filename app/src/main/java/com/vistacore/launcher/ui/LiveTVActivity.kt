@@ -106,9 +106,21 @@ class LiveTVActivity : BaseActivity() {
             }
         })
 
-        // Number pad button — opens overlay to type channel number
+        // Number pad button — only focusable from channel list
+        binding.btnNumberPad.isFocusable = false
         binding.btnNumberPad.setOnClickListener { showNumberPadOverlay() }
-        binding.btnNumberPad.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+        binding.btnNumberPad.setOnFocusChangeListener { v, f ->
+            MainActivity.animateFocus(v, f)
+            // When button loses focus, disable focusability again
+            if (!f) v.isFocusable = false
+        }
+
+        // Enable the number pad button when a channel list item is focused and user presses right
+        binding.channelList.viewTreeObserver.addOnGlobalFocusChangeListener { _, newFocus ->
+            if (newFocus != null && binding.channelList.findContainingItemView(newFocus) != null) {
+                binding.btnNumberPad.isFocusable = true
+            }
+        }
 
         // EPG button — opens full TV Guide
         binding.btnToggleEpg.setOnClickListener {
@@ -661,14 +673,6 @@ class CategoryChipAdapter(
         ))
         holder.label.setOnClickListener { onClick(cat) }
         holder.label.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
-        // On the last chip, block D-pad right from escaping to the right panel
-        if (position == categories.size - 1) {
-            holder.label.setOnKeyListener { _, keyCode, event ->
-                keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT && event.action == android.view.KeyEvent.ACTION_DOWN
-            }
-        } else {
-            holder.label.setOnKeyListener(null)
-        }
     }
 
     override fun getItemCount() = categories.size

@@ -111,7 +111,8 @@
                     android:layout_height="match_parent"
                     android:clipToPadding="false"
                     android:paddingTop="4dp"
-                    android:paddingBottom="4dp" />
+                    android:paddingBottom="4dp"
+                    android:nextFocusRight="@id/btn_number_pad" />
 
                 <TextView
                     android:id="@+id/no_results_text"
@@ -156,7 +157,7 @@
                 app:use_controller="false"
                 app:resize_mode="fit" />
 
-            <!-- Go to Channel button -->
+            <!-- Go to Channel button — only reachable from channel list -->
             <Button
                 android:id="@+id/btn_number_pad"
                 android:layout_width="match_parent"
@@ -166,8 +167,7 @@
                 android:textColor="@color/text_secondary"
                 android:fontFamily="sans-serif-medium"
                 android:background="@drawable/button_goto_channel"
-                android:focusable="true"
-                android:focusableInTouchMode="true" />
+                android:focusable="false" />
 
             <!-- Now playing / Up next strip -->
             <LinearLayout

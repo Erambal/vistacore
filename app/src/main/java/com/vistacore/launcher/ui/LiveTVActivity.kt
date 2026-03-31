@@ -661,6 +661,14 @@ class CategoryChipAdapter(
         ))
         holder.label.setOnClickListener { onClick(cat) }
         holder.label.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+        // On the last chip, block D-pad right from escaping to the right panel
+        if (position == categories.size - 1) {
+            holder.label.setOnKeyListener { _, keyCode, event ->
+                keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT && event.action == android.view.KeyEvent.ACTION_DOWN
+            }
+        } else {
+            holder.label.setOnKeyListener(null)
+        }
     }
 
     override fun getItemCount() = categories.size

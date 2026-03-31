@@ -14,7 +14,8 @@ import com.vistacore.launcher.iptv.Channel
  */
 class FavoriteChannelAdapter(
     private val channels: List<Channel>,
-    private val onClick: (Channel) -> Unit
+    private val onClick: (Channel) -> Unit,
+    private val onLongClick: (Channel) -> Unit = {}
 ) : RecyclerView.Adapter<FavoriteChannelAdapter.VH>() {
 
     inner class VH(private val binding: ItemAppCardBinding) :
@@ -34,6 +35,7 @@ class FavoriteChannelAdapter(
             }
 
             binding.root.setOnClickListener { onClick(channel) }
+            binding.root.setOnLongClickListener { onLongClick(channel); true }
             binding.root.setOnFocusChangeListener { view, hasFocus ->
                 MainActivity.animateFocus(view, hasFocus)
             }

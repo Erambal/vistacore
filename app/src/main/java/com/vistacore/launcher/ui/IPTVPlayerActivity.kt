@@ -869,29 +869,13 @@ class IPTVPlayerActivity : AppCompatActivity() {
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    if (scrubVisible) {
-                        // If seekbar is focused, let it handle the key (moves the dot)
-                        if (binding.scrubSeekbar.hasFocus()) {
-                            resetScrubTimer()
-                            return super.onKeyDown(keyCode, event)
-                        }
-                        return super.onKeyDown(keyCode, event)
-                    }
-                    // Quick skip -10s and show scrub bar
+                    if (!scrubVisible) showScrubBar()
                     seekBy(-SEEK_INCREMENT_MS)
-                    showScrubBar()
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (scrubVisible) {
-                        if (binding.scrubSeekbar.hasFocus()) {
-                            resetScrubTimer()
-                            return super.onKeyDown(keyCode, event)
-                        }
-                        return super.onKeyDown(keyCode, event)
-                    }
+                    if (!scrubVisible) showScrubBar()
                     seekBy(SEEK_INCREMENT_MS)
-                    showScrubBar()
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_UP -> {

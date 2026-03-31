@@ -450,7 +450,7 @@ class MainActivity : BaseActivity() {
 
         binding.continueWatchingSection.visibility = View.VISIBLE
         binding.continueWatchingRow.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        binding.continueWatchingRow.adapter = ContinueWatchingAdapter(entries) { entry ->
+        binding.continueWatchingRow.adapter = ContinueWatchingAdapter(entries, onClick = { entry ->
             val intent = Intent(this, IPTVPlayerActivity::class.java).apply {
                 putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, entry.streamUrl)
                 putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, entry.name)
@@ -458,7 +458,35 @@ class MainActivity : BaseActivity() {
                 putExtra(IPTVPlayerActivity.EXTRA_RESUME_POSITION, entry.positionMs)
             }
             startActivity(intent)
-        }
+        }, onLongClick = { entry ->
+            showRemoveHistoryDialog(entry, watchHistory)
+        })
+    }
+
+    private fun showRemoveHistoryDialog(entry: com.vistacore.launcher.data.WatchEntry, watchHistory: com.vistacore.launcher.data.WatchHistoryManager) {
+        val items = arrayOf("Remove \"${entry.name}\"", "Clear all watch history")
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Watch History")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> {
+                        watchHistory.remove(entry.streamUrl)
+                        loadContinueWatching()
+                    }
+                    1 -> {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Clear all watch history?")
+                            .setMessage("This will remove all continue watching entries.")
+                            .setPositiveButton("Clear") { _, _ ->
+                                watchHistory.clearAll()
+                                loadContinueWatching()
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                }
+            }
+            .show()
     }
 
     private fun loadRecentChannels() {
@@ -466,10 +494,38 @@ class MainActivity : BaseActivity() {
         if (recentList.isNotEmpty()) {
             showRow(binding.recentsHeader, binding.recentsRow)
             binding.recentsRow.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-            binding.recentsRow.adapter = FavoriteChannelAdapter(recentList) { launchChannel(it) }
+            binding.recentsRow.adapter = FavoriteChannelAdapter(recentList, onClick = { launchChannel(it) }, onLongClick = { channel ->
+                showRemoveRecentDialog(channel)
+            })
         } else {
             hideRow(binding.recentsHeader, binding.recentsRow)
         }
+    }
+
+    private fun showRemoveRecentDialog(channel: com.vistacore.launcher.iptv.Channel) {
+        val items = arrayOf("Remove \"${channel.name}\"", "Clear all recent channels")
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Recent Channels")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> {
+                        recents.removeRecent(channel.id)
+                        loadRecentChannels()
+                    }
+                    1 -> {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Clear all recent channels?")
+                            .setMessage("This will remove all recent channel entries.")
+                            .setPositiveButton("Clear") { _, _ ->
+                                recents.clearRecents()
+                                loadRecentChannels()
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                }
+            }
+            .show()
     }
 
     private fun loadFavoriteChannels() {
@@ -761,7 +817,8 @@ class UpcomingGameAdapter(
 
 class ContinueWatchingAdapter(
     private val entries: List<com.vistacore.launcher.data.WatchEntry>,
-    private val onClick: (com.vistacore.launcher.data.WatchEntry) -> Unit
+    private val onClick: (com.vistacore.launcher.data.WatchEntry) -> Unit,
+    private val onLongClick: (com.vistacore.launcher.data.WatchEntry) -> Unit = {}
 ) : RecyclerView.Adapter<ContinueWatchingAdapter.VH>() {
 
     inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -792,6 +849,7 @@ class ContinueWatchingAdapter(
         }
 
         holder.itemView.setOnClickListener { onClick(entry) }
+        holder.itemView.setOnLongClickListener { onLongClick(entry); true }
         holder.itemView.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
     }
 

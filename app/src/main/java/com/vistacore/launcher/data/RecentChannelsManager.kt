@@ -49,6 +49,12 @@ class RecentChannelsManager(context: Context) {
         return recentIds.mapNotNull { channelMap[it] }
     }
 
+    fun removeRecent(channelId: String) {
+        val current = getRecentIds().toMutableList()
+        current.remove(channelId)
+        prefs.edit().putString(KEY_RECENT_IDS, gson.toJson(current)).apply()
+    }
+
     fun clearRecents() {
         prefs.edit().remove(KEY_RECENT_IDS).apply()
     }

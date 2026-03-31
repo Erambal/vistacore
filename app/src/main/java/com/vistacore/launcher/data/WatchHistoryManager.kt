@@ -86,6 +86,11 @@ class WatchHistoryManager(context: Context) {
         saveAll(entries)
     }
 
+    /** Remove all entries. */
+    fun clearAll() {
+        prefs.edit().remove(KEY_HISTORY).apply()
+    }
+
     private fun getAllEntries(): List<WatchEntry> {
         val json = prefs.getString(KEY_HISTORY, null) ?: return emptyList()
         return try {

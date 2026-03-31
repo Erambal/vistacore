@@ -533,7 +533,7 @@ class MainActivity : BaseActivity() {
         if (favChannels.isNotEmpty()) {
             showRow(binding.favoritesHeader, binding.favoritesRow)
             binding.favoritesRow.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-            binding.favoritesRow.adapter = FavoriteChannelAdapter(favChannels) { launchChannel(it) }
+            binding.favoritesRow.adapter = FavoriteChannelAdapter(favChannels, onClick = { launchChannel(it) })
         } else {
             hideRow(binding.favoritesHeader, binding.favoritesRow)
         }

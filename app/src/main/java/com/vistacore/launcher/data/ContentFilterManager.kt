@@ -57,6 +57,13 @@ class ContentFilterManager(private val context: Context) {
 
     companion object {
         private const val FILTERS_DIR = "content_filters"
+
+        val BLASPHEMY_WORDS = setOf(
+            "goddamn", "goddammit", "goddam",
+            "jesus", "christ",
+        )
+
+        val SLUR_WORDS = setOf<String>()  // Intentionally empty — populated from user config
     }
 
     private val gson = Gson()
@@ -211,14 +218,6 @@ class ContentFilterManager(private val context: Context) {
             .take(80)
     }
 
-    companion object WordLists {
-        val BLASPHEMY_WORDS = setOf(
-            "goddamn", "goddammit", "goddam",
-            "jesus", "christ",  // only flagged in exclamatory context
-        )
-
-        val SLUR_WORDS = setOf<String>()  // Intentionally empty — populated from user config
-    }
 }
 
 /**

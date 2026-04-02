@@ -117,30 +117,30 @@ class LiveTVActivity : BaseActivity() {
         }
         binding.btnToggleEpg.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
 
-        // Category chips — horizontal scrollable filter with contained focus.
-        // Two overrides work together:
-        //   onInterceptFocusSearch — blocks at known boundaries (first/last chip)
-        //   onFocusSearchFailed   — catches all other escape attempts (recycled
-        //                           views, unlaid-out chips, rapid key repeats)
+        // Category chips — horizontal scrollable filter with fully contained focus.
+        // onInterceptFocusSearch always returns non-null for LEFT/RIGHT so
+        // RecyclerView never falls through to parent focus search (which would
+        // find the "Go to Channel #" button in the right panel).
         binding.categoryChips.layoutManager = object : LinearLayoutManager(this, HORIZONTAL, false) {
             override fun onInterceptFocusSearch(focused: View, direction: Int): View? {
                 if (direction == View.FOCUS_RIGHT || direction == View.FOCUS_LEFT) {
                     val pos = getPosition(focused)
-                    if (direction == View.FOCUS_RIGHT && (pos == -1 || pos >= itemCount - 1)) return focused
-                    if (direction == View.FOCUS_LEFT && (pos == -1 || pos <= 0)) return focused
+                    if (pos == -1) return focused
+
+                    val targetPos = if (direction == View.FOCUS_RIGHT) pos + 1 else pos - 1
+
+                    // At boundary — stay on current chip
+                    if (targetPos < 0 || targetPos >= itemCount) return focused
+
+                    // Next chip already laid out — jump straight to it
+                    findViewByPosition(targetPos)?.let { return it }
+
+                    // Next chip off-screen: scroll to bring it into view, stay
+                    // on the current chip this press (next press will find it).
+                    scrollToPosition(targetPos)
+                    return focused
                 }
                 return super.onInterceptFocusSearch(focused, direction)
-            }
-
-            override fun onFocusSearchFailed(focused: View, direction: Int,
-                recycler: RecyclerView.Recycler, state: RecyclerView.State): View? {
-                if (direction == View.FOCUS_RIGHT || direction == View.FOCUS_LEFT) {
-                    // Let the default implementation try to scroll and lay out the next chip
-                    val result = super.onFocusSearchFailed(focused, direction, recycler, state)
-                    // If it found a next chip, use it. If not, stay on the current one.
-                    return result ?: focused
-                }
-                return super.onFocusSearchFailed(focused, direction, recycler, state)
             }
         }
     }

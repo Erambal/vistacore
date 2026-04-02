@@ -176,10 +176,11 @@ class IPTVPlayerActivity : AppCompatActivity() {
 
         binding.btnAudioTrack.setOnClickListener { showAudioTrackPicker() }
         binding.btnSubtitleTrack.setOnClickListener { showSubtitlePicker() }
+        binding.btnQuality.setOnClickListener { showQualityPicker() }
 
         // Focus animations
         listOf(binding.btnPrevChannel, binding.btnPlayPause, binding.btnNextChannel,
-               binding.btnAudioTrack, binding.btnSubtitleTrack).forEach { btn ->
+               binding.btnAudioTrack, binding.btnSubtitleTrack, binding.btnQuality).forEach { btn ->
             btn.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         }
 
@@ -280,10 +281,11 @@ class IPTVPlayerActivity : AppCompatActivity() {
 
         binding.scrubAudioTrack.setOnClickListener { showAudioTrackPicker() }
         binding.scrubSubtitleTrack.setOnClickListener { showSubtitlePicker() }
+        binding.scrubQuality.setOnClickListener { showQualityPicker() }
 
         // Focus animations
         listOf(binding.scrubRewind, binding.scrubPlayPause, binding.scrubForward,
-               binding.scrubAudioTrack, binding.scrubSubtitleTrack).forEach { btn ->
+               binding.scrubAudioTrack, binding.scrubSubtitleTrack, binding.scrubQuality).forEach { btn ->
             btn.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         }
 
@@ -419,6 +421,19 @@ class IPTVPlayerActivity : AppCompatActivity() {
                     .setRendererDisabled(C.TRACK_TYPE_TEXT, false)
             } else {
                 params.setRendererDisabled(C.TRACK_TYPE_TEXT, true)
+            }
+            // Restore video quality preference
+            val savedQuality = prefs.preferredVideoQuality
+            if (savedQuality != "auto") {
+                val parts = savedQuality.split("x")
+                if (parts.size == 2) {
+                    val w = parts[0].toIntOrNull() ?: 0
+                    val h = parts[1].toIntOrNull() ?: 0
+                    if (w > 0 && h > 0) {
+                        params.setMaxVideoSize(w, h)
+                            .setMinVideoSize(w, h)
+                    }
+                }
             }
             ts.setParameters(params)
         }
@@ -714,6 +729,101 @@ class IPTVPlayerActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showQualityPicker() {
+        val exo = player ?: return
+        val tracks = exo.currentTracks
+
+        // Collect available video tracks
+        data class VideoOption(val label: String, val override: TrackSelectionOverride?, val width: Int, val height: Int)
+        val options = mutableListOf<VideoOption>()
+
+        // Auto option first — enables adaptive bitrate
+        options.add(VideoOption("Auto (adaptive)", null, 0, 0))
+
+        for (group in tracks.groups) {
+            if (group.type != C.TRACK_TYPE_VIDEO) continue
+            for (i in 0 until group.length) {
+                if (!group.isTrackSupported(i)) continue
+                val format = group.getTrackFormat(i)
+                val w = format.width
+                val h = format.height
+                if (w <= 0 || h <= 0) continue
+                val qualityLabel = when {
+                    h >= 2160 -> "4K (${w}×${h})"
+                    h >= 1440 -> "1440p (${w}×${h})"
+                    h >= 1080 -> "1080p (${w}×${h})"
+                    h >= 720 -> "720p (${w}×${h})"
+                    h >= 480 -> "480p (${w}×${h})"
+                    h >= 360 -> "360p (${w}×${h})"
+                    else -> "${h}p (${w}×${h})"
+                }
+                val bitrateInfo = if (format.bitrate > 0) {
+                    val mbps = format.bitrate / 1_000_000.0
+                    " · %.1f Mbps".format(mbps)
+                } else ""
+                options.add(VideoOption(
+                    "$qualityLabel$bitrateInfo",
+                    TrackSelectionOverride(group.mediaTrackGroup, i),
+                    w, h
+                ))
+            }
+        }
+
+        // Sort by resolution descending (Auto stays first)
+        val sorted = mutableListOf(options[0])
+        sorted.addAll(options.drop(1).sortedByDescending { it.height * 10000 + it.width })
+
+        // Remove duplicates with same resolution
+        val seen = mutableSetOf<String>()
+        val unique = sorted.filter { opt ->
+            if (opt.override == null) true // always keep Auto
+            else seen.add("${opt.width}x${opt.height}")
+        }
+
+        if (unique.size <= 1) {
+            android.widget.Toast.makeText(this, "No quality options available", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Find current selection index
+        val savedQuality = prefs.preferredVideoQuality
+        var checkedIndex = 0 // default to Auto
+        if (savedQuality != "auto") {
+            unique.forEachIndexed { idx, opt ->
+                if (opt.override != null && "${opt.width}x${opt.height}" == savedQuality) {
+                    checkedIndex = idx
+                }
+            }
+        }
+
+        val names = unique.map { it.label }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Video Quality")
+            .setSingleChoiceItems(names, checkedIndex) { dialog, which ->
+                val selected = unique[which]
+                if (selected.override == null) {
+                    // Auto: clear video overrides so ABR takes over
+                    trackSelector?.setParameters(
+                        trackSelector!!.buildUponParameters()
+                            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                            .setMaxVideoSizeSd() // remove any max constraints
+                            .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+                    )
+                    prefs.preferredVideoQuality = "auto"
+                } else {
+                    // Lock to specific resolution
+                    trackSelector?.setParameters(
+                        trackSelector!!.buildUponParameters()
+                            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                            .addOverride(selected.override)
+                    )
+                    prefs.preferredVideoQuality = "${selected.width}x${selected.height}"
+                }
+                dialog.dismiss()
+            }
+            .show()
+    }
+
     private fun searchOnlineSubtitles() {
         val apiKey = prefs.openSubtitlesApiKey
         if (apiKey.isBlank()) {
@@ -847,6 +957,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
         when (keyCode) {
             KeyEvent.KEYCODE_PROG_RED -> { showAudioTrackPicker(); return true }
             KeyEvent.KEYCODE_PROG_GREEN -> { showSubtitlePicker(); return true }
+            KeyEvent.KEYCODE_PROG_YELLOW -> { showQualityPicker(); return true }
         }
 
         // VOD mode key handling

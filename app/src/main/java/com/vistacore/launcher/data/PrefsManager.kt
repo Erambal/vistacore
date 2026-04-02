@@ -37,6 +37,7 @@ class PrefsManager(context: Context) {
         private const val KEY_APP_LANGUAGE = "app_language"
         private const val KEY_PREFERRED_AUDIO_LANG = "preferred_audio_language"
         private const val KEY_PREFERRED_SUBTITLE_LANG = "preferred_subtitle_language"
+        private const val KEY_PREFERRED_VIDEO_QUALITY = "preferred_video_quality"
         private const val KEY_OPENSUBTITLES_API_KEY = "opensubtitles_api_key"
 
         const val SOURCE_M3U = 0
@@ -205,6 +206,11 @@ class PrefsManager(context: Context) {
     var preferredSubtitleLanguage: String
         get() = prefs.getString(KEY_PREFERRED_SUBTITLE_LANG, "") ?: ""
         set(value) = prefs.edit().putString(KEY_PREFERRED_SUBTITLE_LANG, value).apply()
+
+    /** Preferred video quality. "auto" = adaptive, or "WIDTHxHEIGHT" e.g. "1920x1080". */
+    var preferredVideoQuality: String
+        get() = prefs.getString(KEY_PREFERRED_VIDEO_QUALITY, "auto") ?: "auto"
+        set(value) = prefs.edit().putString(KEY_PREFERRED_VIDEO_QUALITY, value).apply()
 
     /** OpenSubtitles.com API key for subtitle search. */
     var openSubtitlesApiKey: String

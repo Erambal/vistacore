@@ -51,6 +51,7 @@ class SettingsActivity : BaseActivity() {
         setupHomeCapture()
         setupEpgToggle()
         setupContentLoading()
+        setupContentFiltering()
         setupHiddenCategories()
         setupAutoUpdate()
         setupCatchUpType()
@@ -84,6 +85,7 @@ class SettingsActivity : BaseActivity() {
         toggle(binding.headerIptv, binding.bodyIptv)
         toggle(binding.headerEpg, binding.bodyEpg)
         toggle(binding.headerContent, binding.bodyContent)
+        toggle(binding.headerFiltering, binding.bodyFiltering)
         toggle(binding.headerDisplay, binding.bodyDisplay)
         toggle(binding.headerAdvanced, binding.bodyAdvanced)
         toggle(binding.headerSports, binding.bodySports)
@@ -209,6 +211,98 @@ class SettingsActivity : BaseActivity() {
                 prefs.openSubtitlesApiKey = binding.inputOpensubtitlesKey.text.toString().trim()
             }
         }
+    }
+
+    private fun setupContentFiltering() {
+        val filterManager = com.vistacore.launcher.data.ContentFilterManager(this)
+
+        binding.switchFilterEnabled.isChecked = prefs.contentFilterEnabled
+        binding.switchFilterProfanity.isChecked = prefs.filterProfanity
+        binding.switchFilterBlasphemy.isChecked = prefs.filterBlasphemy
+        binding.switchFilterSlurs.isChecked = prefs.filterSlurs
+        binding.switchFilterSexual.isChecked = prefs.filterSexualDialogue
+
+        binding.switchFilterEnabled.setOnCheckedChangeListener { _, checked -> prefs.contentFilterEnabled = checked }
+        binding.switchFilterProfanity.setOnCheckedChangeListener { _, checked -> prefs.filterProfanity = checked }
+        binding.switchFilterBlasphemy.setOnCheckedChangeListener { _, checked -> prefs.filterBlasphemy = checked }
+        binding.switchFilterSlurs.setOnCheckedChangeListener { _, checked -> prefs.filterSlurs = checked }
+        binding.switchFilterSexual.setOnCheckedChangeListener { _, checked -> prefs.filterSexualDialogue = checked }
+
+        // Show filter file count
+        val filters = filterManager.listFilters()
+        binding.filterDataSummary.text = if (filters.isEmpty()) {
+            "No filter files loaded"
+        } else {
+            "${filters.size} filter file(s) available"
+        }
+
+        binding.btnManageFilters.setOnClickListener {
+            showFilterManageDialog(filterManager)
+        }
+        binding.btnManageFilters.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+
+        // Server settings
+        binding.inputFilterServerUrl.setText(prefs.filterServerUrl)
+        binding.inputFilterServerKey.setText(prefs.filterServerApiKey)
+
+        binding.inputFilterServerUrl.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) prefs.filterServerUrl = binding.inputFilterServerUrl.text.toString().trim()
+        }
+        binding.inputFilterServerKey.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) prefs.filterServerApiKey = binding.inputFilterServerKey.text.toString().trim()
+        }
+
+        binding.btnTestFilterServer.setOnClickListener {
+            val url = binding.inputFilterServerUrl.text.toString().trim()
+            if (url.isBlank()) {
+                Toast.makeText(this, "Enter a server URL first", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            prefs.filterServerUrl = url
+            prefs.filterServerApiKey = binding.inputFilterServerKey.text.toString().trim()
+
+            scope.launch {
+                val client = com.vistacore.launcher.data.FilterServerClient(url, prefs.filterServerApiKey)
+                val ok = client.isAvailable()
+                Toast.makeText(
+                    this@SettingsActivity,
+                    if (ok) "Connected to VistaFilter server!" else "Could not reach server",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+        binding.btnTestFilterServer.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+    }
+
+    private fun showFilterManageDialog(filterManager: com.vistacore.launcher.data.ContentFilterManager) {
+        val filters = filterManager.listFilters()
+        if (filters.isEmpty()) {
+            Toast.makeText(this, "No filter files available. Filter files will appear here after processing content.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val names = filters.map { "${it.title}${if (it.year.isNotBlank()) " (${it.year})" else ""} — ${it.segments.size} segments [${it.source}]" }.toTypedArray()
+        val checked = BooleanArray(filters.size) // none selected initially
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Filter Files")
+            .setMultiChoiceItems(names, checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            .setPositiveButton("Close", null)
+            .setNegativeButton("Delete Selected") { _, _ ->
+                filters.forEachIndexed { idx, filter ->
+                    if (checked[idx]) filterManager.deleteFilter(filter.title, filter.year)
+                }
+                val remaining = filterManager.listFilters()
+                binding.filterDataSummary.text = if (remaining.isEmpty()) {
+                    "No filter files loaded"
+                } else {
+                    "${remaining.size} filter file(s) available"
+                }
+                Toast.makeText(this, "Deleted selected filter files", Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     private fun setupHiddenCategories() {

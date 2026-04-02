@@ -1,0 +1,39 @@
+# Profanity word list for audio content filtering.
+# One word per line. Lines starting with # are comments.
+# Categories: [profanity] [blasphemy] [slur]
+# This list is loaded by ContentFilterManager for Whisper transcript matching.
+
+# Common profanity
+ass
+asshole
+bastard
+bitch
+bullshit
+crap
+damn
+dammit
+dick
+douchebag
+fuck
+fucking
+fucker
+horseshit
+jackass
+motherfucker
+piss
+prick
+shit
+shitty
+slut
+whore
+
+# Blasphemy (exclamatory religious references)
+goddamn
+goddammit
+goddam
+
+# Mild profanity (disabled by default — uncomment to enable)
+# hell
+# suck
+# sucks
+# screw

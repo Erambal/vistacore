@@ -39,6 +39,13 @@ class PrefsManager(context: Context) {
         private const val KEY_PREFERRED_SUBTITLE_LANG = "preferred_subtitle_language"
         private const val KEY_PREFERRED_VIDEO_QUALITY = "preferred_video_quality"
         private const val KEY_OPENSUBTITLES_API_KEY = "opensubtitles_api_key"
+        private const val KEY_FILTER_SERVER_URL = "filter_server_url"
+        private const val KEY_FILTER_SERVER_API_KEY = "filter_server_api_key"
+        private const val KEY_CONTENT_FILTER_ENABLED = "content_filter_enabled"
+        private const val KEY_FILTER_PROFANITY = "filter_profanity"
+        private const val KEY_FILTER_BLASPHEMY = "filter_blasphemy"
+        private const val KEY_FILTER_SLURS = "filter_slurs"
+        private const val KEY_FILTER_SEXUAL_DIALOGUE = "filter_sexual_dialogue"
 
         const val SOURCE_M3U = 0
         const val SOURCE_XTREAM = 1
@@ -211,6 +218,51 @@ class PrefsManager(context: Context) {
     var preferredVideoQuality: String
         get() = prefs.getString(KEY_PREFERRED_VIDEO_QUALITY, "auto") ?: "auto"
         set(value) = prefs.edit().putString(KEY_PREFERRED_VIDEO_QUALITY, value).apply()
+
+    /** VistaFilter server URL (e.g. https://filter.example.com). */
+    var filterServerUrl: String
+        get() = prefs.getString(KEY_FILTER_SERVER_URL, "https://filter.fixesto.com") ?: "https://filter.fixesto.com"
+        set(value) = prefs.edit().putString(KEY_FILTER_SERVER_URL, value).apply()
+
+    /** VistaFilter server API key. */
+    var filterServerApiKey: String
+        get() = prefs.getString(KEY_FILTER_SERVER_API_KEY, "fa75216c1d7fcfe290db8fb40346f713") ?: "fa75216c1d7fcfe290db8fb40346f713"
+        set(value) = prefs.edit().putString(KEY_FILTER_SERVER_API_KEY, value).apply()
+
+    /** Master toggle for content filtering during playback. */
+    var contentFilterEnabled: Boolean
+        get() = prefs.getBoolean(KEY_CONTENT_FILTER_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_CONTENT_FILTER_ENABLED, value).apply()
+
+    /** Filter profanity (mute f-bombs, etc.) */
+    var filterProfanity: Boolean
+        get() = prefs.getBoolean(KEY_FILTER_PROFANITY, true)
+        set(value) = prefs.edit().putBoolean(KEY_FILTER_PROFANITY, value).apply()
+
+    /** Filter blasphemy (religious exclamations) */
+    var filterBlasphemy: Boolean
+        get() = prefs.getBoolean(KEY_FILTER_BLASPHEMY, false)
+        set(value) = prefs.edit().putBoolean(KEY_FILTER_BLASPHEMY, value).apply()
+
+    /** Filter slurs */
+    var filterSlurs: Boolean
+        get() = prefs.getBoolean(KEY_FILTER_SLURS, true)
+        set(value) = prefs.edit().putBoolean(KEY_FILTER_SLURS, value).apply()
+
+    /** Filter sexual dialogue */
+    var filterSexualDialogue: Boolean
+        get() = prefs.getBoolean(KEY_FILTER_SEXUAL_DIALOGUE, false)
+        set(value) = prefs.edit().putBoolean(KEY_FILTER_SEXUAL_DIALOGUE, value).apply()
+
+    /** Get the set of enabled filter categories. */
+    fun getEnabledFilterCategories(): Set<String> {
+        val cats = mutableSetOf<String>()
+        if (filterProfanity) cats.add("PROFANITY")
+        if (filterBlasphemy) cats.add("BLASPHEMY")
+        if (filterSlurs) cats.add("SLURS")
+        if (filterSexualDialogue) cats.add("SEXUAL_DIALOGUE")
+        return cats
+    }
 
     /** OpenSubtitles.com API key for subtitle search. */
     var openSubtitlesApiKey: String

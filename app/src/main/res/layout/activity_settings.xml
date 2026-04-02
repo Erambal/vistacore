@@ -277,6 +277,106 @@
                 android:padding="12dp" />
         </LinearLayout>
 
+        <!-- ==================== SECTION: Content Filtering ==================== -->
+        <TextView
+            android:id="@+id/header_filtering"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="▸  Content Filtering"
+            android:textSize="22sp"
+            android:textColor="@color/accent_gold"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:background="@drawable/card_selector"
+            android:paddingStart="16dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+
+        <LinearLayout
+            android:id="@+id/body_filtering"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="20dp"
+            android:visibility="gone">
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Audio Filtering" style="@style/SettingsTitle" android:layout_marginTop="16dp" android:layout_marginBottom="4dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Automatically mute profanity and objectionable language during playback. Requires filter data for each title." style="@style/SettingsSummary" android:layout_marginBottom="12dp" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="8dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Enable content filtering by default" android:textSize="16sp" android:textColor="@color/text_primary" />
+                <Switch android:id="@+id/switch_filter_enabled" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true" />
+            </LinearLayout>
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="12dp" android:layout_marginBottom="12dp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Filter Categories" style="@style/SettingsTitle" android:layout_marginBottom="8dp" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="6dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Profanity" android:textSize="16sp" android:textColor="@color/text_primary" />
+                <Switch android:id="@+id/switch_filter_profanity" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="6dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Blasphemy" android:textSize="16sp" android:textColor="@color/text_primary" />
+                <Switch android:id="@+id/switch_filter_blasphemy" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="6dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Slurs" android:textSize="16sp" android:textColor="@color/text_primary" />
+                <Switch android:id="@+id/switch_filter_slurs" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true" />
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="6dp">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Sexual dialogue" android:textSize="16sp" android:textColor="@color/text_primary" />
+                <Switch android:id="@+id/switch_filter_sexual" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true" />
+            </LinearLayout>
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="12dp" android:layout_marginBottom="12dp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Filter Data" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+            <TextView android:id="@+id/filter_data_summary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="No filter files loaded" style="@style/SettingsSummary" android:layout_marginBottom="12dp" />
+
+            <Button android:id="@+id/btn_manage_filters" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Manage Filter Files" style="@style/LargeButton" android:backgroundTint="@color/iptv_teal" />
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="20dp" android:layout_marginBottom="20dp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="VistaFilter Server" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Companion server that processes content and generates filter data automatically using AI speech recognition." style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
+            <EditText
+                android:id="@+id/input_filter_server_url"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="https://filter.yourdomain.com"
+                android:textSize="16sp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_hint"
+                android:background="@drawable/edit_text_background"
+                android:fontFamily="monospace"
+                android:inputType="textUri"
+                android:singleLine="true"
+                android:padding="12dp" />
+
+            <EditText
+                android:id="@+id/input_filter_server_key"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="API key (optional)"
+                android:textSize="16sp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_hint"
+                android:background="@drawable/edit_text_background"
+                android:fontFamily="monospace"
+                android:inputType="text"
+                android:singleLine="true"
+                android:padding="12dp"
+                android:layout_marginTop="8dp" />
+
+            <Button android:id="@+id/btn_test_filter_server" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Test Connection" style="@style/LargeButton" android:backgroundTint="@color/iptv_teal" android:layout_marginTop="12dp" />
+        </LinearLayout>
+
         <!-- ==================== SECTION: Display ==================== -->
         <TextView
             android:id="@+id/header_display"

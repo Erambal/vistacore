@@ -1,0 +1,17 @@
+services:
+  vistafilter:
+    build: .
+    container_name: vistafilter
+    restart: unless-stopped
+    ports:
+      - "8642:8642"
+    volumes:
+      - filter_data:/app/data
+    environment:
+      - API_KEY=${VISTAFILTER_API_KEY:-changeme}
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - WHISPER_DEVICE=cpu
+      - WHISPER_COMPUTE=int8
+
+volumes:
+  filter_data:

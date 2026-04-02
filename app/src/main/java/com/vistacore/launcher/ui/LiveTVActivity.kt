@@ -117,32 +117,10 @@ class LiveTVActivity : BaseActivity() {
         }
         binding.btnToggleEpg.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
 
-        // Category chips — horizontal scrollable filter with fully contained focus.
-        // onInterceptFocusSearch always returns non-null for LEFT/RIGHT so
-        // RecyclerView never falls through to parent focus search (which would
-        // find the "Go to Channel #" button in the right panel).
-        binding.categoryChips.layoutManager = object : LinearLayoutManager(this, HORIZONTAL, false) {
-            override fun onInterceptFocusSearch(focused: View, direction: Int): View? {
-                if (direction == View.FOCUS_RIGHT || direction == View.FOCUS_LEFT) {
-                    val pos = getPosition(focused)
-                    if (pos == -1) return focused
-
-                    val targetPos = if (direction == View.FOCUS_RIGHT) pos + 1 else pos - 1
-
-                    // At boundary — stay on current chip
-                    if (targetPos < 0 || targetPos >= itemCount) return focused
-
-                    // Next chip already laid out — jump straight to it
-                    findViewByPosition(targetPos)?.let { return it }
-
-                    // Next chip off-screen: scroll to bring it into view, stay
-                    // on the current chip this press (next press will find it).
-                    scrollToPosition(targetPos)
-                    return focused
-                }
-                return super.onInterceptFocusSearch(focused, direction)
-            }
-        }
+        // Category chips — horizontal scrollable filter.
+        // Focus containment is handled by the adapter's key listener on each chip
+        // (blocks D-pad LEFT/RIGHT at the first/last positions).
+        binding.categoryChips.layoutManager = LinearLayoutManager(this, HORIZONTAL, false)
     }
 
     private fun showNumberPadOverlay() {
@@ -688,6 +666,19 @@ class CategoryChipAdapter(
         ))
         holder.label.setOnClickListener { onClick(cat) }
         holder.label.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+
+        // Block D-pad escape at chip list boundaries so focus never leaves
+        // the chip row horizontally (e.g. to the "Go to Channel #" button).
+        holder.label.setOnKeyListener { _, keyCode, event ->
+            if (event.action != android.view.KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            val pos = holder.bindingAdapterPosition
+            if (pos == RecyclerView.NO_POSITION) return@setOnKeyListener false
+            when (keyCode) {
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> pos >= categories.size - 1
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> pos <= 0
+                else -> false
+            }
+        }
     }
 
     override fun getItemCount() = categories.size

@@ -32,6 +32,12 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.vistacore.launcher.iptv.OpenSubtitlesClient
 import kotlinx.coroutines.*
 import com.vistacore.launcher.R
+import com.vistacore.launcher.data.ContentFilterManager
+import com.vistacore.launcher.data.ContentFilterFile
+import com.vistacore.launcher.data.FilterAction
+import com.vistacore.launcher.data.FilterCategory
+import com.vistacore.launcher.data.FilterSegment
+import com.vistacore.launcher.data.FilterServerClient
 import com.vistacore.launcher.data.PrefsManager
 import com.vistacore.launcher.data.RecentChannelsManager
 import com.vistacore.launcher.databinding.ActivityIptvPlayerBinding
@@ -77,6 +83,19 @@ class IPTVPlayerActivity : AppCompatActivity() {
     private var allChannels: List<Channel> = emptyList()
     private var currentChannelIndex: Int = -1
 
+    // Content filtering
+    private lateinit var filterManager: ContentFilterManager
+    private var activeFilter: ContentFilterFile? = null
+    private var filterEnabled = false
+    private var savedVolume = 1f
+    private var isMutedByFilter = false
+    private val filterCheckRunnable = object : Runnable {
+        override fun run() {
+            applyContentFilter()
+            handler.postDelayed(this, 150) // Check position every 150ms
+        }
+    }
+
     // Scrub bar state
     private var scrubVisible = false
     private val hideScrubRunnable = Runnable { hideScrubBar() }
@@ -115,6 +134,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
         prefs = PrefsManager(this)
         recentChannels = RecentChannelsManager(this)
         watchHistory = com.vistacore.launcher.data.WatchHistoryManager(this)
+        filterManager = ContentFilterManager(this)
 
         streamUrl = intent.getStringExtra(EXTRA_STREAM_URL) ?: ""
         channelName = intent.getStringExtra(EXTRA_CHANNEL_NAME) ?: ""
@@ -177,10 +197,12 @@ class IPTVPlayerActivity : AppCompatActivity() {
         binding.btnAudioTrack.setOnClickListener { showAudioTrackPicker() }
         binding.btnSubtitleTrack.setOnClickListener { showSubtitlePicker() }
         binding.btnQuality.setOnClickListener { showQualityPicker() }
+        binding.btnContentFilter.setOnClickListener { toggleContentFilter() }
 
         // Focus animations
         listOf(binding.btnPrevChannel, binding.btnPlayPause, binding.btnNextChannel,
-               binding.btnAudioTrack, binding.btnSubtitleTrack, binding.btnQuality).forEach { btn ->
+               binding.btnAudioTrack, binding.btnSubtitleTrack, binding.btnQuality,
+               binding.btnContentFilter).forEach { btn ->
             btn.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         }
 
@@ -282,10 +304,12 @@ class IPTVPlayerActivity : AppCompatActivity() {
         binding.scrubAudioTrack.setOnClickListener { showAudioTrackPicker() }
         binding.scrubSubtitleTrack.setOnClickListener { showSubtitlePicker() }
         binding.scrubQuality.setOnClickListener { showQualityPicker() }
+        binding.scrubContentFilter.setOnClickListener { toggleContentFilter() }
 
         // Focus animations
         listOf(binding.scrubRewind, binding.scrubPlayPause, binding.scrubForward,
-               binding.scrubAudioTrack, binding.scrubSubtitleTrack, binding.scrubQuality).forEach { btn ->
+               binding.scrubAudioTrack, binding.scrubSubtitleTrack, binding.scrubQuality,
+               binding.scrubContentFilter).forEach { btn ->
             btn.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         }
 
@@ -422,7 +446,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
             } else {
                 params.setRendererDisabled(C.TRACK_TYPE_TEXT, true)
             }
-            // Restore video quality preference
+            // Restore video quality preference (resolution cap)
             val savedQuality = prefs.preferredVideoQuality
             if (savedQuality != "auto") {
                 val parts = savedQuality.split("x")
@@ -431,7 +455,6 @@ class IPTVPlayerActivity : AppCompatActivity() {
                     val h = parts[1].toIntOrNull() ?: 0
                     if (w > 0 && h > 0) {
                         params.setMaxVideoSize(w, h)
-                            .setMinVideoSize(w, h)
                     }
                 }
             }
@@ -463,6 +486,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
                                 if (savedPos > 0) {
                                     exo.seekTo(savedPos)
                                 }
+                                initContentFilter()
                             }
                         }
                         Player.STATE_BUFFERING -> showLoading(true)
@@ -733,95 +757,227 @@ class IPTVPlayerActivity : AppCompatActivity() {
         val exo = player ?: return
         val tracks = exo.currentTracks
 
-        // Collect available video tracks
-        data class VideoOption(val label: String, val override: TrackSelectionOverride?, val width: Int, val height: Int)
-        val options = mutableListOf<VideoOption>()
-
-        // Auto option first — enables adaptive bitrate
-        options.add(VideoOption("Auto (adaptive)", null, 0, 0))
-
+        // Find the native resolution of the current video
+        var nativeW = 0
+        var nativeH = 0
         for (group in tracks.groups) {
             if (group.type != C.TRACK_TYPE_VIDEO) continue
             for (i in 0 until group.length) {
-                if (!group.isTrackSupported(i)) continue
-                val format = group.getTrackFormat(i)
-                val w = format.width
-                val h = format.height
-                if (w <= 0 || h <= 0) continue
-                val qualityLabel = when {
-                    h >= 2160 -> "4K (${w}×${h})"
-                    h >= 1440 -> "1440p (${w}×${h})"
-                    h >= 1080 -> "1080p (${w}×${h})"
-                    h >= 720 -> "720p (${w}×${h})"
-                    h >= 480 -> "480p (${w}×${h})"
-                    h >= 360 -> "360p (${w}×${h})"
-                    else -> "${h}p (${w}×${h})"
-                }
-                val bitrateInfo = if (format.bitrate > 0) {
-                    val mbps = format.bitrate / 1_000_000.0
-                    " · %.1f Mbps".format(mbps)
-                } else ""
-                options.add(VideoOption(
-                    "$qualityLabel$bitrateInfo",
-                    TrackSelectionOverride(group.mediaTrackGroup, i),
-                    w, h
-                ))
+                val fmt = group.getTrackFormat(i)
+                if (fmt.height > nativeH) { nativeW = fmt.width; nativeH = fmt.height }
             }
         }
 
-        // Sort by resolution descending (Auto stays first)
-        val sorted = mutableListOf(options[0])
-        sorted.addAll(options.drop(1).sortedByDescending { it.height * 10000 + it.width })
-
-        // Remove duplicates with same resolution
-        val seen = mutableSetOf<String>()
-        val unique = sorted.filter { opt ->
-            if (opt.override == null) true // always keep Auto
-            else seen.add("${opt.width}x${opt.height}")
-        }
-
-        if (unique.size <= 1) {
-            android.widget.Toast.makeText(this, "No quality options available", android.widget.Toast.LENGTH_SHORT).show()
+        if (nativeH <= 0) {
+            android.widget.Toast.makeText(this, "No video track detected", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
 
-        // Find current selection index
+        // Build resolution cap options: Auto + standard tiers at or below native
+        data class QualityOption(val label: String, val maxH: Int, val maxW: Int)
+        val tiers = listOf(
+            QualityOption("4K", 2160, 3840),
+            QualityOption("1440p", 1440, 2560),
+            QualityOption("1080p", 1080, 1920),
+            QualityOption("720p", 720, 1280),
+            QualityOption("480p", 480, 854),
+            QualityOption("360p", 360, 640),
+            QualityOption("240p", 240, 426),
+        )
+
+        val options = mutableListOf(QualityOption("Auto (${nativeW}×${nativeH})", Int.MAX_VALUE, Int.MAX_VALUE))
+        for (tier in tiers) {
+            if (tier.maxH <= nativeH) options.add(tier)
+        }
+
+        // Find current selection
         val savedQuality = prefs.preferredVideoQuality
-        var checkedIndex = 0 // default to Auto
+        var checkedIndex = 0
         if (savedQuality != "auto") {
-            unique.forEachIndexed { idx, opt ->
-                if (opt.override != null && "${opt.width}x${opt.height}" == savedQuality) {
-                    checkedIndex = idx
-                }
+            val parts = savedQuality.split("x")
+            val savedH = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            options.forEachIndexed { idx, opt ->
+                if (opt.maxH == savedH) checkedIndex = idx
             }
         }
 
-        val names = unique.map { it.label }.toTypedArray()
+        val names = options.map { it.label }.toTypedArray()
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Video Quality")
             .setSingleChoiceItems(names, checkedIndex) { dialog, which ->
-                val selected = unique[which]
-                if (selected.override == null) {
-                    // Auto: clear video overrides so ABR takes over
-                    trackSelector?.setParameters(
-                        trackSelector!!.buildUponParameters()
+                val selected = options[which]
+                val ts = trackSelector ?: return@setSingleChoiceItems
+                if (selected.maxH == Int.MAX_VALUE) {
+                    // Auto: remove all constraints
+                    ts.setParameters(
+                        ts.buildUponParameters()
                             .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-                            .setMaxVideoSizeSd() // remove any max constraints
                             .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
                     )
                     prefs.preferredVideoQuality = "auto"
                 } else {
-                    // Lock to specific resolution
-                    trackSelector?.setParameters(
-                        trackSelector!!.buildUponParameters()
+                    // Cap resolution — ExoPlayer will pick the best matching
+                    // rendition for adaptive streams, or downscale for single-track
+                    ts.setParameters(
+                        ts.buildUponParameters()
                             .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-                            .addOverride(selected.override)
+                            .setMaxVideoSize(selected.maxW, selected.maxH)
                     )
-                    prefs.preferredVideoQuality = "${selected.width}x${selected.height}"
+                    prefs.preferredVideoQuality = "${selected.maxW}x${selected.maxH}"
                 }
                 dialog.dismiss()
             }
             .show()
+    }
+
+    // --- Content Filtering ---
+
+    private fun toggleContentFilter() {
+        // Load filter if we haven't yet
+        if (activeFilter == null) {
+            activeFilter = filterManager.loadFilter(channelName, contentYear)
+        }
+
+        if (activeFilter == null || activeFilter!!.segments.isEmpty()) {
+            Toast.makeText(this, "No filter data available for \"$channelName\"", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        filterEnabled = !filterEnabled
+
+        if (filterEnabled) {
+            handler.post(filterCheckRunnable)
+            Toast.makeText(this, "Content filter ON", Toast.LENGTH_SHORT).show()
+        } else {
+            handler.removeCallbacks(filterCheckRunnable)
+            restoreVolume()
+            Toast.makeText(this, "Content filter OFF", Toast.LENGTH_SHORT).show()
+        }
+
+        updateFilterButtonIcon()
+    }
+
+    private fun updateFilterButtonIcon() {
+        val icon = if (filterEnabled) R.drawable.ic_content_filter else R.drawable.ic_content_filter_off
+        binding.btnContentFilter.setImageResource(icon)
+        binding.scrubContentFilter.setImageResource(icon)
+    }
+
+    /**
+     * Called every ~150ms during playback. Checks current position against filter segments
+     * and applies mute or skip actions based on enabled categories.
+     */
+    private fun applyContentFilter() {
+        val exo = player ?: return
+        val filter = activeFilter ?: return
+        if (!filterEnabled) return
+
+        val pos = exo.currentPosition
+        val enabledCats = prefs.getEnabledFilterCategories()
+
+        // Find any active segment at current position
+        val activeSegment = filter.segments.firstOrNull { seg ->
+            pos >= seg.startMs && pos < seg.endMs && seg.category.name in enabledCats
+        }
+
+        if (activeSegment != null) {
+            when (activeSegment.action) {
+                FilterAction.MUTE -> {
+                    if (!isMutedByFilter) {
+                        savedVolume = exo.volume
+                        exo.volume = 0f
+                        isMutedByFilter = true
+                    }
+                }
+                FilterAction.SKIP -> {
+                    exo.seekTo(activeSegment.endMs)
+                    // Restore volume in case we were also muted
+                    restoreVolume()
+                }
+            }
+        } else {
+            // Not in a filtered segment — restore volume if we muted it
+            restoreVolume()
+        }
+    }
+
+    private fun restoreVolume() {
+        if (isMutedByFilter) {
+            player?.volume = savedVolume
+            isMutedByFilter = false
+        }
+    }
+
+    /**
+     * Try to load a filter file for the current content. Called after playback starts.
+     * First checks local cache, then queries the companion server.
+     * If a filter exists and the master toggle is on, auto-enables filtering.
+     */
+    private fun initContentFilter() {
+        // Check local cache first
+        activeFilter = filterManager.loadFilter(channelName, contentYear)
+        if (activeFilter != null && prefs.contentFilterEnabled) {
+            filterEnabled = true
+            handler.post(filterCheckRunnable)
+            updateFilterButtonIcon()
+            return
+        }
+
+        // Try fetching from server if configured
+        val serverUrl = prefs.filterServerUrl
+        if (serverUrl.isBlank() || !isVodMode) return
+
+        scope.launch {
+            val client = FilterServerClient(serverUrl, prefs.filterServerApiKey)
+
+            // Check if server has a filter ready
+            val remote = client.getFilter(channelName, contentYear)
+            if (remote != null) {
+                filterManager.saveFilter(remote)
+                activeFilter = remote
+                if (prefs.contentFilterEnabled) {
+                    filterEnabled = true
+                    handler.post(filterCheckRunnable)
+                    updateFilterButtonIcon()
+                }
+                return@launch
+            }
+
+            // Request server to generate one
+            val job = client.requestFilter(channelName, contentYear, streamUrl) ?: return@launch
+            if (job.status == "done") return@launch // already handled above
+
+            // Poll for completion in background
+            var jobId = job.id
+            var attempts = 0
+            while (attempts < 240) { // poll up to ~20 min
+                kotlinx.coroutines.delay(5000)
+                val status = client.getJobStatus(jobId) ?: break
+                when (status.status) {
+                    "done" -> {
+                        val filter = client.getFilter(channelName, contentYear)
+                        if (filter != null) {
+                            filterManager.saveFilter(filter)
+                            activeFilter = filter
+                            if (prefs.contentFilterEnabled && !filterEnabled) {
+                                filterEnabled = true
+                                handler.post(filterCheckRunnable)
+                                updateFilterButtonIcon()
+                                Toast.makeText(this@IPTVPlayerActivity,
+                                    "Content filter ready — ${filter.segments.size} segments",
+                                    Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        return@launch
+                    }
+                    "failed" -> {
+                        Log.w(TAG, "Filter generation failed: ${status.error}")
+                        return@launch
+                    }
+                }
+                attempts++
+            }
+        }
     }
 
     private fun searchOnlineSubtitles() {
@@ -958,6 +1114,7 @@ class IPTVPlayerActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_PROG_RED -> { showAudioTrackPicker(); return true }
             KeyEvent.KEYCODE_PROG_GREEN -> { showSubtitlePicker(); return true }
             KeyEvent.KEYCODE_PROG_YELLOW -> { showQualityPicker(); return true }
+            KeyEvent.KEYCODE_PROG_BLUE -> { toggleContentFilter(); return true }
         }
 
         // VOD mode key handling

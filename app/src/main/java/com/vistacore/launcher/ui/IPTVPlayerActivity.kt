@@ -757,13 +757,15 @@ class IPTVPlayerActivity : AppCompatActivity() {
         val exo = player ?: return
         val tracks = exo.currentTracks
 
-        // Find the native resolution of the current video
+        // Find the native resolution and count distinct video renditions
         var nativeW = 0
         var nativeH = 0
+        var renditionCount = 0
         for (group in tracks.groups) {
             if (group.type != C.TRACK_TYPE_VIDEO) continue
             for (i in 0 until group.length) {
                 val fmt = group.getTrackFormat(i)
+                renditionCount++
                 if (fmt.height > nativeH) { nativeW = fmt.width; nativeH = fmt.height }
             }
         }
@@ -772,6 +774,8 @@ class IPTVPlayerActivity : AppCompatActivity() {
             android.widget.Toast.makeText(this, "No video track detected", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
+
+        val isAdaptive = renditionCount > 1
 
         // Build resolution cap options: Auto + standard tiers at or below native
         data class QualityOption(val label: String, val maxH: Int, val maxW: Int)
@@ -802,8 +806,10 @@ class IPTVPlayerActivity : AppCompatActivity() {
         }
 
         val names = options.map { it.label }.toTypedArray()
+        val streamInfo = if (isAdaptive) "Adaptive · $renditionCount renditions" else "Single bitrate · lower options downscale only"
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Video Quality")
+            .setMessage(streamInfo)
             .setSingleChoiceItems(names, checkedIndex) { dialog, which ->
                 val selected = options[which]
                 val ts = trackSelector ?: return@setSingleChoiceItems

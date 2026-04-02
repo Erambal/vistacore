@@ -120,7 +120,7 @@ class LiveTVActivity : BaseActivity() {
         // Category chips — horizontal scrollable filter.
         // Focus containment is handled by the adapter's key listener on each chip
         // (blocks D-pad LEFT/RIGHT at the first/last positions).
-        binding.categoryChips.layoutManager = LinearLayoutManager(this, HORIZONTAL, false)
+        binding.categoryChips.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
     }
 
     private fun showNumberPadOverlay() {

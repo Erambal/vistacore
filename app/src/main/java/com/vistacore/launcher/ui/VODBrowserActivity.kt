@@ -525,6 +525,7 @@ class PosterAdapter(
     inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val image: ImageView = itemView.findViewById(R.id.poster_image)
         val title: TextView = itemView.findViewById(R.id.poster_title)
+        val focusBorder: View = itemView.findViewById(R.id.poster_focus_border)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -548,7 +549,10 @@ class PosterAdapter(
         }
 
         holder.itemView.setOnClickListener { activity.onItemClicked(item) }
-        holder.itemView.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+        holder.itemView.setOnFocusChangeListener { v, f ->
+            MainActivity.animateFocus(v, f)
+            holder.focusBorder.visibility = if (f) View.VISIBLE else View.GONE
+        }
     }
 
     override fun getItemCount() = visibleCount

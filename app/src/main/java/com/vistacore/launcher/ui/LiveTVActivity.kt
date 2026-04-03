@@ -118,21 +118,8 @@ class LiveTVActivity : BaseActivity() {
         binding.btnToggleEpg.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
 
         // Category chips — horizontal scrollable filter.
-        // Block D-pad RIGHT/LEFT from escaping the chip row at boundaries.
-        // Done at RecyclerView level so it works regardless of adapter recreation.
+        // FocusTrappedRecyclerView handles D-pad boundary blocking via dispatchKeyEvent.
         binding.categoryChips.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        binding.categoryChips.setOnKeyListener { _, keyCode, event ->
-            if (event.action != android.view.KeyEvent.ACTION_DOWN) return@setOnKeyListener false
-            val lm = binding.categoryChips.layoutManager as? LinearLayoutManager ?: return@setOnKeyListener false
-            val focused = binding.categoryChips.focusedChild ?: return@setOnKeyListener false
-            val pos = lm.getPosition(focused)
-            val count = binding.categoryChips.adapter?.itemCount ?: 0
-            when (keyCode) {
-                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> pos >= count - 1
-                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> pos <= 0
-                else -> false
-            }
-        }
     }
 
     private fun showNumberPadOverlay() {

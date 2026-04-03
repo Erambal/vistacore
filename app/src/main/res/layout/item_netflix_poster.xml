@@ -25,6 +25,14 @@
             android:scaleType="centerCrop"
             android:contentDescription="Poster" />
 
+        <!-- Gold border overlay visible on focus -->
+        <View
+            android:id="@+id/poster_focus_border"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/poster_focus_border"
+            android:visibility="gone" />
+
     </androidx.cardview.widget.CardView>
 
     <!-- Title below the poster (Disney+ style) -->

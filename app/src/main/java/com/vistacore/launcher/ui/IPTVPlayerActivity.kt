@@ -22,6 +22,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -461,7 +462,19 @@ class IPTVPlayerActivity : AppCompatActivity() {
             ts.setParameters(params)
         }
 
+        // Larger buffer to absorb network hiccups from single-bitrate streams.
+        // Defaults are 15s min / 50s max — we bump to 60s min / 180s max.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs */ 60_000,
+                /* maxBufferMs */ 180_000,
+                /* bufferForPlaybackMs */ 5_000,
+                /* bufferForPlaybackAfterRebufferMs */ 10_000
+            )
+            .build()
+
         player = ExoPlayer.Builder(this)
+            .setLoadControl(loadControl)
             .setTrackSelector(selector)
             .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
             .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)

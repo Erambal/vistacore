@@ -17,6 +17,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
@@ -219,7 +220,10 @@ class LiveTVActivity : BaseActivity() {
     }
 
     private fun setupPlayer() {
-        player = ExoPlayer.Builder(this).build().also { exo ->
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(60_000, 180_000, 5_000, 10_000)
+            .build()
+        player = ExoPlayer.Builder(this).setLoadControl(loadControl).build().also { exo ->
             binding.miniPlayer.player = exo
             exo.addListener(object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {

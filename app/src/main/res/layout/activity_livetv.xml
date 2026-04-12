@@ -85,7 +85,7 @@
             </LinearLayout>
 
             <!-- Category filter chips -->
-            <com.vistacore.launcher.ui.FocusTrappedRecyclerView
+            <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/category_chips"
                 android:layout_width="match_parent"
                 android:layout_height="42dp"
@@ -157,7 +157,8 @@
                 app:use_controller="false"
                 app:resize_mode="fit" />
 
-            <!-- Go to Channel button — only reachable from channel list -->
+            <!-- Go to Channel button — focusability controlled in code;
+                 only enabled when a channel list item has focus -->
             <Button
                 android:id="@+id/btn_number_pad"
                 android:layout_width="match_parent"
@@ -167,8 +168,8 @@
                 android:textColor="@color/text_secondary"
                 android:fontFamily="sans-serif-medium"
                 android:background="@drawable/button_goto_channel"
-                android:focusable="true"
-                android:focusableInTouchMode="true" />
+                android:focusable="false"
+                android:focusableInTouchMode="false" />
 
             <!-- Now playing / Up next strip -->
             <LinearLayout

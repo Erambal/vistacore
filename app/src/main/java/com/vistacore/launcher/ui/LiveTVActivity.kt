@@ -107,10 +107,14 @@ class LiveTVActivity : BaseActivity() {
             }
         })
 
-        // Number pad button — only reachable via channel list items (they set nextFocusRightId)
+        // Number pad button — unfocusable by default so it can't steal focus
+        // from chips or other views. Only becomes focusable when a channel list
+        // item has focus (see channel adapter's onFocusChangeListener).
         binding.btnNumberPad.setOnClickListener { showNumberPadOverlay() }
         binding.btnNumberPad.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         binding.btnNumberPad.nextFocusLeftId = R.id.channel_list
+        binding.btnNumberPad.isFocusable = false
+        binding.btnNumberPad.isFocusableInTouchMode = false
 
         // EPG button — opens full TV Guide
         binding.btnToggleEpg.setOnClickListener {
@@ -636,6 +640,12 @@ class LiveChannelAdapter(
 
         holder.itemView.setOnFocusChangeListener { v, f ->
             MainActivity.animateFocus(v, f)
+            // Make the Go to Channel button focusable only while a channel item has focus
+            val btn = (v.context as? LiveTVActivity)?.findViewById<View>(R.id.btn_number_pad)
+            if (btn != null) {
+                btn.isFocusable = f
+                btn.isFocusableInTouchMode = f
+            }
         }
         // Allow D-pad right from channel items to reach the Go to Channel button
         holder.itemView.nextFocusRightId = R.id.btn_number_pad

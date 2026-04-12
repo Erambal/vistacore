@@ -677,7 +677,18 @@ class CategoryChipAdapter(
         holder.label.setTextColor(holder.label.context.getColor(
             if (cat == selected) R.color.accent_gold else R.color.text_primary
         ))
-        holder.label.setOnClickListener { onClick(cat) }
+        // Use key listener instead of setOnClickListener to avoid accidental
+        // clicks during D-pad scrolling (which recreates the adapter and
+        // resets focus back to "All").
+        holder.label.setOnClickListener(null)
+        holder.label.setOnKeyListener { _, keyCode, event ->
+            if (event.action == android.view.KeyEvent.ACTION_DOWN &&
+                (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                 keyCode == android.view.KeyEvent.KEYCODE_ENTER)) {
+                onClick(cat)
+                true
+            } else false
+        }
         holder.label.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
     }
 

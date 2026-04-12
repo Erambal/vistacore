@@ -15,7 +15,6 @@ import android.view.View
 import android.widget.ImageButton
 import android.widget.FrameLayout
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -47,7 +46,7 @@ import com.vistacore.launcher.iptv.ContentType
 import com.vistacore.launcher.system.ChannelUpdateWorker
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class IPTVPlayerActivity : AppCompatActivity() {
+class IPTVPlayerActivity : BaseActivity() {
 
     companion object {
         const val EXTRA_STREAM_URL = "stream_url"
@@ -170,10 +169,22 @@ class IPTVPlayerActivity : AppCompatActivity() {
     private val hideControlsRunnable = Runnable { hideControls() }
 
     private fun loadChannelList() {
-        val cached = ChannelUpdateWorker.getCachedChannels(this)
-        if (cached != null) {
-            allChannels = cached.filter { it.contentType == ContentType.LIVE }
-            currentChannelIndex = allChannels.indexOfFirst { it.id == channelId }
+        scope.launch {
+            val cached = withContext(Dispatchers.IO) {
+                ChannelUpdateWorker.getCachedChannels(this@IPTVPlayerActivity)
+            }
+            if (cached != null) {
+                allChannels = cached.filter { it.contentType == ContentType.LIVE }
+                currentChannelIndex = allChannels.indexOfFirst { it.id == channelId }
+                // Set up number pad now that channels are loaded
+                if (!isVodMode && allChannels.isNotEmpty() && numberPad == null) {
+                    numberPad = ChannelNumberPad(this@IPTVPlayerActivity, binding.root as FrameLayout, allChannels) { channel ->
+                        switchStream(channel.streamUrl, channel.name, channel.id)
+                        binding.ctrlChannelName.text = channel.name
+                        currentChannelIndex = allChannels.indexOf(channel)
+                    }
+                }
+            }
         }
     }
 
@@ -207,14 +218,6 @@ class IPTVPlayerActivity : AppCompatActivity() {
             btn.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         }
 
-        // Number pad for remote number keys
-        if (allChannels.isNotEmpty()) {
-            numberPad = ChannelNumberPad(this, binding.root as FrameLayout, allChannels) { channel ->
-                switchStream(channel.streamUrl, channel.name, channel.id)
-                binding.ctrlChannelName.text = channel.name
-                currentChannelIndex = allChannels.indexOf(channel)
-            }
-        }
     }
 
     private fun toggleControls() {
@@ -1014,17 +1017,14 @@ class IPTVPlayerActivity : AppCompatActivity() {
             prefs.appLanguage.ifBlank { null }
         }
 
-        val progress = android.app.ProgressDialog(this).apply {
-            setMessage("Searching subtitles...")
-            setCancelable(true)
-            show()
-        }
+        Toast.makeText(this, "Searching subtitles…", Toast.LENGTH_SHORT).show()
+        showLoading(true)
 
         scope.launch {
             val client = OpenSubtitlesClient(apiKey)
             val results = client.search(cleanTitle, year, searchLang)
 
-            progress.dismiss()
+            showLoading(false)
 
             if (results.isEmpty()) {
                 // Retry without language filter
@@ -1070,15 +1070,12 @@ class IPTVPlayerActivity : AppCompatActivity() {
         result: com.vistacore.launcher.iptv.SubtitleResult,
         client: OpenSubtitlesClient
     ) {
-        val progress = android.app.ProgressDialog(this).apply {
-            setMessage("Downloading subtitle...")
-            setCancelable(false)
-            show()
-        }
+        Toast.makeText(this, "Downloading subtitle…", Toast.LENGTH_SHORT).show()
+        showLoading(true)
 
         scope.launch {
             val path = client.download(result.fileId, cacheDir)
-            progress.dismiss()
+            showLoading(false)
 
             if (path == null) {
                 android.widget.Toast.makeText(this@IPTVPlayerActivity,

@@ -465,7 +465,7 @@ class MainActivity : BaseActivity() {
 
     private fun showRemoveHistoryDialog(entry: com.vistacore.launcher.data.WatchEntry, watchHistory: com.vistacore.launcher.data.WatchHistoryManager) {
         val items = arrayOf("Remove \"${entry.name}\"", "Clear all watch history")
-        android.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Watch History")
             .setItems(items) { _, which ->
                 when (which) {
@@ -474,7 +474,7 @@ class MainActivity : BaseActivity() {
                         loadContinueWatching()
                     }
                     1 -> {
-                        android.app.AlertDialog.Builder(this)
+                        androidx.appcompat.app.AlertDialog.Builder(this)
                             .setTitle("Clear all watch history?")
                             .setMessage("This will remove all continue watching entries.")
                             .setPositiveButton("Clear") { _, _ ->
@@ -504,7 +504,7 @@ class MainActivity : BaseActivity() {
 
     private fun showRemoveRecentDialog(channel: com.vistacore.launcher.iptv.Channel) {
         val items = arrayOf("Remove \"${channel.name}\"", "Clear all recent channels")
-        android.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Recent Channels")
             .setItems(items) { _, which ->
                 when (which) {
@@ -513,7 +513,7 @@ class MainActivity : BaseActivity() {
                         loadRecentChannels()
                     }
                     1 -> {
-                        android.app.AlertDialog.Builder(this)
+                        androidx.appcompat.app.AlertDialog.Builder(this)
                             .setTitle("Clear all recent channels?")
                             .setMessage("This will remove all recent channel entries.")
                             .setPositiveButton("Clear") { _, _ ->

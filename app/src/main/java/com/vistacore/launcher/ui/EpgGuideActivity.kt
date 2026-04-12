@@ -166,6 +166,7 @@ class EpgGuideActivity : BaseActivity() {
                 putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, channel.streamUrl)
                 putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, channel.name)
                 putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, channel.logoUrl)
+                putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_ID, channel.id)
             }
             startActivity(intent)
         }

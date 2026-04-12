@@ -127,8 +127,7 @@ class VoiceSearchActivity : BaseActivity() {
             val seen = mutableSetOf<String>()
             val deduped = results.filter { ch ->
                 if (ch.contentType == ContentType.SERIES) {
-                    val showName = ch.name.substringBefore(" S0").substringBefore(" s0")
-                        .substringBefore(" S1").substringBefore(" s1").trim()
+                    val showName = extractShowName(ch.name)
                     seen.add(showName)
                 } else true
             }
@@ -147,17 +146,28 @@ class VoiceSearchActivity : BaseActivity() {
         }
     }
 
+    private val showNameStripper = Regex(
+        """[\s.,-]*(?:[Ss]\d{1,2}[\s.,-]*[Ee]\d{1,3}|\d{1,2}[xX]\d{1,3}|[Ss]eason\s*\d+|\bEp\.?\s*\d+|\bEpisode\s*\d+).*""",
+        RegexOption.IGNORE_CASE
+    )
+    private val showNameCleanup = Regex(
+        """[\s-]+\d{1,3}\s*$|\s*[\(\[]\d{4}[\)\]]|\s*\b(?:HD|FHD|SD|4K|UHD)\b.*$""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private fun extractShowName(name: String): String {
+        var cleaned = showNameStripper.replace(name, "")
+        cleaned = showNameCleanup.replace(cleaned, "")
+        return cleaned.trim().ifBlank { name.trim() }
+    }
+
     private fun onResultClicked(channel: Channel) {
         when (channel.contentType) {
             ContentType.SERIES -> {
-                val stripPattern = Regex(
-                    """[\s.,-]*(?:[Ss]\d{1,2}[\s.,-]*[Ee]\d{1,3}|\d{1,2}[xX]\d{1,3}|[Ss]eason\s*\d+|\bEp\.?\s*\d+|\bEpisode\s*\d+).*""",
-                    RegexOption.IGNORE_CASE
-                )
-                val showName = stripPattern.replace(channel.name, "").trim().ifBlank { channel.name }
+                val showName = extractShowName(channel.name)
                 val episodes = allContent.filter {
                     it.contentType == ContentType.SERIES &&
-                    it.name.startsWith(showName.take(20), ignoreCase = true)
+                    extractShowName(it.name) == showName
                 }
                 ShowDetailActivity.launch(this, showName, channel.category, channel.logoUrl, episodes)
             }

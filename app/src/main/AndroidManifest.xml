@@ -111,9 +111,36 @@
             android:exported="false"
             android:screenOrientation="landscape" />
 
-        <!-- Live TV (DirecTV style) -->
+        <!-- Live TV router — forwards to the chosen variant -->
         <activity
             android:name=".ui.LiveTVActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <!-- Live TV variants -->
+        <activity
+            android:name=".ui.LiveTVClassicActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
+            android:name=".ui.LiveTVGridActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
+            android:name=".ui.LiveTVEpgActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
+            android:name=".ui.LiveTVImmersiveActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
+            android:name=".ui.LiveTVCarouselActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
+            android:name=".ui.LiveTVSplitHeroActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
 

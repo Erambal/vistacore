@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Top bar: preview card + search/guide buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="24dp"
+            android:background="@color/surface_dark">
+
+            <!-- Left: mini preview -->
+            <androidx.media3.ui.PlayerView
+                android:id="@+id/grid_mini_player"
+                android:layout_width="320dp"
+                android:layout_height="180dp"
+                app:use_controller="false"
+                app:resize_mode="fit" />
+
+            <!-- Right: channel info + controls -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="180dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="24dp"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/grid_channel_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="28sp"
+                    android:textColor="@color/text_primary"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/grid_now_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="18sp"
+                    android:textColor="@color/accent_gold"
+                    android:fontFamily="sans-serif"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:layout_marginTop="6dp" />
+
+                <TextView
+                    android:id="@+id/grid_next_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_hint"
+                    android:fontFamily="sans-serif-light"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:layout_marginTop="4dp" />
+
+                <Space
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/grid_btn_guide"
+                        android:layout_width="wrap_content"
+                        android:layout_height="44dp"
+                        android:text="TV Guide"
+                        android:textColor="@color/accent_gold"
+                        android:background="@drawable/card_selector"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:focusable="true"
+                        android:focusableInTouchMode="true" />
+
+                    <Button
+                        android:id="@+id/grid_btn_number_pad"
+                        android:layout_width="wrap_content"
+                        android:layout_height="44dp"
+                        android:text="Go to Channel #"
+                        android:textColor="@color/text_secondary"
+                        android:background="@drawable/card_selector"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:layout_marginStart="12dp"
+                        android:focusable="true"
+                        android:focusableInTouchMode="true" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Category tabs -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/grid_category_chips"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:orientation="horizontal"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:clipToPadding="false"
+            android:background="#11FFFFFF"
+            android:descendantFocusability="afterDescendants" />
+
+        <!-- Channel grid -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/grid_channel_grid"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:padding="24dp"
+            android:clipToPadding="false"
+            android:descendantFocusability="afterDescendants" />
+
+    </LinearLayout>
+
+    <!-- Loading overlay -->
+    <LinearLayout
+        android:id="@+id/grid_loading"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:background="@color/background_dark"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:indeterminateTint="@color/accent_gold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Loading channels…"
+            android:textSize="20sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginTop="12dp" />
+    </LinearLayout>
+
+</FrameLayout>

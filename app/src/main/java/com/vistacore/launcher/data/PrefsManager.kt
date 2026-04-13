@@ -46,6 +46,15 @@ class PrefsManager(context: Context) {
         private const val KEY_FILTER_BLASPHEMY = "filter_blasphemy"
         private const val KEY_FILTER_SLURS = "filter_slurs"
         private const val KEY_FILTER_SEXUAL_DIALOGUE = "filter_sexual_dialogue"
+        private const val KEY_LIVE_TV_STYLE = "live_tv_style"
+
+        // Live TV style constants
+        const val LIVE_TV_CLASSIC = "classic"
+        const val LIVE_TV_GRID = "grid"
+        const val LIVE_TV_EPG = "epg"
+        const val LIVE_TV_IMMERSIVE = "immersive"
+        const val LIVE_TV_CAROUSEL = "carousel"
+        const val LIVE_TV_SPLIT_HERO = "split_hero"
 
         const val SOURCE_M3U = 0
         const val SOURCE_XTREAM = 1
@@ -122,6 +131,11 @@ class PrefsManager(context: Context) {
     var showEpgInChannelList: Boolean
         get() = prefs.getBoolean(KEY_SHOW_EPG_IN_LIST, true)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_EPG_IN_LIST, value).apply()
+
+    /** Live TV layout style. One of LIVE_TV_* constants. Default classic. */
+    var liveTvStyle: String
+        get() = prefs.getString(KEY_LIVE_TV_STYLE, LIVE_TV_CLASSIC) ?: LIVE_TV_CLASSIC
+        set(value) = prefs.edit().putString(KEY_LIVE_TV_STYLE, value).apply()
 
     /** Kids section enabled. Default true. */
     var kidsEnabled: Boolean

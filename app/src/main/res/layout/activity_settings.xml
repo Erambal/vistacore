@@ -165,6 +165,13 @@
                 <Switch android:id="@+id/switch_epg_in_list" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
             </LinearLayout>
 
+            <!-- Live TV Style picker -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="16dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Live TV Layout Style" style="@style/SettingsTitle" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pick how channels and info are arranged" style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
+                <Button android:id="@+id/btn_live_tv_style" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Classic" style="@style/LargeButton" android:backgroundTint="@color/iptv_teal" />
+            </LinearLayout>
+
             <Button android:id="@+id/btn_open_guide" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Open TV Guide" style="@style/LargeButton" android:backgroundTint="@color/iptv_teal" />
         </LinearLayout>
 

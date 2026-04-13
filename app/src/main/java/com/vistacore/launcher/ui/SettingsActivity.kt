@@ -50,6 +50,7 @@ class SettingsActivity : BaseActivity() {
         setupAutoLaunch()
         setupHomeCapture()
         setupEpgToggle()
+        setupLiveTvStylePicker()
         setupContentLoading()
         setupContentFiltering()
         setupHiddenCategories()
@@ -192,6 +193,34 @@ class SettingsActivity : BaseActivity() {
         binding.switchEpgInList.isChecked = prefs.showEpgInChannelList
         binding.switchEpgInList.setOnCheckedChangeListener { _, isChecked ->
             prefs.showEpgInChannelList = isChecked
+        }
+    }
+
+    private fun setupLiveTvStylePicker() {
+        val styles = listOf(
+            PrefsManager.LIVE_TV_CLASSIC to "Classic — sidebar + mini player",
+            PrefsManager.LIVE_TV_GRID to "Channel Grid — logo tiles",
+            PrefsManager.LIVE_TV_EPG to "EPG-First — guide-centric",
+            PrefsManager.LIVE_TV_IMMERSIVE to "Immersive — fullscreen preview",
+            PrefsManager.LIVE_TV_CAROUSEL to "Now Watching Carousel — Netflix rows",
+            PrefsManager.LIVE_TV_SPLIT_HERO to "Split Hero — big preview + ribbon"
+        )
+
+        fun labelFor(key: String) = styles.firstOrNull { it.first == key }?.second ?: "Classic"
+        binding.btnLiveTvStyle.text = labelFor(prefs.liveTvStyle)
+
+        binding.btnLiveTvStyle.setOnClickListener {
+            val names = styles.map { it.second }.toTypedArray()
+            val current = styles.indexOfFirst { it.first == prefs.liveTvStyle }.coerceAtLeast(0)
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Live TV Layout Style")
+                .setSingleChoiceItems(names, current) { dialog, which ->
+                    val picked = styles[which].first
+                    prefs.liveTvStyle = picked
+                    binding.btnLiveTvStyle.text = labelFor(picked)
+                    dialog.dismiss()
+                }
+                .show()
         }
     }
 

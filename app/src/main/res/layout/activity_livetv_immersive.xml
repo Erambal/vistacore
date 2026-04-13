@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <!-- Fullscreen player -->
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/imm_player"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:use_controller="false"
+        app:resize_mode="fit" />
+
+    <!-- Top gradient scrim -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="160dp"
+        android:layout_gravity="top"
+        android:background="@drawable/gradient_top_scrim" />
+
+    <!-- Bottom gradient scrim -->
+    <View
+        android:id="@+id/imm_bottom_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="260dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/gradient_bottom_scrim" />
+
+    <!-- Top: channel name + now playing overlay -->
+    <LinearLayout
+        android:id="@+id/imm_info_overlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="top|start"
+        android:paddingStart="48dp"
+        android:paddingEnd="48dp"
+        android:paddingTop="36dp">
+
+        <TextView
+            android:id="@+id/imm_channel_number"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textColor="@color/accent_gold"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.1" />
+
+        <TextView
+            android:id="@+id/imm_channel_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="32sp"
+            android:textColor="@color/text_primary"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/imm_now_playing"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textColor="@color/text_secondary"
+            android:fontFamily="sans-serif"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:layout_marginTop="4dp" />
+    </LinearLayout>
+
+    <!-- Bottom: channel ribbon -->
+    <LinearLayout
+        android:id="@+id/imm_ribbon_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="bottom"
+        android:paddingBottom="36dp">
+
+        <!-- Category tabs -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/imm_category_chips"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:orientation="horizontal"
+            android:paddingStart="48dp"
+            android:paddingEnd="48dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:clipToPadding="false" />
+
+        <!-- Channel ribbon -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/imm_channel_ribbon"
+            android:layout_width="match_parent"
+            android:layout_height="160dp"
+            android:orientation="horizontal"
+            android:paddingStart="48dp"
+            android:paddingEnd="48dp"
+            android:paddingTop="8dp"
+            android:clipToPadding="false" />
+    </LinearLayout>
+
+    <!-- Hint -->
+    <TextView
+        android:id="@+id/imm_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:paddingTop="36dp"
+        android:paddingEnd="48dp"
+        android:text="Press OK for fullscreen · Press MENU for number pad"
+        android:textSize="12sp"
+        android:textColor="@color/text_hint"
+        android:fontFamily="sans-serif-light" />
+
+    <LinearLayout
+        android:id="@+id/imm_loading"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:background="@color/background_dark"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:indeterminateTint="@color/accent_gold" />
+    </LinearLayout>
+
+</FrameLayout>

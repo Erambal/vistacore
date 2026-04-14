@@ -120,6 +120,14 @@
                 <EditText android:id="@+id/input_dispatcharr_api_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Dispatcharr API Key (for VOD)" android:inputType="text" android:autofillHints="no" style="@style/LargeEditText" android:layout_marginBottom="16dp" />
             </LinearLayout>
 
+            <!-- Jellyfin section (always visible, independent of M3U/Xtream toggle) -->
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#33FFFFFF" android:layout_marginTop="8dp" android:layout_marginBottom="16dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Jellyfin Server (optional)" style="@style/SettingsTitle" android:layout_marginBottom="8dp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Merges your Jellyfin library into Movies and TV Shows. On duplicates, Jellyfin wins." android:textSize="14sp" android:textColor="@color/text_secondary" android:layout_marginBottom="12dp" />
+            <EditText android:id="@+id/input_jellyfin_server" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="http://192.168.1.50:8096" android:inputType="textUri" android:autofillHints="no" style="@style/LargeEditText" android:layout_marginBottom="12dp" />
+            <EditText android:id="@+id/input_jellyfin_username" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Jellyfin Username" android:inputType="text" android:autofillHints="username" style="@style/LargeEditText" android:layout_marginBottom="12dp" />
+            <EditText android:id="@+id/input_jellyfin_password" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Jellyfin Password" android:inputType="textPassword" android:autofillHints="password" style="@style/LargeEditText" android:layout_marginBottom="16dp" />
+
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="end">
                 <Button android:id="@+id/btn_test" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_test_connection" style="@style/LargeButton" android:layout_marginEnd="16dp" android:backgroundTint="@color/settings_gray" />
                 <Button android:id="@+id/btn_save" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_save" style="@style/LargeButton" />

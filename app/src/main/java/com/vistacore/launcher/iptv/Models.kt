@@ -6,6 +6,11 @@ enum class ContentType {
     SERIES
 }
 
+enum class ContentSource {
+    IPTV,
+    JELLYFIN
+}
+
 data class Channel(
     val id: String,
     val name: String,
@@ -14,7 +19,9 @@ data class Channel(
     val category: String = "Uncategorized",
     val number: Int = 0,
     val contentType: ContentType = ContentType.LIVE,
-    val epgId: String = ""
+    val epgId: String = "",
+    val source: ContentSource = ContentSource.IPTV,
+    val year: Int = 0
 )
 
 data class Category(

@@ -33,6 +33,19 @@
             android:background="@drawable/poster_focus_border"
             android:visibility="gone" />
 
+        <!-- Source badge (e.g. Jellyfin) — top-right corner -->
+        <ImageView
+            android:id="@+id/poster_source_badge"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="6dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/source_badge_background"
+            android:padding="4dp"
+            android:contentDescription="Source"
+            android:visibility="gone" />
+
     </androidx.cardview.widget.CardView>
 
     <!-- Title below the poster (Disney+ style) -->

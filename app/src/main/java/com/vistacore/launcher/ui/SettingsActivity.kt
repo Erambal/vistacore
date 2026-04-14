@@ -103,6 +103,9 @@ class SettingsActivity : BaseActivity() {
         binding.inputXtreamUsername.setText(prefs.xtreamUsername)
         binding.inputXtreamPassword.setText(prefs.xtreamPassword)
         binding.inputDispatcharrApiKey.setText(prefs.dispatcharrApiKey)
+        binding.inputJellyfinServer.setText(prefs.jellyfinServer)
+        binding.inputJellyfinUsername.setText(prefs.jellyfinUsername)
+        binding.inputJellyfinPassword.setText(prefs.jellyfinPassword)
         binding.inputEpgUrl.setText(prefs.epgUrl)
 
         updateSectionVisibility()
@@ -167,6 +170,9 @@ class SettingsActivity : BaseActivity() {
                 prefs.dispatcharrApiKey = binding.inputDispatcharrApiKey.text.toString().trim()
             }
         }
+        prefs.jellyfinServer = binding.inputJellyfinServer.text.toString().trim()
+        prefs.jellyfinUsername = binding.inputJellyfinUsername.text.toString().trim()
+        prefs.jellyfinPassword = binding.inputJellyfinPassword.text.toString().trim()
         prefs.epgUrl = binding.inputEpgUrl.text.toString().trim()
     }
 
@@ -483,6 +489,9 @@ class SettingsActivity : BaseActivity() {
                 prefs.dispatcharrApiKey = binding.inputDispatcharrApiKey.text.toString().trim()
             }
         }
+        prefs.jellyfinServer = binding.inputJellyfinServer.text.toString().trim()
+        prefs.jellyfinUsername = binding.inputJellyfinUsername.text.toString().trim()
+        prefs.jellyfinPassword = binding.inputJellyfinPassword.text.toString().trim()
         prefs.epgUrl = binding.inputEpgUrl.text.toString().trim()
         showStatus(getString(R.string.settings_saved), true)
         Toast.makeText(this, getString(R.string.toast_settings_saved), Toast.LENGTH_SHORT).show()
@@ -540,6 +549,25 @@ class SettingsActivity : BaseActivity() {
                             showStatus(msg, false)
                             Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
                         }
+                    }
+                }
+
+                // If Jellyfin is configured, probe it too and report alongside.
+                if (prefs.hasJellyfinConfig()) {
+                    try {
+                        val jf = com.vistacore.launcher.iptv.JellyfinClient(
+                            com.vistacore.launcher.iptv.JellyfinAuth(
+                                prefs.jellyfinServer, prefs.jellyfinUsername, prefs.jellyfinPassword
+                            )
+                        )
+                        withContext(Dispatchers.IO) { jf.authenticate() }
+                        val msg = "Jellyfin: connected as ${prefs.jellyfinUsername}"
+                        showStatus(msg, true)
+                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        val detail = e.message ?: "auth failed"
+                        showStatus("Jellyfin failed: $detail", false)
+                        Toast.makeText(this@SettingsActivity, "Jellyfin failed: $detail", Toast.LENGTH_LONG).show()
                     }
                 }
             } catch (e: Exception) {

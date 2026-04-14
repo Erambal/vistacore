@@ -9,7 +9,11 @@ import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonWriter
 import com.vistacore.launcher.data.PrefsManager
 import com.vistacore.launcher.iptv.Channel
+import com.vistacore.launcher.iptv.ContentSource
+import com.vistacore.launcher.iptv.ContentType
 import com.vistacore.launcher.iptv.DispatcharrVodClient
+import com.vistacore.launcher.iptv.JellyfinAuth
+import com.vistacore.launcher.iptv.JellyfinClient
 import com.vistacore.launcher.iptv.M3UParser
 import com.vistacore.launcher.iptv.XtreamAuth
 import com.vistacore.launcher.iptv.XtreamClient
@@ -116,6 +120,8 @@ class ChannelUpdateWorker(
                         var category = "Uncategorized"; var number = 0
                         var contentType = com.vistacore.launcher.iptv.ContentType.LIVE
                         var epgId = ""
+                        var source = ContentSource.IPTV
+                        var year = 0
                         while (reader.hasNext()) {
                             val key = reader.nextName()
                             // Handle null JSON values safely
@@ -135,11 +141,16 @@ class ChannelUpdateWorker(
                                     contentType = try { com.vistacore.launcher.iptv.ContentType.valueOf(ct) } catch (_: Exception) { com.vistacore.launcher.iptv.ContentType.LIVE }
                                 }
                                 "epgId" -> epgId = reader.nextString()
+                                "source" -> {
+                                    val s = reader.nextString()
+                                    source = try { ContentSource.valueOf(s) } catch (_: Exception) { ContentSource.IPTV }
+                                }
+                                "year" -> year = reader.nextInt()
                                 else -> reader.skipValue()
                             }
                         }
                         reader.endObject()
-                        channels.add(Channel(id, name, streamUrl, logoUrl, category, number, contentType, epgId))
+                        channels.add(Channel(id, name, streamUrl, logoUrl, category, number, contentType, epgId, source, year))
                     }
                     reader.endArray()
                 }
@@ -170,6 +181,8 @@ class ChannelUpdateWorker(
                     writer.name("number").value(ch.number)
                     writer.name("contentType").value(ch.contentType.name)
                     writer.name("epgId").value(ch.epgId ?: "")
+                    writer.name("source").value(ch.source.name)
+                    writer.name("year").value(ch.year.toLong())
                     writer.endObject()
                 }
                 writer.endArray()
@@ -205,30 +218,106 @@ class ChannelUpdateWorker(
     override suspend fun doWork(): Result {
         val prefs = PrefsManager(applicationContext)
 
-        if (!prefs.hasIptvConfig()) {
+        if (!prefs.hasIptvConfig() && !prefs.hasJellyfinConfig()) {
             return Result.success()
         }
 
         return try {
-            val channels = when (prefs.sourceType) {
-                PrefsManager.SOURCE_M3U -> M3UParser().parse(prefs.m3uUrl)
-                PrefsManager.SOURCE_XTREAM -> {
-                    val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
-                    val xc = XtreamClient(auth)
-                    val live = xc.getChannels()
-                    val movies = try { xc.getMovies() } catch (_: Exception) { emptyList() }
-                    val series = try { xc.getSeries() } catch (_: Exception) { emptyList() }
-                    live + movies + series
+            val iptvChannels: List<Channel> = if (prefs.hasIptvConfig()) {
+                when (prefs.sourceType) {
+                    PrefsManager.SOURCE_M3U -> try { M3UParser().parse(prefs.m3uUrl) } catch (_: Exception) { emptyList() }
+                    PrefsManager.SOURCE_XTREAM -> {
+                        val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
+                        val xc = XtreamClient(auth)
+                        val live = try { xc.getChannels() } catch (_: Exception) { emptyList() }
+                        val movies = try { xc.getMovies() } catch (_: Exception) { emptyList() }
+                        val series = try { xc.getSeries() } catch (_: Exception) { emptyList() }
+                        live + movies + series
+                    }
+                    else -> emptyList()
                 }
-                else -> emptyList()
-            }
+            } else emptyList()
 
-            cacheChannels(applicationContext, channels)
-            Log.d(TAG, "Channel update complete: ${channels.size} channels cached")
+            val jellyfinChannels: List<Channel> = if (prefs.hasJellyfinConfig()) {
+                try {
+                    val jf = JellyfinClient(
+                        JellyfinAuth(prefs.jellyfinServer, prefs.jellyfinUsername, prefs.jellyfinPassword)
+                    )
+                    jf.authenticate()
+                    val movies = try { jf.getMovies() } catch (e: Exception) {
+                        Log.e(TAG, "Jellyfin movies failed: ${e.message}"); emptyList()
+                    }
+                    val series = try { jf.getSeries() } catch (e: Exception) {
+                        Log.e(TAG, "Jellyfin series failed: ${e.message}"); emptyList()
+                    }
+                    movies + series
+                } catch (e: Exception) {
+                    Log.e(TAG, "Jellyfin fetch failed: ${e.message}")
+                    emptyList()
+                }
+            } else emptyList()
+
+            val merged = mergeWithJellyfinPreference(iptvChannels, jellyfinChannels)
+
+            cacheChannels(applicationContext, merged)
+            Log.d(TAG, "Channel update complete: ${merged.size} channels cached (iptv=${iptvChannels.size}, jellyfin=${jellyfinChannels.size})")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Channel update failed: ${e.message}")
             Result.retry()
         }
+    }
+
+    /**
+     * Merge IPTV and Jellyfin channels. On duplicate match (same normalized title+year
+     * for movies, same normalized name for series), the Jellyfin entry wins. Live TV
+     * from IPTV is always kept untouched since Jellyfin has no live equivalent.
+     */
+    private fun mergeWithJellyfinPreference(
+        iptv: List<Channel>,
+        jellyfin: List<Channel>
+    ): List<Channel> {
+        if (jellyfin.isEmpty()) return iptv
+
+        val jellyfinKeys = jellyfin
+            .filter { it.contentType == ContentType.MOVIE || it.contentType == ContentType.SERIES }
+            .map { dedupKey(it) }
+            .toHashSet()
+
+        val filteredIptv = iptv.filter { ch ->
+            if (ch.contentType == ContentType.LIVE) return@filter true
+            dedupKey(ch) !in jellyfinKeys
+        }
+        return jellyfin + filteredIptv
+    }
+
+    private fun dedupKey(ch: Channel): String {
+        val normalized = normalizeTitle(ch.name)
+        return if (ch.contentType == ContentType.SERIES) {
+            "series|$normalized"
+        } else {
+            val year = if (ch.year > 0) ch.year.toString() else extractYear(ch.name)?.toString() ?: ""
+            "movie|$normalized|$year"
+        }
+    }
+
+    private fun normalizeTitle(raw: String): String {
+        var s = raw.lowercase()
+        // Strip year in parentheses or trailing
+        s = s.replace(Regex("\\(\\d{4}\\)"), " ")
+        s = s.replace(Regex("\\b(19|20)\\d{2}\\b"), " ")
+        // Strip common quality / source tags
+        s = s.replace(Regex("\\b(4k|uhd|hdr|hdr10|dolby|dv|1080p|720p|480p|2160p|x265|x264|hevc|web[- ]?dl|bluray|bdrip|remux)\\b"), " ")
+        // Strip leading "the "
+        s = s.replace(Regex("^the\\s+"), "")
+        // Remove punctuation
+        s = s.replace(Regex("[^a-z0-9]+"), " ").trim()
+        s = s.replace(Regex("\\s+"), " ")
+        return s
+    }
+
+    private fun extractYear(name: String): Int? {
+        val m = Regex("(19|20)\\d{2}").find(name) ?: return null
+        return m.value.toIntOrNull()
     }
 }

@@ -321,7 +321,36 @@ class VODBrowserActivity : BaseActivity() {
                 item.id.removePrefix("xt_series_").toIntOrNull()
             } else null
 
-            if (xtreamSeriesId != null) {
+            // Jellyfin series: fetch episodes from Jellyfin API
+            val jellyfinSeriesId = if (item.id.startsWith("jf_series_")) {
+                item.id.removePrefix("jf_series_")
+            } else null
+
+            if (jellyfinSeriesId != null) {
+                showLoading(true)
+                scope.launch {
+                    val episodes = withContext(Dispatchers.IO) {
+                        try {
+                            val prefs = PrefsManager(this@VODBrowserActivity)
+                            val jf = com.vistacore.launcher.iptv.JellyfinClient(
+                                com.vistacore.launcher.iptv.JellyfinAuth(
+                                    prefs.jellyfinServer, prefs.jellyfinUsername, prefs.jellyfinPassword
+                                )
+                            )
+                            jf.authenticate()
+                            jf.getEpisodes(jellyfinSeriesId)
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
+                    }
+                    showLoading(false)
+                    if (episodes.isNotEmpty()) {
+                        ShowDetailActivity.launch(this@VODBrowserActivity, showName, item.category, item.logoUrl, episodes)
+                    } else {
+                        Toast.makeText(this@VODBrowserActivity, "Could not load episodes", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else if (xtreamSeriesId != null) {
                 showLoading(true)
                 scope.launch {
                     val episodes = withContext(Dispatchers.IO) {
@@ -526,6 +555,7 @@ class PosterAdapter(
         val image: ImageView = itemView.findViewById(R.id.poster_image)
         val title: TextView = itemView.findViewById(R.id.poster_title)
         val focusBorder: View = itemView.findViewById(R.id.poster_focus_border)
+        val sourceBadge: ImageView = itemView.findViewById(R.id.poster_source_badge)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -546,6 +576,13 @@ class PosterAdapter(
         } else {
             holder.image.setImageResource(R.drawable.ic_movies)
             holder.image.scaleType = ImageView.ScaleType.CENTER
+        }
+
+        if (item.source == com.vistacore.launcher.iptv.ContentSource.JELLYFIN) {
+            holder.sourceBadge.setImageResource(R.drawable.ic_source_jellyfin)
+            holder.sourceBadge.visibility = View.VISIBLE
+        } else {
+            holder.sourceBadge.visibility = View.GONE
         }
 
         holder.itemView.setOnClickListener { activity.onItemClicked(item) }

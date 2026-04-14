@@ -47,6 +47,9 @@ class PrefsManager(context: Context) {
         private const val KEY_FILTER_SLURS = "filter_slurs"
         private const val KEY_FILTER_SEXUAL_DIALOGUE = "filter_sexual_dialogue"
         private const val KEY_LIVE_TV_STYLE = "live_tv_style"
+        private const val KEY_JELLYFIN_SERVER = "jellyfin_server"
+        private const val KEY_JELLYFIN_USERNAME = "jellyfin_username"
+        private const val KEY_JELLYFIN_PASSWORD = "jellyfin_password"
 
         // Live TV style constants
         const val LIVE_TV_CLASSIC = "classic"
@@ -290,4 +293,20 @@ class PrefsManager(context: Context) {
             else -> false
         }
     }
+
+    /** Jellyfin server base URL, e.g. http://192.168.1.50:8096 */
+    var jellyfinServer: String
+        get() = prefs.getString(KEY_JELLYFIN_SERVER, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_JELLYFIN_SERVER, value).apply()
+
+    var jellyfinUsername: String
+        get() = prefs.getString(KEY_JELLYFIN_USERNAME, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_JELLYFIN_USERNAME, value).apply()
+
+    var jellyfinPassword: String
+        get() = prefs.getString(KEY_JELLYFIN_PASSWORD, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_JELLYFIN_PASSWORD, value).apply()
+
+    fun hasJellyfinConfig(): Boolean =
+        jellyfinServer.isNotBlank() && jellyfinUsername.isNotBlank()
 }

@@ -86,7 +86,7 @@
             android:orientation="vertical"
             android:background="#DD0A0A0A">
 
-            <androidx.recyclerview.widget.RecyclerView
+            <com.vistacore.launcher.ui.FocusTrappedRecyclerView
                 android:id="@+id/sh_category_chips"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"

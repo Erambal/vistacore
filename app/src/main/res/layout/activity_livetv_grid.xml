@@ -106,7 +106,7 @@
         </LinearLayout>
 
         <!-- Category tabs -->
-        <androidx.recyclerview.widget.RecyclerView
+        <com.vistacore.launcher.ui.FocusTrappedRecyclerView
             android:id="@+id/grid_category_chips"
             android:layout_width="match_parent"
             android:layout_height="52dp"

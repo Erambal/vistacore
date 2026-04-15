@@ -32,7 +32,7 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
     private lateinit var channelList: RecyclerView
     private lateinit var loadingView: View
 
-    private var epgAdapter: EpgRowAdapter? = null
+    private var epgAdapter: LiveTVChannelRowAdapter? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,7 +85,7 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
     }
 
     private fun refreshList() {
-        epgAdapter = EpgRowAdapter(displayedChannels, epgData, favoritesManager) { ch ->
+        epgAdapter = LiveTVChannelRowAdapter(displayedChannels, epgData, favoritesManager) { ch ->
             if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
         }
         channelList.adapter = epgAdapter
@@ -111,12 +111,12 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
     }
 }
 
-class EpgRowAdapter(
+class LiveTVChannelRowAdapter(
     private val channels: List<Channel>,
     private val epgData: EpgData?,
     private val favoritesManager: com.vistacore.launcher.data.FavoritesManager,
     private val onClick: (Channel) -> Unit
-) : RecyclerView.Adapter<EpgRowAdapter.VH>() {
+) : RecyclerView.Adapter<LiveTVChannelRowAdapter.VH>() {
 
     inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val number: TextView = itemView.findViewById(R.id.lvrow_number)

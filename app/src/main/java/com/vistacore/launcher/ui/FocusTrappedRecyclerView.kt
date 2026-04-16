@@ -46,10 +46,17 @@ class FocusTrappedRecyclerView @JvmOverloads constructor(
         if (vh != null) {
             vh.itemView.requestFocus()
         } else {
-            lm.scrollToPosition(target)
-            post {
-                findViewHolderForAdapterPosition(target)?.itemView?.requestFocus()
-            }
+            // smoothScrollToPosition ensures the item is scrolled into view;
+            // the scroll listener fires after layout completes so the VH exists.
+            smoothScrollToPosition(target)
+            addOnScrollListener(object : OnScrollListener() {
+                override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                    if (newState == SCROLL_STATE_IDLE) {
+                        rv.removeOnScrollListener(this)
+                        findViewHolderForAdapterPosition(target)?.itemView?.requestFocus()
+                    }
+                }
+            })
         }
         return true
     }

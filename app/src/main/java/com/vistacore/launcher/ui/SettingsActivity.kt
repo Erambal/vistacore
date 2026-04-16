@@ -11,6 +11,7 @@ import android.widget.CheckBox
 import android.widget.CompoundButton
 import android.widget.ImageButton
 import android.widget.SeekBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -34,6 +35,11 @@ class SettingsActivity : BaseActivity() {
     private lateinit var prefs: PrefsManager
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    // Nav rail items and corresponding content sections
+    private lateinit var navItems: List<TextView>
+    private lateinit var sections: List<View>
+    private var selectedNavIndex = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivitySettingsBinding.inflate(layoutInflater)
@@ -41,9 +47,8 @@ class SettingsActivity : BaseActivity() {
 
         prefs = PrefsManager(this)
 
+        setupNavigation()
         loadSavedSettings()
-        setupCollapsibleSections()
-        setupHomeScreenApps()
         setupSourceToggle()
         setupButtons()
         setupScreenSaver()
@@ -61,36 +66,68 @@ class SettingsActivity : BaseActivity() {
         setupLanguage()
         setupPinLock()
         setupAppUpdate()
+        setupHomeScreenApps()
+
+        // Show version in nav rail
+        try {
+            val versionName = packageManager.getPackageInfo(packageName, 0).versionName
+            binding.navVersionLabel.text = "VistaCore v$versionName"
+        } catch (_: Exception) {}
     }
 
-    private fun setupCollapsibleSections() {
-        fun toggle(header: android.widget.TextView, body: View) {
-            header.setOnClickListener {
-                val visible = body.visibility == View.VISIBLE
-                body.visibility = if (visible) View.GONE else View.VISIBLE
-                val arrow = if (visible) "▸" else "▾"
-                val label = header.text.toString().substring(3) // strip old arrow + spaces
-                header.text = "$arrow  $label"
-                // Auto-focus the first focusable child when expanding
-                if (!visible) {
-                    body.post {
-                        val first = body.findFocus() ?: findFirstFocusable(body)
-                        first?.requestFocus()
-                    }
-                }
+    // ====================== NAVIGATION ======================
+
+    private fun setupNavigation() {
+        navItems = listOf(
+            binding.navConnections,
+            binding.navLivetv,
+            binding.navMovies,
+            binding.navFiltering,
+            binding.navHomescreen,
+            binding.navAppearance,
+            binding.navSystem
+        )
+
+        sections = listOf(
+            binding.sectionConnections,
+            binding.sectionLivetv,
+            binding.sectionMovies,
+            binding.sectionFiltering,
+            binding.sectionHomescreen,
+            binding.sectionAppearance,
+            binding.sectionSystem
+        )
+
+        navItems.forEachIndexed { index, nav ->
+            nav.setOnClickListener { selectSection(index) }
+            nav.setOnFocusChangeListener { v, hasFocus ->
+                if (hasFocus) selectSection(index)
+                MainActivity.animateFocus(v, hasFocus)
             }
-            header.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         }
 
-        toggle(binding.headerApps, binding.bodyApps)
-        toggle(binding.headerIptv, binding.bodyIptv)
-        toggle(binding.headerEpg, binding.bodyEpg)
-        toggle(binding.headerContent, binding.bodyContent)
-        toggle(binding.headerFiltering, binding.bodyFiltering)
-        toggle(binding.headerDisplay, binding.bodyDisplay)
-        toggle(binding.headerAdvanced, binding.bodyAdvanced)
-        toggle(binding.headerSports, binding.bodySports)
+        // Start with first section selected
+        selectSection(0)
     }
+
+    private fun selectSection(index: Int) {
+        selectedNavIndex = index
+
+        // Hide all sections, show selected
+        sections.forEachIndexed { i, section ->
+            section.visibility = if (i == index) View.VISIBLE else View.GONE
+        }
+
+        // Update nav item activated state (for the drawable selector)
+        navItems.forEachIndexed { i, nav ->
+            nav.isActivated = (i == index)
+        }
+
+        // Scroll to top of the newly-shown section
+        (sections[index] as? android.widget.ScrollView)?.scrollTo(0, 0)
+    }
+
+    // ====================== SETTINGS LOGIC ======================
 
     private fun loadSavedSettings() {
         when (prefs.sourceType) {
@@ -976,17 +1013,6 @@ class SettingsActivity : BaseActivity() {
         binding.statusMessage.text = message
         binding.statusMessage.setTextColor(getColor(if (success) R.color.status_online else R.color.status_offline))
         binding.statusMessage.visibility = View.VISIBLE
-    }
-
-    private fun findFirstFocusable(view: View): View? {
-        if (view.isFocusable) return view
-        if (view is android.view.ViewGroup) {
-            for (i in 0 until view.childCount) {
-                val found = findFirstFocusable(view.getChildAt(i))
-                if (found != null) return found
-            }
-        }
-        return null
     }
 
     override fun onDestroy() {

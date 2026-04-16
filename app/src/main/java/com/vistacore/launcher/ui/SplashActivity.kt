@@ -31,6 +31,7 @@ import com.vistacore.launcher.iptv.*
 import com.vistacore.launcher.system.AppUpdateManager
 import com.vistacore.launcher.system.AppUpdateWorker
 import com.vistacore.launcher.system.ChannelUpdateWorker
+import com.vistacore.launcher.system.DeviceActivationManager
 import kotlinx.coroutines.*
 
 class SplashActivity : BaseActivity() {
@@ -289,6 +290,26 @@ class SplashActivity : BaseActivity() {
             }, 1000)
             return
         }
+
+        // Check device activation
+        scope.launch {
+            val activationManager = DeviceActivationManager(this@SplashActivity)
+            val active = activationManager.isDeviceActive()
+            // Register device so admin can see it in the dashboard
+            activationManager.registerDevice()
+
+            if (!active) {
+                startActivity(Intent(this@SplashActivity, LockScreenActivity::class.java))
+                finish()
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+                return@launch
+            }
+
+            continueLoading(prefs, startTime)
+        }
+    }
+
+    private fun continueLoading(prefs: PrefsManager, startTime: Long) {
 
         // Schedule periodic app update checks
         if (prefs.appAutoUpdateEnabled) {

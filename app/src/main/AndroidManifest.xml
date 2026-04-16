@@ -84,6 +84,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Lock Screen (device deactivated by admin) -->
+        <activity
+            android:name=".ui.LockScreenActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.VistaCore.Player" />
+
         <!-- Setup Wizard (first run) -->
         <activity
             android:name=".ui.SetupActivity"

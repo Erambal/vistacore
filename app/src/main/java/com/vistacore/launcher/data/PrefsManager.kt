@@ -51,6 +51,9 @@ class PrefsManager(context: Context) {
         private const val KEY_JELLYFIN_SERVER = "jellyfin_server"
         private const val KEY_JELLYFIN_USERNAME = "jellyfin_username"
         private const val KEY_JELLYFIN_PASSWORD = "jellyfin_password"
+        private const val KEY_ACTIVATION_SERVER = "activation_server_url"
+        private const val KEY_DEVICE_ACTIVE = "device_activation_cached"
+        private const val KEY_ACTIVATION_LAST_CHECK = "device_activation_last_check"
 
         // Live TV style constants
         const val LIVE_TV_CLASSIC = "classic"
@@ -310,4 +313,18 @@ class PrefsManager(context: Context) {
 
     fun hasJellyfinConfig(): Boolean =
         jellyfinServer.isNotBlank() && jellyfinUsername.isNotBlank()
+
+    // ====================== Device Activation ======================
+
+    var activationServer: String
+        get() = prefs.getString(KEY_ACTIVATION_SERVER, "https://pair.fixesto.com") ?: ""
+        set(value) = prefs.edit().putString(KEY_ACTIVATION_SERVER, value).apply()
+
+    var deviceActiveCached: Boolean
+        get() = prefs.getBoolean(KEY_DEVICE_ACTIVE, true) // default active for first launch
+        set(value) = prefs.edit().putBoolean(KEY_DEVICE_ACTIVE, value).apply()
+
+    var activationLastCheck: Long
+        get() = prefs.getLong(KEY_ACTIVATION_LAST_CHECK, 0L)
+        set(value) = prefs.edit().putLong(KEY_ACTIVATION_LAST_CHECK, value).apply()
 }

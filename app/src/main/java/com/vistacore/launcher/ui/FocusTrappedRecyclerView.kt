@@ -44,16 +44,30 @@ class FocusTrappedRecyclerView @JvmOverloads constructor(
 
         val vh = findViewHolderForAdapterPosition(target)
         if (vh != null) {
+            // VH exists (possibly clipped at the edge) — focus it and
+            // scroll so it's fully visible, not just barely peeking in.
             vh.itemView.requestFocus()
+            smoothScrollToPosition(target)
         } else {
-            // smoothScrollToPosition ensures the item is scrolled into view;
-            // the scroll listener fires after layout completes so the VH exists.
+            // VH not yet laid out — scroll it in, then grab focus as
+            // soon as it appears via onScrolled (fires every frame).
             smoothScrollToPosition(target)
             addOnScrollListener(object : OnScrollListener() {
+                private var focused = false
+                override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                    if (!focused) {
+                        findViewHolderForAdapterPosition(target)?.itemView?.let {
+                            it.requestFocus()
+                            focused = true
+                        }
+                    }
+                }
                 override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
                     if (newState == SCROLL_STATE_IDLE) {
                         rv.removeOnScrollListener(this)
-                        findViewHolderForAdapterPosition(target)?.itemView?.requestFocus()
+                        if (!focused) {
+                            findViewHolderForAdapterPosition(target)?.itemView?.requestFocus()
+                        }
                     }
                 }
             })

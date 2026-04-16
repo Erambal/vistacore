@@ -39,6 +39,7 @@ class PrefsManager(context: Context) {
         private const val KEY_PREFERRED_SUBTITLE_LANG = "preferred_subtitle_language"
         private const val KEY_PREFERRED_VIDEO_QUALITY = "preferred_video_quality"
         private const val KEY_OPENSUBTITLES_API_KEY = "opensubtitles_api_key"
+        private const val DEFAULT_OPENSUBTITLES_KEY = "eryRgSLZWKYfsZBvFwVVq7XCeg6rfFde"
         private const val KEY_FILTER_SERVER_URL = "filter_server_url"
         private const val KEY_FILTER_SERVER_API_KEY = "filter_server_api_key"
         private const val KEY_CONTENT_FILTER_ENABLED = "content_filter_enabled"
@@ -283,7 +284,7 @@ class PrefsManager(context: Context) {
 
     /** OpenSubtitles.com API key for subtitle search. */
     var openSubtitlesApiKey: String
-        get() = prefs.getString(KEY_OPENSUBTITLES_API_KEY, "") ?: ""
+        get() = prefs.getString(KEY_OPENSUBTITLES_API_KEY, DEFAULT_OPENSUBTITLES_KEY) ?: ""
         set(value) = prefs.edit().putString(KEY_OPENSUBTITLES_API_KEY, value).apply()
 
     fun hasIptvConfig(): Boolean {

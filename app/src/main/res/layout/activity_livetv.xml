@@ -84,21 +84,22 @@
                     android:fontFamily="sans-serif" />
             </LinearLayout>
 
-            <!-- Category filter chips -->
-            <com.vistacore.launcher.ui.FocusTrappedRecyclerView
+            <!-- Category picker (opens modal list on click) -->
+            <Button
                 android:id="@+id/category_chips"
                 android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:orientation="horizontal"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:paddingTop="4dp"
-                android:paddingBottom="4dp"
-                android:clipToPadding="false"
-                android:background="#11FFFFFF"
-                android:descendantFocusability="afterDescendants"
-                android:requiresFadingEdge="horizontal"
-                android:fadingEdgeLength="40dp" />
+                android:layout_height="44dp"
+                android:textSize="14sp"
+                android:textColor="@color/text_primary"
+                android:fontFamily="sans-serif-medium"
+                android:background="@drawable/card_selector"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:gravity="center_vertical|start"
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
 
             <!-- Channel list -->
             <FrameLayout

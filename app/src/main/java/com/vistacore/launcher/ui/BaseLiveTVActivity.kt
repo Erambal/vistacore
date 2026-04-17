@@ -346,6 +346,27 @@ abstract class BaseLiveTVActivity : BaseActivity() {
     /** Called when category list changes (e.g. after favorites/recents added). */
     protected open fun onCategoriesChanged(categories: List<String>) {}
 
+    /**
+     * Bind a Button as the category picker. The button's label reflects the
+     * current category and tapping it opens a modal list of all categories.
+     * Used by every LiveTV layout in place of the old horizontal chip strip —
+     * one focusable element, zero scroll, no lost cursor.
+     */
+    protected fun bindCategoryButton(button: android.widget.Button, categories: List<String>) {
+        button.text = "Category: $selectedCategory  ▾"
+        button.setOnClickListener {
+            val current = categories.indexOf(selectedCategory).coerceAtLeast(0)
+            androidx.appcompat.app.AlertDialog.Builder(this, com.vistacore.launcher.R.style.Theme_VistaCore_Dialog)
+                .setTitle("Choose Category")
+                .setSingleChoiceItems(categories.toTypedArray(), current) { dialog, which ->
+                    selectCategory(categories[which])
+                    dialog.dismiss()
+                }
+                .show()
+        }
+        button.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+    }
+
     /** Called when the displayed channel list changes (filter/category). */
     protected open fun onDisplayedChannelsChanged() {}
 

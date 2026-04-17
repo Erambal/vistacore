@@ -35,8 +35,6 @@ class LiveTVClassicActivity : BaseLiveTVActivity() {
         setContentView(binding.root)
 
         binding.channelList.layoutManager = LinearLayoutManager(this)
-        binding.categoryChips.layoutManager =
-            LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
 
         setupSearchBar()
         setupButtons()
@@ -87,7 +85,7 @@ class LiveTVClassicActivity : BaseLiveTVActivity() {
     }
 
     override fun onCategoriesChanged(categories: List<String>) {
-        binding.categoryChips.adapter = CategoryChipAdapter(categories, selectedCategory) { selectCategory(it) }
+        bindCategoryButton(binding.categoryChips, categories)
     }
 
     override fun onDisplayedChannelsChanged() {
@@ -275,39 +273,3 @@ class LiveChannelAdapter(
     override fun getItemCount() = channels.size
 }
 
-// --- Category Chip Adapter ---
-
-class CategoryChipAdapter(
-    private val categories: List<String>,
-    private val selected: String,
-    private val onClick: (String) -> Unit
-) : RecyclerView.Adapter<CategoryChipAdapter.VH>() {
-
-    inner class VH(val label: TextView) : RecyclerView.ViewHolder(label)
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_category_chip, parent, false) as TextView
-        return VH(view)
-    }
-
-    override fun onBindViewHolder(holder: VH, position: Int) {
-        val cat = categories[position]
-        holder.label.text = cat
-        holder.label.isSelected = cat == selected
-        holder.label.setTextColor(holder.label.context.getColor(
-            if (cat == selected) R.color.accent_gold else R.color.text_primary
-        ))
-        holder.label.setOnClickListener(null)
-        holder.label.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN &&
-                (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
-                onClick(cat)
-                true
-            } else false
-        }
-        holder.label.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
-    }
-
-    override fun getItemCount() = categories.size
-}

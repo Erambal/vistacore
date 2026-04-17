@@ -79,6 +79,19 @@ class ChannelUpdateWorker(
             WorkManager.getInstance(context).enqueue(request)
         }
 
+        /** Wipe all IPTV content caches and schedule an immediate re-fetch. */
+        fun clearCachesAndRefresh(context: Context) {
+            val names = listOf(
+                CACHE_FILE, "$CACHE_FILE.gz",
+                MOVIES_CACHE_FILE, "$MOVIES_CACHE_FILE.gz",
+                SERIES_CACHE_FILE, "$SERIES_CACHE_FILE.gz",
+                "show_names.bin"
+            )
+            names.forEach { File(context.filesDir, it).delete() }
+            com.vistacore.launcher.data.ContentCache.clear()
+            refreshNow(context)
+        }
+
         fun getLastUpdateTime(context: Context): Long {
             return context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE)
                 .getLong(KEY_LAST_UPDATE, 0)

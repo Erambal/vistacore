@@ -14,13 +14,13 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 /**
- * Remote Help Mode — allows a family member to remotely configure
+ * Remote Help Mode — allows a Technical Provider to remotely configure
  * IPTV settings by generating/entering a pairing code.
  *
  * How to set up:
  *   1. Deploy the relay server (server/ folder) to any Node.js host
  *   2. Enter the relay server URL here
- *   3. Share the code with your family member
+ *   3. Share the code with your Technical Provider
  *   4. They open the relay URL in a browser, enter the code + config
  *   5. Press "Wait for Config" and it auto-applies
  *
@@ -66,7 +66,7 @@ class RemoteHelpActivity : BaseActivity() {
 
     private fun updateRelayDisplay(url: String) {
         if (url.isNotBlank()) {
-            binding.relayUrlDisplay.text = "Family member opens: $url"
+            binding.relayUrlDisplay.text = "Technical Provider opens: $url"
             binding.relayUrlDisplay.visibility = View.VISIBLE
         } else {
             binding.relayUrlDisplay.text = "No relay server set. Set one below or use manual paste."
@@ -136,7 +136,7 @@ class RemoteHelpActivity : BaseActivity() {
         // Cancel any existing listener before starting a new one
         listeningJob?.cancel()
 
-        binding.statusText.text = "Waiting for your family member to send config…"
+        binding.statusText.text = "Waiting for your Technical Provider to send config…"
         binding.statusText.setTextColor(getColor(R.color.accent_gold))
         binding.statusText.visibility = View.VISIBLE
         binding.listeningProgress.visibility = View.VISIBLE
@@ -191,6 +191,8 @@ class RemoteHelpActivity : BaseActivity() {
     }
 
     private fun applyConfig(config: RemoteConfig) {
+        val beforeFingerprint = sourceFingerprint()
+
         if (config.m3u_url?.isNotBlank() == true) {
             prefs.sourceType = PrefsManager.SOURCE_M3U
             prefs.m3uUrl = config.m3u_url
@@ -207,7 +209,16 @@ class RemoteHelpActivity : BaseActivity() {
         if (config.epg_url?.isNotBlank() == true) {
             prefs.epgUrl = config.epg_url
         }
+
+        // If the IPTV source or credentials changed, wipe cached channels/movies/series
+        // and re-fetch. Otherwise the app keeps showing the old provider's content.
+        if (sourceFingerprint() != beforeFingerprint) {
+            com.vistacore.launcher.system.ChannelUpdateWorker.clearCachesAndRefresh(this)
+        }
     }
+
+    private fun sourceFingerprint(): String =
+        "${prefs.sourceType}|${prefs.m3uUrl}|${prefs.xtreamServer}|${prefs.xtreamUsername}|${prefs.xtreamPassword}"
 
     override fun onDestroy() {
         super.onDestroy()

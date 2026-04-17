@@ -1,10 +1,14 @@
 package com.vistacore.launcher.ui
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -27,7 +31,8 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
     private lateinit var channelNumber: TextView
     private lateinit var channelName: TextView
     private lateinit var nowPlaying: TextView
-    private lateinit var categoryChips: RecyclerView
+    private lateinit var channelSearch: EditText
+    private lateinit var categoryPicker: Button
     private lateinit var channelRibbon: RecyclerView
     private lateinit var loadingView: View
 
@@ -45,12 +50,22 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
         channelNumber = findViewById(R.id.imm_channel_number)
         channelName = findViewById(R.id.imm_channel_name)
         nowPlaying = findViewById(R.id.imm_now_playing)
-        categoryChips = findViewById(R.id.imm_category_chips)
+        channelSearch = findViewById(R.id.imm_channel_search)
+        categoryPicker = findViewById(R.id.imm_category_chips)
         channelRibbon = findViewById(R.id.imm_channel_ribbon)
         loadingView = findViewById(R.id.imm_loading)
 
-        categoryChips.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         channelRibbon.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+
+        channelSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                filterChannels(s?.toString()?.trim() ?: "")
+            }
+        })
+
+        findViewById<Button>(R.id.imm_btn_number_pad).setOnClickListener { showNumberPadOverlay() }
 
         setupPlayer(player_view)
         loadChannels()
@@ -64,7 +79,7 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
     }
 
     override fun onCategoriesChanged(categories: List<String>) {
-        categoryChips.adapter = CategoryChipAdapter(categories, selectedCategory) { selectCategory(it) }
+        bindCategoryButton(categoryPicker, categories)
     }
 
     override fun onDisplayedChannelsChanged() {

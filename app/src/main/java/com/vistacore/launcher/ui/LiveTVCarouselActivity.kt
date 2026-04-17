@@ -1,10 +1,13 @@
 package com.vistacore.launcher.ui
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -21,6 +24,7 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
     private lateinit var heroPlayer: androidx.media3.ui.PlayerView
     private lateinit var heroTitle: TextView
     private lateinit var heroSubtitle: TextView
+    private lateinit var channelSearch: EditText
     private lateinit var rowsList: RecyclerView
     private lateinit var loadingView: View
 
@@ -35,10 +39,19 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
         heroPlayer = findViewById(R.id.car_hero_player)
         heroTitle = findViewById(R.id.car_hero_title)
         heroSubtitle = findViewById(R.id.car_hero_subtitle)
+        channelSearch = findViewById(R.id.car_channel_search)
         rowsList = findViewById(R.id.car_rows)
         loadingView = findViewById(R.id.car_loading)
 
         rowsList.layoutManager = LinearLayoutManager(this)
+
+        channelSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                filterChannels(s?.toString()?.trim() ?: "")
+            }
+        })
 
         findViewById<Button>(R.id.car_btn_fullscreen).setOnClickListener {
             currentChannel?.let { goFullScreen(it) }
@@ -54,7 +67,10 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
     }
 
     override fun onCategoriesChanged(categories: List<String>) {
-        // Rows are derived from channels directly, no separate chips
+        rebuildRows()
+    }
+
+    override fun onDisplayedChannelsChanged() {
         rebuildRows()
     }
 
@@ -80,19 +96,20 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
 
     private fun rebuildRows() {
         val r = mutableListOf<Row>()
+        val source = displayedChannels
 
         // Favorites row
-        val favs = favoritesManager.filterFavorites(allChannels)
+        val favs = favoritesManager.filterFavorites(source)
         if (favs.isNotEmpty()) r.add(Row("Favorites", favs))
 
         // Recents row
-        val recs = recents.getRecentChannels(allChannels)
+        val recs = recents.getRecentChannels(source)
         if (recs.isNotEmpty()) r.add(Row("Recently Watched", recs))
 
         // Category rows
-        val categories = allChannels.map { it.category }.distinct().sorted()
+        val categories = source.map { it.category }.distinct().sorted()
         for (cat in categories) {
-            val channels = allChannels.filter { it.category == cat }
+            val channels = source.filter { it.category == cat }
             if (channels.isNotEmpty()) r.add(Row(cat, channels))
         }
 

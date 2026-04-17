@@ -1,0 +1,10 @@
+name = "vistacore"
+main = "src/worker.js"
+compatibility_date = "2024-09-23"
+
+[assets]
+directory = "./public"
+
+[vars]
+GOOGLE_CLIENT_ID = "899707943405-6au2o5b11pke3ttm9o7lraddbsc7v0g9.apps.googleusercontent.com"
+# ALLOWED_EMAILS = "you@example.com,family@example.com"  # uncomment to restrict access

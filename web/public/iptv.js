@@ -1,0 +1,567 @@
+/* ═══════════════════════════════════════════
+   VistaCore Web — IPTV Data Service
+   Handles Xtream Codes API + M3U parsing
+   ═══════════════════════════════════════════ */
+
+class IPTVService {
+  constructor() {
+    this.channels = [];
+    this.categories = [];
+    this.movies = [];
+    this.movieCategories = [];
+    this.series = [];
+    this.seriesCategories = [];
+    this.epgData = {};
+    this.xtream = null; // { server, username, password }
+    this.m3uUrl = null;
+    this._loaded = false;
+    this._listeners = [];
+  }
+
+  // ─── Event System ───
+  on(event, fn) {
+    this._listeners.push({ event, fn });
+  }
+  emit(event, data) {
+    this._listeners.filter(l => l.event === event).forEach(l => l.fn(data));
+  }
+
+  // ─── Configuration ───
+  configure(settings) {
+    if (settings.xtreamServer && settings.xtreamUser && settings.xtreamPass) {
+      this.xtream = {
+        server: settings.xtreamServer.replace(/\/+$/, ''),
+        username: settings.xtreamUser,
+        password: settings.xtreamPass
+      };
+    }
+    if (settings.m3u) this.m3uUrl = settings.m3u;
+    if (settings.epg) this.epgUrl = settings.epg;
+  }
+
+  get isConfigured() {
+    return !!(this.xtream || this.m3uUrl);
+  }
+
+  get isLoaded() {
+    return this._loaded;
+  }
+
+  // ─── Xtream API helpers (proxied through worker) ───
+  _xtreamApi(action, params = {}) {
+    const url = new URL('/api/xtream', location.origin);
+    url.searchParams.set('server', this.xtream.server);
+    url.searchParams.set('username', this.xtream.username);
+    url.searchParams.set('password', this.xtream.password);
+    if (action) url.searchParams.set('action', action);
+    for (const [k, v] of Object.entries(params)) {
+      url.searchParams.set(k, v);
+    }
+    return fetch(url.toString())
+      .then(r => {
+        if (!r.ok) throw new Error(`API error: ${r.status}`);
+        return r.json();
+      });
+  }
+
+  // ─── Stream URLs (proxied through worker to avoid CORS) ───
+  _proxyUrl(rawUrl) {
+    return `/api/stream?url=${encodeURIComponent(rawUrl)}`;
+  }
+
+  getLiveStreamUrl(streamId, ext = 'm3u8') {
+    if (this.xtream) {
+      const direct = `${this.xtream.server}/live/${this.xtream.username}/${this.xtream.password}/${streamId}.${ext}`;
+      return this._proxyUrl(direct);
+    }
+    const ch = this.channels.find(c => c.id === streamId);
+    return ch ? this._proxyUrl(ch.url) : null;
+  }
+
+  getMovieStreamUrl(streamId, ext = 'mp4') {
+    if (this.xtream) {
+      const direct = `${this.xtream.server}/movie/${this.xtream.username}/${this.xtream.password}/${streamId}.${ext}`;
+      return this._proxyUrl(direct);
+    }
+    return null;
+  }
+
+  getSeriesStreamUrl(streamId, ext = 'm3u8') {
+    if (this.xtream) {
+      const direct = `${this.xtream.server}/series/${this.xtream.username}/${this.xtream.password}/${streamId}.${ext}`;
+      return this._proxyUrl(direct);
+    }
+    return null;
+  }
+
+  // ─── Load Everything ───
+  async loadAll() {
+    this.emit('loading', { phase: 'Starting...' });
+
+    try {
+      if (this.xtream) {
+        await this._loadXtream();
+      } else if (this.m3uUrl) {
+        await this._loadM3U();
+      } else {
+        throw new Error('No IPTV source configured');
+      }
+      this._loaded = true;
+      this.emit('loaded', {
+        channels: this.channels.length,
+        movies: this.movies.length,
+        series: this.series.length
+      });
+    } catch (err) {
+      this.emit('error', err);
+      throw err;
+    }
+  }
+
+  // ─── Xtream: Load All Data ───
+  async _loadXtream() {
+    // Authenticate first
+    this.emit('loading', { phase: 'Authenticating...' });
+    const auth = await this._xtreamApi(null);
+    if (!auth.user_info) throw new Error('Authentication failed');
+
+    // Load categories + streams in parallel
+    this.emit('loading', { phase: 'Loading channels...' });
+    const [liveCats, liveStreams, vodCats, vodStreams, seriesCats, seriesData] = await Promise.all([
+      this._xtreamApi('get_live_categories'),
+      this._xtreamApi('get_live_streams'),
+      this._xtreamApi('get_vod_categories'),
+      this._xtreamApi('get_vod_streams'),
+      this._xtreamApi('get_series_categories'),
+      this._xtreamApi('get_series'),
+    ]);
+
+    // Parse live channels
+    this.categories = (liveCats || []).map(c => ({
+      id: String(c.category_id),
+      name: c.category_name,
+      count: 0
+    }));
+
+    this.channels = (liveStreams || []).map((s, i) => {
+      const cat = this.categories.find(c => c.id === String(s.category_id));
+      if (cat) cat.count++;
+      return {
+        id: String(s.stream_id),
+        num: s.num || i + 1,
+        name: s.name || 'Unknown',
+        logo: s.stream_icon || '',
+        category: cat ? cat.name : 'Uncategorized',
+        categoryId: String(s.category_id || ''),
+        epgId: s.epg_channel_id || '',
+        url: null, // Built on demand
+        added: s.added || 0
+      };
+    });
+
+    // Parse movies
+    this.movieCategories = (vodCats || []).map(c => ({
+      id: String(c.category_id),
+      name: c.category_name,
+      count: 0
+    }));
+
+    this.movies = (vodStreams || []).map(m => {
+      const cat = this.movieCategories.find(c => c.id === String(m.category_id));
+      if (cat) cat.count++;
+      return {
+        id: String(m.stream_id),
+        name: m.name || 'Unknown',
+        poster: m.stream_icon || '',
+        category: cat ? cat.name : 'Uncategorized',
+        categoryId: String(m.category_id || ''),
+        rating: m.rating || '',
+        added: m.added || 0,
+        containerExtension: m.container_extension || 'mp4',
+        plot: '',
+        cast: '',
+        year: ''
+      };
+    });
+
+    // Parse series
+    this.seriesCategories = (seriesCats || []).map(c => ({
+      id: String(c.category_id),
+      name: c.category_name,
+      count: 0
+    }));
+
+    this.series = (seriesData || []).map(s => {
+      const cat = this.seriesCategories.find(c => c.id === String(s.category_id));
+      if (cat) cat.count++;
+      return {
+        id: String(s.series_id),
+        name: s.name || 'Unknown',
+        poster: s.cover || '',
+        category: cat ? cat.name : 'Uncategorized',
+        categoryId: String(s.category_id || ''),
+        rating: s.rating || '',
+        plot: s.plot || '',
+        cast: s.cast || '',
+        year: s.year || '',
+        backdrop: s.backdrop_path ? s.backdrop_path[0] || '' : ''
+      };
+    });
+
+    this.emit('loading', { phase: `Loaded ${this.channels.length} channels, ${this.movies.length} movies, ${this.series.length} series` });
+  }
+
+  // ─── Load Series Info (seasons/episodes) ───
+  async getSeriesInfo(seriesId) {
+    if (!this.xtream) return null;
+    const data = await this._xtreamApi('get_series_info', { series_id: seriesId });
+    if (!data) return null;
+
+    const seasons = {};
+    const episodes = data.episodes || {};
+    for (const [seasonNum, eps] of Object.entries(episodes)) {
+      seasons[seasonNum] = (eps || []).map(ep => ({
+        id: String(ep.id),
+        episodeNum: ep.episode_num || 0,
+        title: ep.title || `Episode ${ep.episode_num}`,
+        containerExtension: ep.container_extension || 'm3u8',
+        duration: ep.info?.duration || '',
+        plot: ep.info?.plot || '',
+        poster: ep.info?.movie_image || '',
+        rating: ep.info?.rating || ''
+      }));
+    }
+    return {
+      info: data.info || {},
+      seasons
+    };
+  }
+
+  // ─── Load Movie Info ───
+  async getMovieInfo(movieId) {
+    if (!this.xtream) return null;
+    try {
+      const data = await this._xtreamApi('get_vod_info', { vod_id: movieId });
+      if (!data || !data.info) return null;
+      return {
+        ...data.info,
+        plot: data.info.plot || data.info.description || '',
+        cast: data.info.cast || '',
+        director: data.info.director || '',
+        genre: data.info.genre || '',
+        duration: data.info.duration || '',
+        year: data.info.releasedate || data.info.year || '',
+        rating: data.info.rating || '',
+        poster: data.info.movie_image || data.info.stream_icon || ''
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // ─── M3U Parser ───
+  async _loadM3U() {
+    this.emit('loading', { phase: 'Downloading playlist...' });
+    const resp = await fetch(`/api/m3u?url=${encodeURIComponent(this.m3uUrl)}`);
+    if (!resp.ok) throw new Error(`Failed to fetch M3U: ${resp.status}`);
+    const text = await resp.text();
+
+    this.emit('loading', { phase: 'Parsing playlist...' });
+    const lines = text.split('\n');
+    const categorySet = new Map();
+    let currentInfo = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      if (line.startsWith('#EXTINF:')) {
+        // Parse metadata
+        const tvgName = this._extractAttr(line, 'tvg-name');
+        const tvgLogo = this._extractAttr(line, 'tvg-logo');
+        const tvgId = this._extractAttr(line, 'tvg-id');
+        const group = this._extractAttr(line, 'group-title') || 'Uncategorized';
+        // Display name is after the last comma
+        const commaIdx = line.lastIndexOf(',');
+        const displayName = commaIdx >= 0 ? line.substring(commaIdx + 1).trim() : tvgName || 'Unknown';
+
+        currentInfo = {
+          name: displayName || tvgName || 'Unknown',
+          logo: tvgLogo || '',
+          epgId: tvgId || '',
+          category: group
+        };
+      } else if (line && !line.startsWith('#') && currentInfo) {
+        // This is the URL line
+        const category = currentInfo.category;
+        if (!categorySet.has(category)) {
+          categorySet.set(category, { id: category, name: category, count: 0 });
+        }
+        categorySet.get(category).count++;
+
+        // Determine content type from URL and group
+        const lowerUrl = line.toLowerCase();
+        const lowerGroup = category.toLowerCase();
+        let contentType = 'live';
+        if (lowerUrl.includes('/movie/') || lowerGroup.includes('movie') || lowerGroup.includes('film')) {
+          contentType = 'movie';
+        } else if (lowerUrl.includes('/series/') || lowerGroup.includes('series') || lowerGroup.includes('episode')) {
+          contentType = 'series';
+        }
+
+        const entry = {
+          id: `m3u_${this.channels.length + this.movies.length}`,
+          num: this.channels.length + 1,
+          name: currentInfo.name,
+          logo: currentInfo.logo,
+          category: category,
+          categoryId: category,
+          epgId: currentInfo.epgId,
+          url: line,
+          added: 0
+        };
+
+        if (contentType === 'movie') {
+          this.movies.push({
+            ...entry,
+            poster: currentInfo.logo,
+            containerExtension: this._getExtension(line),
+            rating: '', plot: '', cast: '', year: ''
+          });
+        } else if (contentType === 'series') {
+          // For M3U, series episodes are individual entries
+          this.channels.push(entry); // Treat as channels for simplicity
+        } else {
+          this.channels.push(entry);
+        }
+
+        currentInfo = null;
+      }
+    }
+
+    this.categories = Array.from(categorySet.values());
+    this.movieCategories = [...new Set(this.movies.map(m => m.category))].map(name => ({
+      id: name, name, count: this.movies.filter(m => m.category === name).length
+    }));
+  }
+
+  _extractAttr(line, attr) {
+    const regex = new RegExp(`${attr}="([^"]*)"`, 'i');
+    const match = line.match(regex);
+    return match ? match[1] : '';
+  }
+
+  _getExtension(url) {
+    try {
+      const path = new URL(url).pathname;
+      const ext = path.split('.').pop().toLowerCase();
+      return ['mp4', 'mkv', 'avi', 'ts', 'm3u8'].includes(ext) ? ext : 'mp4';
+    } catch {
+      return 'mp4';
+    }
+  }
+
+  // ─── Search ───
+  searchChannels(query) {
+    if (!query || query.length < 2) return this.channels;
+    const q = query.toLowerCase();
+    return this.channels.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      c.category.toLowerCase().includes(q)
+    );
+  }
+
+  searchMovies(query) {
+    if (!query || query.length < 2) return this.movies;
+    const q = query.toLowerCase();
+    return this.movies.filter(m =>
+      m.name.toLowerCase().includes(q) ||
+      m.category.toLowerCase().includes(q)
+    );
+  }
+
+  searchSeries(query) {
+    if (!query || query.length < 2) return this.series;
+    const q = query.toLowerCase();
+    return this.series.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      s.category.toLowerCase().includes(q)
+    );
+  }
+
+  searchAll(query) {
+    return {
+      channels: this.searchChannels(query),
+      movies: this.searchMovies(query),
+      series: this.searchSeries(query)
+    };
+  }
+
+  // ─── Filters ───
+  getChannelsByCategory(categoryId) {
+    if (!categoryId || categoryId === 'all') return this.channels;
+    return this.channels.filter(c => c.categoryId === categoryId);
+  }
+
+  getMoviesByCategory(categoryId) {
+    if (!categoryId || categoryId === 'all') return this.movies;
+    return this.movies.filter(m => m.categoryId === categoryId);
+  }
+
+  getSeriesByCategory(categoryId) {
+    if (!categoryId || categoryId === 'all') return this.series;
+    return this.series.filter(s => s.categoryId === categoryId);
+  }
+
+  // ─── EPG ───
+  async loadEPG(url) {
+    if (!url) return;
+    this.emit('loading', { phase: 'Loading EPG...' });
+    try {
+      const resp = await fetch(`/api/epg?url=${encodeURIComponent(url)}`);
+      if (!resp.ok) return;
+      const text = await resp.text();
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(text, 'text/xml');
+      const programmes = xml.querySelectorAll('programme');
+
+      programmes.forEach(prog => {
+        const channelId = prog.getAttribute('channel') || '';
+        const start = this._parseXmltvDate(prog.getAttribute('start'));
+        const stop = this._parseXmltvDate(prog.getAttribute('stop'));
+        const titleEl = prog.querySelector('title');
+        const descEl = prog.querySelector('desc');
+
+        if (!this.epgData[channelId]) this.epgData[channelId] = [];
+        this.epgData[channelId].push({
+          title: titleEl ? titleEl.textContent : '',
+          description: descEl ? descEl.textContent : '',
+          start, stop
+        });
+      });
+
+      this.emit('loading', { phase: 'EPG loaded' });
+    } catch (err) {
+      console.warn('EPG load failed:', err);
+    }
+  }
+
+  getNowPlaying(channelId, channelName = '') {
+    const now = Date.now();
+    // Try by epgId, then channel name
+    const ids = [channelId, channelName, channelName.replace(/\s*(HD|FHD|4K|UHD|SD)\s*/gi, '').trim()];
+    for (const id of ids) {
+      const progs = this.epgData[id];
+      if (progs) {
+        const current = progs.find(p => p.start <= now && p.stop > now);
+        if (current) {
+          return {
+            ...current,
+            progress: ((now - current.start) / (current.stop - current.start)) * 100
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  _parseXmltvDate(str) {
+    if (!str) return 0;
+    // Format: 20210101120000 +0000
+    const clean = str.replace(/\s.*/, '');
+    const y = clean.slice(0, 4);
+    const m = clean.slice(4, 6);
+    const d = clean.slice(6, 8);
+    const h = clean.slice(8, 10);
+    const min = clean.slice(10, 12);
+    const s = clean.slice(12, 14);
+    return new Date(`${y}-${m}-${d}T${h}:${min}:${s}`).getTime();
+  }
+}
+
+// ─── Favorites Manager ───
+class FavoritesManager {
+  constructor(key = 'vc_favorites') {
+    this.key = key;
+    this._load();
+  }
+  _load() {
+    try {
+      this.items = JSON.parse(localStorage.getItem(this.key) || '[]');
+    } catch { this.items = []; }
+  }
+  _save() {
+    localStorage.setItem(this.key, JSON.stringify(this.items));
+  }
+  has(id) { return this.items.includes(String(id)); }
+  toggle(id) {
+    id = String(id);
+    if (this.has(id)) {
+      this.items = this.items.filter(i => i !== id);
+    } else {
+      this.items.push(id);
+    }
+    this._save();
+    return this.has(id);
+  }
+  getAll() { return [...this.items]; }
+}
+
+// ─── Watch History Manager ───
+class WatchHistoryManager {
+  constructor(key = 'vc_history') {
+    this.key = key;
+    this._load();
+  }
+  _load() {
+    try {
+      this.items = JSON.parse(localStorage.getItem(this.key) || '[]');
+    } catch { this.items = []; }
+  }
+  _save() {
+    localStorage.setItem(this.key, JSON.stringify(this.items));
+  }
+  add(entry) {
+    // entry: { id, type, name, poster, position, duration, timestamp }
+    this.items = this.items.filter(i => !(i.id === entry.id && i.type === entry.type));
+    this.items.unshift({ ...entry, timestamp: Date.now() });
+    if (this.items.length > 50) this.items = this.items.slice(0, 50);
+    this._save();
+  }
+  getRecent(count = 20) {
+    return this.items.slice(0, count);
+  }
+  getContinueWatching() {
+    return this.items.filter(i => i.position > 0 && i.duration > 0 && (i.position / i.duration) < 0.95);
+  }
+  getPosition(id, type) {
+    const item = this.items.find(i => i.id === id && i.type === type);
+    return item ? item.position : 0;
+  }
+  clear() {
+    this.items = [];
+    this._save();
+  }
+}
+
+// ─── Recent Channels ───
+class RecentChannelsManager {
+  constructor(key = 'vc_recent_channels') {
+    this.key = key;
+    this._load();
+  }
+  _load() {
+    try {
+      this.items = JSON.parse(localStorage.getItem(this.key) || '[]');
+    } catch { this.items = []; }
+  }
+  _save() {
+    localStorage.setItem(this.key, JSON.stringify(this.items));
+  }
+  add(channelId) {
+    this.items = this.items.filter(i => i !== channelId);
+    this.items.unshift(channelId);
+    if (this.items.length > 20) this.items = this.items.slice(0, 20);
+    this._save();
+  }
+  getAll() { return [...this.items]; }
+}

@@ -1,8 +1,12 @@
 package com.vistacore.launcher.ui
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.KeyEvent
 import android.view.View
+import android.widget.Button
+import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -22,7 +26,8 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
     private lateinit var channelName: TextView
     private lateinit var nowTitle: TextView
     private lateinit var nowProgress: ProgressBar
-    private lateinit var categoryChips: RecyclerView
+    private lateinit var channelSearch: EditText
+    private lateinit var categoryPicker: Button
     private lateinit var channelRibbon: RecyclerView
     private lateinit var loadingView: View
 
@@ -37,12 +42,22 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
         channelName = findViewById(R.id.sh_channel_name)
         nowTitle = findViewById(R.id.sh_now_title)
         nowProgress = findViewById(R.id.sh_now_progress)
-        categoryChips = findViewById(R.id.sh_category_chips)
+        channelSearch = findViewById(R.id.sh_channel_search)
+        categoryPicker = findViewById(R.id.sh_category_chips)
         channelRibbon = findViewById(R.id.sh_channel_ribbon)
         loadingView = findViewById(R.id.sh_loading)
 
-        categoryChips.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         channelRibbon.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+
+        channelSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                filterChannels(s?.toString()?.trim() ?: "")
+            }
+        })
+
+        findViewById<Button>(R.id.sh_btn_number_pad).setOnClickListener { showNumberPadOverlay() }
 
         setupPlayer(playerView)
         loadChannels()
@@ -56,7 +71,7 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
     }
 
     override fun onCategoriesChanged(categories: List<String>) {
-        categoryChips.adapter = CategoryChipAdapter(categories, selectedCategory) { selectCategory(it) }
+        bindCategoryButton(categoryPicker, categories)
     }
 
     override fun onDisplayedChannelsChanged() {

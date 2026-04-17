@@ -105,6 +105,41 @@
                 </LinearLayout>
             </FrameLayout>
 
+            <!-- Search bar -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="#22FFFFFF"
+                android:paddingStart="32dp"
+                android:paddingEnd="32dp">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/ic_voice_search"
+                    android:scaleType="centerInside"
+                    android:alpha="0.5"
+                    android:contentDescription="Search" />
+
+                <EditText
+                    android:id="@+id/car_channel_search"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:hint="Search channels…"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_hint"
+                    android:background="@android:color/transparent"
+                    android:fontFamily="sans-serif-light"
+                    android:layout_marginStart="10dp"
+                    android:inputType="text"
+                    android:imeOptions="actionSearch"
+                    android:singleLine="true" />
+            </LinearLayout>
+
             <!-- Rows of channels by category -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/car_rows"

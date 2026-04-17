@@ -536,15 +536,7 @@ class SettingsActivity : BaseActivity() {
 
     /** Only called from Test Connection — clears caches when URL confirmed changed */
     private fun clearCachesAndRefresh() {
-        java.io.File(filesDir, "channels_cache.json").delete()
-        java.io.File(filesDir, "channels_cache.json.gz").delete()
-        java.io.File(filesDir, "movies_cache.json").delete()
-        java.io.File(filesDir, "movies_cache.json.gz").delete()
-        java.io.File(filesDir, "series_cache.json").delete()
-        java.io.File(filesDir, "series_cache.json.gz").delete()
-        java.io.File(filesDir, "show_names.bin").delete()
-        com.vistacore.launcher.data.ContentCache.clear()
-        ChannelUpdateWorker.refreshNow(this)
+        ChannelUpdateWorker.clearCachesAndRefresh(this)
     }
 
     private fun testConnection() {

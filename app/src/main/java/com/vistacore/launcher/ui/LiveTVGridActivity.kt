@@ -2,9 +2,12 @@ package com.vistacore.launcher.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.GridLayoutManager
@@ -29,7 +32,8 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
     private lateinit var channelName: TextView
     private lateinit var nowTitle: TextView
     private lateinit var nextTitle: TextView
-    private lateinit var categoryChips: RecyclerView
+    private lateinit var channelSearch: EditText
+    private lateinit var categoryPicker: android.widget.Button
     private lateinit var channelGrid: RecyclerView
     private lateinit var loadingView: View
 
@@ -43,12 +47,20 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
         channelName = findViewById(R.id.grid_channel_name)
         nowTitle = findViewById(R.id.grid_now_title)
         nextTitle = findViewById(R.id.grid_next_title)
-        categoryChips = findViewById(R.id.grid_category_chips)
+        channelSearch = findViewById(R.id.grid_channel_search)
+        categoryPicker = findViewById(R.id.grid_category_chips)
         channelGrid = findViewById(R.id.grid_channel_grid)
         loadingView = findViewById(R.id.grid_loading)
 
-        categoryChips.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         channelGrid.layoutManager = GridLayoutManager(this, 6)
+
+        channelSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                filterChannels(s?.toString()?.trim() ?: "")
+            }
+        })
 
         findViewById<View>(R.id.grid_btn_guide).setOnClickListener {
             startActivity(Intent(this, EpgGuideActivity::class.java))
@@ -67,7 +79,7 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
     }
 
     override fun onCategoriesChanged(categories: List<String>) {
-        categoryChips.adapter = CategoryChipAdapter(categories, selectedCategory) { selectCategory(it) }
+        bindCategoryButton(categoryPicker, categories)
     }
 
     override fun onDisplayedChannelsChanged() {

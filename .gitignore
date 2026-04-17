@@ -41,3 +41,7 @@ Thumbs.db
 
 # Source wallpapers (copies live in app/src/main/assets/wallpapers/)
 /wallpapers/
+
+# Cloudflare Worker web app
+web/node_modules/
+web/.wrangler/

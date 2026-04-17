@@ -1,9 +1,12 @@
 package com.vistacore.launcher.ui
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -28,7 +31,8 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
     private lateinit var channelName: TextView
     private lateinit var programTitle: TextView
     private lateinit var programDesc: TextView
-    private lateinit var categoryChips: RecyclerView
+    private lateinit var channelSearch: EditText
+    private lateinit var categoryPicker: android.widget.Button
     private lateinit var channelList: RecyclerView
     private lateinit var loadingView: View
 
@@ -42,12 +46,20 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
         channelName = findViewById(R.id.epg_channel_name)
         programTitle = findViewById(R.id.epg_program_title)
         programDesc = findViewById(R.id.epg_program_desc)
-        categoryChips = findViewById(R.id.epg_category_chips)
+        channelSearch = findViewById(R.id.epg_channel_search)
+        categoryPicker = findViewById(R.id.epg_category_chips)
         channelList = findViewById(R.id.epg_channel_list)
         loadingView = findViewById(R.id.epg_loading)
 
-        categoryChips.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         channelList.layoutManager = LinearLayoutManager(this)
+
+        channelSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                filterChannels(s?.toString()?.trim() ?: "")
+            }
+        })
 
         findViewById<View>(R.id.epg_btn_number_pad).setOnClickListener { showNumberPadOverlay() }
 
@@ -63,7 +75,7 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
     }
 
     override fun onCategoriesChanged(categories: List<String>) {
-        categoryChips.adapter = CategoryChipAdapter(categories, selectedCategory) { selectCategory(it) }
+        bindCategoryButton(categoryPicker, categories)
     }
 
     override fun onDisplayedChannelsChanged() {

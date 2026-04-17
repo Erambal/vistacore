@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VistaCore</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1" async defer></script>
+</head>
+<body class="login-page">
+
+  <!-- ═══ LOGIN SCREEN ═══ -->
+  <div id="login-screen" class="screen active">
+    <div class="login-bg">
+      <div class="login-bg-image"></div>
+      <div class="login-grain"></div>
+      <div class="login-vignette"></div>
+    </div>
+    <div class="login-container">
+      <div class="login-brand">
+        <div class="brand-mark">
+          <img src="/assets/logo.png" alt="VistaCore" class="brand-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style="display:none">
+            <rect x="2" y="8" width="44" height="32" rx="4" stroke="#FFB300" stroke-width="2.5" fill="none"/>
+            <polygon points="20,17 20,31 32,24" fill="#FFB300"/>
+          </svg>
+        </div>
+        <h1 class="brand-name">VistaCore</h1>
+        <p class="brand-tagline">Your Living Room. Simplified.</p>
+      </div>
+      <div class="google-signin-wrap">
+        <div id="g_signin_button"></div>
+        <p id="login-hint" class="login-footer">Sign in with your Google account to continue</p>
+        <p id="login-error" class="login-error" hidden>Sign-in failed</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ DASHBOARD SCREEN ═══ -->
+  <div id="dashboard-screen" class="screen">
+
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="topbar-btn topbar-back-btn" id="btn-back" title="Back to Home" style="display:none">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="topbar-brand" id="topbar-brand-link" style="cursor:pointer">
+          <img src="/assets/logo.png" alt="" class="topbar-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+          <svg width="28" height="28" viewBox="0 0 48 48" fill="none" style="display:none">
+            <rect x="2" y="8" width="44" height="32" rx="4" stroke="#FFB300" stroke-width="2.5" fill="none"/>
+            <polygon points="20,17 20,31 32,24" fill="#FFB300"/>
+          </svg>
+          <span class="topbar-brand-name">VistaCore</span>
+        </div>
+        <h2 class="topbar-view-title" id="topbar-view-title" style="display:none"></h2>
+      </div>
+      <div class="topbar-center">
+        <div class="search-bar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input type="text" id="search-input" placeholder="Search channels, movies, shows...">
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-btn" id="btn-settings" title="Settings">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+          </svg>
+        </button>
+        <div class="user-pill" id="user-pill">
+          <div class="user-avatar" id="user-avatar">A</div>
+          <span class="user-name" id="user-name">Admin</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ─── VIEW: HOME ─── -->
+    <main class="dashboard view" id="view-home">
+      <section class="hero-section">
+        <div class="hero-bg-wrap">
+          <div class="hero-bg" id="hero-bg"></div>
+          <div class="hero-bg-overlay"></div>
+        </div>
+        <div class="hero-content">
+          <div class="clock-block">
+            <div class="clock-time" id="clock-time">12:00</div>
+            <div class="clock-ampm" id="clock-ampm">PM</div>
+          </div>
+          <div class="clock-date" id="clock-date">Monday, January 1</div>
+          <div class="greeting" id="greeting">Good Evening</div>
+        </div>
+      </section>
+      <section class="section apps-section">
+        <h2 class="section-title">Your Apps</h2>
+        <div class="apps-row" id="apps-row"></div>
+      </section>
+      <section class="section" id="continue-section" style="display:none">
+        <h2 class="section-title">Continue Watching</h2>
+        <div class="content-row" id="continue-row"></div>
+      </section>
+      <section class="section" id="live-section" style="display:none">
+        <div class="section-header">
+          <h2 class="section-title">Live Now</h2>
+          <div class="live-indicator"><span class="live-dot"></span> LIVE</div>
+        </div>
+        <div class="epg-row" id="epg-row"></div>
+      </section>
+      <section class="section" id="favorites-section" style="display:none">
+        <h2 class="section-title">Favorite Channels</h2>
+        <div class="channels-row" id="favorites-row"></div>
+      </section>
+
+      <!-- Not configured prompt -->
+      <section class="section" id="setup-prompt" style="display:none">
+        <div class="setup-card">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+          </svg>
+          <h3>Set Up Your IPTV</h3>
+          <p>Add your M3U playlist or Xtream Codes credentials in Settings to start watching live TV, movies, and shows.</p>
+          <button class="btn-save" id="btn-open-setup">Open Settings</button>
+        </div>
+      </section>
+
+      <!-- Loading indicator -->
+      <section class="section" id="loading-section" style="display:none">
+        <div class="setup-card">
+          <div class="vc-player-spinner"></div>
+          <h3 id="loading-text">Loading channels...</h3>
+        </div>
+      </section>
+    </main>
+
+    <!-- ─── VIEW: LIVE TV ─── -->
+    <div class="view livetv-view" id="view-livetv" style="display:none">
+      <div class="livetv-layout">
+        <!-- Sidebar -->
+        <aside class="livetv-sidebar">
+          <div class="livetv-sidebar-header">
+            <div class="livetv-search">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input type="text" id="livetv-search" placeholder="Search channels...">
+            </div>
+          </div>
+          <div class="livetv-categories" id="livetv-categories"></div>
+          <div class="livetv-channel-list" id="livetv-channel-list"></div>
+          <div class="livetv-channel-count" id="livetv-channel-count"></div>
+        </aside>
+        <!-- Player -->
+        <div class="livetv-player-area">
+          <div id="livetv-player-container" class="livetv-player-container">
+            <!-- Player injected by player.js -->
+          </div>
+          <div class="livetv-placeholder" id="livetv-placeholder">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--text-hint)" stroke-width="1">
+              <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><polygon points="10,7 10,14 16,10.5" fill="var(--text-hint)" opacity="0.3"/>
+            </svg>
+            <p>Select a channel to start watching</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── VIEW: MOVIES ─── -->
+    <div class="view vod-view" id="view-movies" style="display:none">
+      <div class="vod-header">
+        <div class="vod-categories" id="movies-categories"></div>
+        <div class="vod-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="text" id="movies-search" placeholder="Search movies...">
+        </div>
+      </div>
+      <div class="vod-grid" id="movies-grid"></div>
+      <div class="vod-empty" id="movies-empty" style="display:none">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-hint)" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <p>No movies found</p>
+      </div>
+      <button class="vod-load-more" id="movies-load-more" style="display:none">Load More</button>
+    </div>
+
+    <!-- ─── VIEW: TV SHOWS ─── -->
+    <div class="view vod-view" id="view-tvshows" style="display:none">
+      <div class="vod-header">
+        <div class="vod-categories" id="tvshows-categories"></div>
+        <div class="vod-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="text" id="tvshows-search" placeholder="Search shows...">
+        </div>
+      </div>
+      <div class="vod-grid" id="tvshows-grid"></div>
+      <div class="vod-empty" id="tvshows-empty" style="display:none">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-hint)" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <p>No shows found</p>
+      </div>
+      <button class="vod-load-more" id="tvshows-load-more" style="display:none">Load More</button>
+    </div>
+
+    <!-- ─── VIEW: KIDS ─── -->
+    <div class="view vod-view kids-view" id="view-kids" style="display:none">
+      <div class="vod-header">
+        <div class="vod-categories" id="kids-categories"></div>
+        <div class="vod-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="text" id="kids-search" placeholder="Search kids content...">
+        </div>
+      </div>
+      <div class="vod-grid" id="kids-grid"></div>
+      <div class="vod-empty" id="kids-empty" style="display:none">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-hint)" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <p>No kids content found</p>
+      </div>
+    </div>
+
+    <!-- ─── VIEW: DETAIL (Movie/Show) ─── -->
+    <div class="view detail-view" id="view-detail" style="display:none">
+      <div class="detail-backdrop" id="detail-backdrop"></div>
+      <div class="detail-content">
+        <div class="detail-poster-wrap">
+          <img class="detail-poster" id="detail-poster" src="" alt="">
+        </div>
+        <div class="detail-info">
+          <h1 class="detail-title" id="detail-title"></h1>
+          <div class="detail-meta" id="detail-meta"></div>
+          <p class="detail-plot" id="detail-plot"></p>
+          <div class="detail-cast" id="detail-cast"></div>
+          <div class="detail-actions">
+            <button class="btn-play" id="detail-play">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+              <span>Play</span>
+            </button>
+            <button class="btn-fav" id="detail-fav" title="Favorite">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+            </button>
+          </div>
+          <!-- Seasons/Episodes for shows -->
+          <div class="detail-seasons" id="detail-seasons" style="display:none">
+            <div class="detail-season-tabs" id="detail-season-tabs"></div>
+            <div class="detail-episodes" id="detail-episodes"></div>
+          </div>
+        </div>
+      </div>
+      <div class="detail-player-wrap" id="detail-player-wrap" style="display:none">
+        <div id="detail-player-container"></div>
+      </div>
+    </div>
+
+    <!-- ─── VIEW: SEARCH RESULTS ─── -->
+    <div class="view vod-view" id="view-search" style="display:none">
+      <h2 class="search-results-title" id="search-results-title">Search Results</h2>
+      <div class="search-results-section" id="search-channels-section" style="display:none">
+        <h3 class="section-title">Channels</h3>
+        <div class="channels-row" id="search-channels-row"></div>
+      </div>
+      <div class="search-results-section" id="search-movies-section" style="display:none">
+        <h3 class="section-title">Movies</h3>
+        <div class="vod-grid" id="search-movies-grid"></div>
+      </div>
+      <div class="search-results-section" id="search-series-section" style="display:none">
+        <h3 class="section-title">TV Shows</h3>
+        <div class="vod-grid" id="search-series-grid"></div>
+      </div>
+      <div class="vod-empty" id="search-empty" style="display:none">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-hint)" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <p>No results found</p>
+      </div>
+    </div>
+
+    <!-- ═══ Settings Modal ═══ -->
+    <div class="modal-overlay" id="settings-modal" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button class="modal-close" id="settings-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="settings-group">
+            <h3>IPTV Configuration</h3>
+            <div class="input-group">
+              <label>M3U Playlist URL</label>
+              <input type="url" id="setting-m3u" placeholder="http://example.com/playlist.m3u">
+            </div>
+            <div class="input-group">
+              <label>EPG Guide URL</label>
+              <input type="url" id="setting-epg" placeholder="http://example.com/epg.xml">
+            </div>
+            <h3 style="margin-top:1.5rem">Xtream Codes</h3>
+            <div class="input-group">
+              <label>Server URL</label>
+              <input type="url" id="setting-xtream-server" placeholder="http://server.com:port">
+            </div>
+            <div class="settings-row-2">
+              <div class="input-group">
+                <label>Username</label>
+                <input type="text" id="setting-xtream-user" placeholder="Username">
+              </div>
+              <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="setting-xtream-pass" placeholder="Password">
+              </div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <h3>Display</h3>
+            <label class="setting-toggle">
+              <span>Show Clock</span>
+              <input type="checkbox" id="setting-clock" checked>
+              <span class="toggle-slider"></span>
+            </label>
+            <label class="setting-toggle">
+              <span>Show Upcoming Games</span>
+              <input type="checkbox" id="setting-games" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="settings-actions">
+            <button class="btn-save" id="btn-save-settings">Save & Reload</button>
+            <button class="btn-logout" id="btn-logout">Sign Out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Toast notification ═══ -->
+    <div class="toast" id="toast" hidden></div>
+
+  </div>
+
+  <script src="iptv.js"></script>
+  <script src="player.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

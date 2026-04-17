@@ -1,7 +1,5 @@
 package com.vistacore.launcher.ui
 
-import android.animation.AnimatorSet
-import android.animation.ObjectAnimator
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -11,7 +9,6 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.OvershootInterpolator
 import android.widget.ImageView
 import android.widget.Toast
 import android.widget.TextView
@@ -647,19 +644,9 @@ class MainActivity : BaseActivity() {
 
     companion object {
         fun animateFocus(view: View, hasFocus: Boolean) {
-            val scale = if (hasFocus) 1.08f else 1.0f
-            val elevation = if (hasFocus) 12f else 4f
-
-            AnimatorSet().apply {
-                playTogether(
-                    ObjectAnimator.ofFloat(view, "scaleX", scale),
-                    ObjectAnimator.ofFloat(view, "scaleY", scale),
-                    ObjectAnimator.ofFloat(view, "elevation", elevation)
-                )
-                duration = 180
-                interpolator = OvershootInterpolator(1.0f)
-                start()
-            }
+            // Focus is communicated entirely via the border highlight in each
+            // view's background drawable (state_focused). Popup/scale animations
+            // were removed because they made the cursor position hard to track.
         }
     }
 }

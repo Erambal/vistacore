@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -61,6 +62,73 @@ class VODBrowserActivity : BaseActivity() {
 
         setupSearch()
         loadContent()
+    }
+
+    /**
+     * D-pad DOWN/UP while focused on a poster or the banner's play button jumps
+     * straight to the neighboring row. Android's default focus search needs two
+     * presses here because the next row's inner RecyclerView isn't laid out yet
+     * when the outer list starts scrolling — we pre-scroll and focus atomically.
+     * Horizontal position is preserved where possible.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val down = event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+            val up = event.keyCode == KeyEvent.KEYCODE_DPAD_UP
+            if (down || up) {
+                if (jumpRow(down)) return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun jumpRow(down: Boolean): Boolean {
+        val focused = currentFocus ?: return false
+        val list = binding.netflixList
+        val rowView = list.findContainingItemView(focused) ?: return false
+        val currentRow = list.getChildAdapterPosition(rowView)
+        if (currentRow == RecyclerView.NO_POSITION) return false
+
+        val adapter = list.adapter as? NetflixAdapter ?: return false
+        val targetRow = if (down) currentRow + 1 else currentRow - 1
+        if (targetRow < 0) return false
+
+        // Ensure the target row is in the window of bound items
+        while (down && targetRow >= adapter.itemCount && adapter.itemCount < adapter.totalRows()) {
+            adapter.loadMore()
+        }
+        if (targetRow >= adapter.itemCount) return false
+
+        val horizPos = rowView.findViewById<RecyclerView>(R.id.row_recycler)?.let { innerRv ->
+            innerRv.findContainingItemView(focused)
+                ?.let { innerRv.getChildAdapterPosition(it) }
+                ?.coerceAtLeast(0)
+        } ?: 0
+
+        focusRow(targetRow, horizPos)
+        return true
+    }
+
+    private fun focusRow(rowPos: Int, horizPos: Int) {
+        val list = binding.netflixList
+        list.smoothScrollToPosition(rowPos)
+
+        fun tryFocus(): Boolean {
+            val vh = list.findViewHolderForAdapterPosition(rowPos) ?: return false
+            val play = vh.itemView.findViewById<View>(R.id.banner_play)
+            if (play != null) return play.requestFocus()
+            val innerRv = vh.itemView.findViewById<RecyclerView>(R.id.row_recycler) ?: return false
+            val innerCount = innerRv.adapter?.itemCount ?: 0
+            if (innerCount == 0) return false
+            val target = horizPos.coerceIn(0, innerCount - 1)
+            val itemView = innerRv.findViewHolderForAdapterPosition(target)?.itemView
+                ?: innerRv.findViewHolderForAdapterPosition(0)?.itemView
+            return itemView?.requestFocus() == true
+        }
+
+        list.post {
+            if (!tryFocus()) list.postDelayed({ tryFocus() }, 160)
+        }
     }
 
     private fun setupSearch() {
@@ -462,6 +530,8 @@ class NetflixAdapter(
         visibleCount = minOf(visibleCount + 3, rows.size)
         notifyItemRangeInserted(prev, visibleCount - prev)
     }
+
+    fun totalRows(): Int = rows.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (viewType) {

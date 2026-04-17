@@ -73,13 +73,52 @@ class VODBrowserActivity : BaseActivity() {
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
-            val down = event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
-            val up = event.keyCode == KeyEvent.KEYCODE_DPAD_UP
-            if (down || up) {
-                if (jumpRow(down)) return true
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_DOWN -> if (jumpRow(true)) return true
+                KeyEvent.KEYCODE_DPAD_UP -> if (jumpRow(false)) return true
+                KeyEvent.KEYCODE_DPAD_RIGHT -> if (stepPoster(true)) return true
+                KeyEvent.KEYCODE_DPAD_LEFT -> if (stepPoster(false)) return true
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * D-pad LEFT/RIGHT inside a row. Default focus search loses the position
+     * when the next poster hasn't been laid out — holding RIGHT ends up
+     * wrapping focus back to the leftmost item. We pre-scroll, loadMore if
+     * needed, then request focus atomically so key-repeat works smoothly.
+     */
+    private fun stepPoster(right: Boolean): Boolean {
+        val focused = currentFocus ?: return false
+        // Find the inner row RecyclerView (skip the outer netflix_list)
+        var parent: android.view.ViewParent? = focused.parent
+        var innerRv: RecyclerView? = null
+        while (parent != null) {
+            if (parent is RecyclerView && parent.id != R.id.netflix_list) {
+                innerRv = parent
+                break
+            }
+            parent = parent.parent
+        }
+        val rv = innerRv ?: return false
+        val adapter = rv.adapter as? PosterAdapter ?: return false
+        val posterView = rv.findContainingItemView(focused) ?: return false
+        val pos = rv.getChildAdapterPosition(posterView)
+        if (pos == RecyclerView.NO_POSITION) return false
+
+        val target = if (right) pos + 1 else pos - 1
+        if (target < 0) return true  // trap at left edge; don't escape to a sibling row
+        while (right && target >= adapter.itemCount && adapter.itemCount < adapter.totalItems()) {
+            adapter.loadMore()
+        }
+        if (target >= adapter.itemCount) return true  // truly at the end
+
+        rv.smoothScrollToPosition(target)
+        fun tryFocus(): Boolean =
+            rv.findViewHolderForAdapterPosition(target)?.itemView?.requestFocus() == true
+        rv.post { if (!tryFocus()) rv.postDelayed({ tryFocus() }, 140) }
+        return true
     }
 
     private fun jumpRow(down: Boolean): Boolean {
@@ -147,6 +186,18 @@ class VODBrowserActivity : BaseActivity() {
                 }
             }
         })
+
+        // Pressing the IME search/Done key hides the keyboard and drops focus
+        // into the results so the user can D-pad through posters immediately.
+        binding.netflixSearchInput.setOnEditorActionListener { v, _, _ ->
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.hideSoftInputFromWindow(v.windowToken, 0)
+            v.clearFocus()
+            binding.netflixList.post {
+                binding.netflixList.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus()
+            }
+            true
+        }
     }
 
     private fun loadContent() {
@@ -620,6 +671,8 @@ class PosterAdapter(
         visibleCount = minOf(visibleCount + 20, items.size)
         notifyItemRangeInserted(prev, visibleCount - prev)
     }
+
+    fun totalItems(): Int = items.size
 
     inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val image: ImageView = itemView.findViewById(R.id.poster_image)

@@ -78,6 +78,9 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
         bindCategoryButton(categoryPicker, categories)
     }
 
+    override fun currentSearchQuery(): String =
+        channelSearch.text?.toString()?.trim().orEmpty()
+
     override fun onDisplayedChannelsChanged() {
         refreshList()
     }

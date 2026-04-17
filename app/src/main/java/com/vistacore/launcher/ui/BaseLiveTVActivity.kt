@@ -128,17 +128,18 @@ abstract class BaseLiveTVActivity : BaseActivity() {
             if (loadedChannels.isNotEmpty()) {
                 allChannels = loadedChannels.sortedBy { it.number }
                 categoryChannels = allChannels
-                displayedChannels = allChannels
+                // Apply any live search the user has already typed while we
+                // were loading, plus any pending query from the launcher.
+                val pending = intent.getStringExtra(EXTRA_SEARCH_QUERY)?.trim() ?: ""
+                val query = if (pending.isNotBlank()) pending else currentSearchQuery()
+                filterChannels(query)
                 onLoadingStateChanged(false)
                 onChannelsLoaded()
                 onCategoriesChanged(buildCategories())
 
-                // Handle pending search query
-                val pending = intent.getStringExtra(EXTRA_SEARCH_QUERY)?.trim() ?: ""
-                if (pending.isNotBlank()) {
-                    filterChannels(pending)
-                    if (displayedChannels.isNotEmpty()) tuneToChannel(displayedChannels.first())
-                } else {
+                if (pending.isNotBlank() && displayedChannels.isNotEmpty()) {
+                    tuneToChannel(displayedChannels.first())
+                } else if (query.isBlank()) {
                     tuneToChannel(allChannels.first())
                 }
 
@@ -229,10 +230,18 @@ abstract class BaseLiveTVActivity : BaseActivity() {
             CATEGORY_FAVORITES -> favoritesManager.filterFavorites(allChannels)
             else -> allChannels.filter { it.category == name }
         }
-        displayedChannels = categoryChannels
-        onDisplayedChannelsChanged()
+        // Re-apply any active search query so changing category while the user
+        // has typed something doesn't wipe out their filter.
+        filterChannels(currentSearchQuery())
         onCategoriesChanged(buildCategories())
     }
+
+    /**
+     * Subclasses should return the live contents of their search EditText so
+     * the base class can re-apply the filter after category changes / channel
+     * reloads. Default is empty (no filter).
+     */
+    protected open fun currentSearchQuery(): String = ""
 
     protected fun buildCategories(): List<String> {
         val cats = mutableListOf(CATEGORY_ALL)

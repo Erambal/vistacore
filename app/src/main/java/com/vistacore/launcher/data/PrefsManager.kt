@@ -139,9 +139,9 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean(KEY_SHOW_EPG_IN_LIST, true)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_EPG_IN_LIST, value).apply()
 
-    /** Live TV layout style. One of LIVE_TV_* constants. Default classic. */
+    /** Live TV layout style. One of LIVE_TV_* constants. Default immersive. */
     var liveTvStyle: String
-        get() = prefs.getString(KEY_LIVE_TV_STYLE, LIVE_TV_CLASSIC) ?: LIVE_TV_CLASSIC
+        get() = prefs.getString(KEY_LIVE_TV_STYLE, LIVE_TV_IMMERSIVE) ?: LIVE_TV_IMMERSIVE
         set(value) = prefs.edit().putString(KEY_LIVE_TV_STYLE, value).apply()
 
     /** Kids section enabled. Default true. */

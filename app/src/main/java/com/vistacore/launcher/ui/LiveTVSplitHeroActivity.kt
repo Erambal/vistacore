@@ -74,6 +74,9 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
         bindCategoryButton(categoryPicker, categories)
     }
 
+    override fun currentSearchQuery(): String =
+        channelSearch.text?.toString()?.trim().orEmpty()
+
     override fun onDisplayedChannelsChanged() {
         refreshRibbon()
     }

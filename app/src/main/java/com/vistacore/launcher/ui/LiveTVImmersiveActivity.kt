@@ -82,6 +82,9 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
         bindCategoryButton(categoryPicker, categories)
     }
 
+    override fun currentSearchQuery(): String =
+        channelSearch.text?.toString()?.trim().orEmpty()
+
     override fun onDisplayedChannelsChanged() {
         refreshRibbon()
     }
@@ -123,6 +126,19 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                // UP from the channel ribbon jumps straight to real fullscreen
+                // on the current channel. From the search bar, category picker,
+                // or number pad button, default focus traversal still applies
+                // so those controls remain navigable.
+                val focused = currentFocus
+                val onRibbon = focused != null &&
+                    channelRibbon.findContainingItemView(focused) != null
+                if (onRibbon) {
+                    currentChannel?.let { goFullScreen(it) }
+                    true
+                } else super.onKeyDown(keyCode, event)
+            }
             KeyEvent.KEYCODE_MENU -> {
                 showNumberPadOverlay()
                 true

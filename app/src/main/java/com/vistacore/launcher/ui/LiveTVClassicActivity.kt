@@ -88,6 +88,9 @@ class LiveTVClassicActivity : BaseLiveTVActivity() {
         bindCategoryButton(binding.categoryChips, categories)
     }
 
+    override fun currentSearchQuery(): String =
+        binding.channelSearch.text?.toString()?.trim().orEmpty()
+
     override fun onDisplayedChannelsChanged() {
         updateChannelList()
     }

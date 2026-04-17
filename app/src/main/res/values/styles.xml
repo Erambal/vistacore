@@ -10,6 +10,25 @@
         <item name="android:textColorPrimary">@color/text_primary</item>
         <item name="android:textColorSecondary">@color/text_secondary</item>
         <item name="android:fontFamily">sans-serif-light</item>
+        <!-- Give every RadioButton / CheckBox a gold focus border. Without
+             this, default Android compound buttons have no visible focus state
+             on TV and the user loses the cursor. Switch is handled per-widget
+             in XML because overriding switchStyle risks dropping the
+             thumb/track drawables. -->
+        <item name="android:radioButtonStyle">@style/VistaCoreRadioButton</item>
+        <item name="android:checkboxStyle">@style/VistaCoreCheckBox</item>
+    </style>
+
+    <style name="VistaCoreRadioButton" parent="@android:style/Widget.CompoundButton.RadioButton">
+        <item name="android:background">@drawable/focus_indicator</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+    </style>
+
+    <style name="VistaCoreCheckBox" parent="@android:style/Widget.CompoundButton.CheckBox">
+        <item name="android:background">@drawable/focus_indicator</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
     </style>
 
     <!-- Settings theme -->

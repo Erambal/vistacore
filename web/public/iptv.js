@@ -69,6 +69,13 @@ class IPTVService {
     return `/api/stream?url=${encodeURIComponent(rawUrl)}`;
   }
 
+  // ─── Image URLs (proxied to bypass mixed-content + HTTP-only providers) ───
+  _imageUrl(rawUrl) {
+    if (!rawUrl) return '';
+    if (rawUrl.startsWith('/') || rawUrl.startsWith('data:')) return rawUrl;
+    return `/api/image?url=${encodeURIComponent(rawUrl)}`;
+  }
+
   getLiveStreamUrl(streamId, ext = 'm3u8') {
     if (this.xtream) {
       const direct = `${this.xtream.server}/live/${this.xtream.username}/${this.xtream.password}/${streamId}.${ext}`;
@@ -150,7 +157,7 @@ class IPTVService {
         id: String(s.stream_id),
         num: s.num || i + 1,
         name: s.name || 'Unknown',
-        logo: s.stream_icon || '',
+        logo: this._imageUrl(s.stream_icon),
         category: cat ? cat.name : 'Uncategorized',
         categoryId: String(s.category_id || ''),
         epgId: s.epg_channel_id || '',
@@ -172,7 +179,7 @@ class IPTVService {
       return {
         id: String(m.stream_id),
         name: m.name || 'Unknown',
-        poster: m.stream_icon || '',
+        poster: this._imageUrl(m.stream_icon),
         category: cat ? cat.name : 'Uncategorized',
         categoryId: String(m.category_id || ''),
         rating: m.rating || '',
@@ -197,14 +204,14 @@ class IPTVService {
       return {
         id: String(s.series_id),
         name: s.name || 'Unknown',
-        poster: s.cover || '',
+        poster: this._imageUrl(s.cover),
         category: cat ? cat.name : 'Uncategorized',
         categoryId: String(s.category_id || ''),
         rating: s.rating || '',
         plot: s.plot || '',
         cast: s.cast || '',
         year: s.year || '',
-        backdrop: s.backdrop_path ? s.backdrop_path[0] || '' : ''
+        backdrop: s.backdrop_path ? this._imageUrl(s.backdrop_path[0]) : ''
       };
     });
 
@@ -227,7 +234,7 @@ class IPTVService {
         containerExtension: ep.container_extension || 'm3u8',
         duration: ep.info?.duration || '',
         plot: ep.info?.plot || '',
-        poster: ep.info?.movie_image || '',
+        poster: this._imageUrl(ep.info?.movie_image),
         rating: ep.info?.rating || ''
       }));
     }
@@ -252,7 +259,7 @@ class IPTVService {
         duration: data.info.duration || '',
         year: data.info.releasedate || data.info.year || '',
         rating: data.info.rating || '',
-        poster: data.info.movie_image || data.info.stream_icon || ''
+        poster: this._imageUrl(data.info.movie_image || data.info.stream_icon)
       };
     } catch {
       return null;
@@ -312,7 +319,7 @@ class IPTVService {
           id: `m3u_${this.channels.length + this.movies.length}`,
           num: this.channels.length + 1,
           name: currentInfo.name,
-          logo: currentInfo.logo,
+          logo: this._imageUrl(currentInfo.logo),
           category: category,
           categoryId: category,
           epgId: currentInfo.epgId,
@@ -323,7 +330,7 @@ class IPTVService {
         if (contentType === 'movie') {
           this.movies.push({
             ...entry,
-            poster: currentInfo.logo,
+            poster: entry.logo,
             containerExtension: this._getExtension(line),
             rating: '', plot: '', cast: '', year: ''
           });

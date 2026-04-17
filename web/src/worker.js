@@ -44,6 +44,7 @@ async function handleApi(url, request, env) {
   if (path === '/api/m3u')           return handleM3U(url);
   if (path === '/api/epg')           return handleEpg(url);
   if (path === '/api/stream')        return handleStream(url);
+  if (path === '/api/image')         return handleImage(url);
 
   return jsonResponse({ error: 'Unknown API route' }, 404);
 }
@@ -279,6 +280,46 @@ async function handleStream(url) {
       ...CORS_HEADERS,
     },
   });
+}
+
+// ─── Image proxy (posters, channel logos, thumbnails) ───
+// Needed because many Xtream providers serve images over plain HTTP,
+// which browsers block as mixed content on an HTTPS page.
+async function handleImage(url) {
+  const target = url.searchParams.get('url');
+  if (!target) return new Response('Missing url param', { status: 400, headers: CORS_HEADERS });
+
+  try {
+    const resp = await fetch(target, {
+      headers: {
+        'User-Agent': BROWSER_UA,
+        'Accept': 'image/*,*/*;q=0.8',
+      },
+      redirect: 'follow',
+      cf: { cacheTtl: 86400, cacheEverything: true },
+    });
+
+    if (!resp.ok) {
+      return new Response(`Upstream error ${resp.status}`, {
+        status: resp.status,
+        headers: CORS_HEADERS,
+      });
+    }
+
+    const contentType = resp.headers.get('content-type') || 'image/jpeg';
+    return new Response(resp.body, {
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400',
+        ...CORS_HEADERS,
+      },
+    });
+  } catch (err) {
+    return new Response(`Image proxy error: ${err.message}`, {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain', ...CORS_HEADERS },
+    });
+  }
 }
 
 // ─── Helpers ───

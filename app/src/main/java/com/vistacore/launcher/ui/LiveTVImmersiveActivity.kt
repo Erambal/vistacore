@@ -127,14 +127,13 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP -> {
-                // UP from the channel ribbon jumps straight to real fullscreen
-                // on the current channel. From the search bar, category picker,
-                // or number pad button, default focus traversal still applies
-                // so those controls remain navigable.
+                // UP goes to fullscreen only when there's nothing else above
+                // to focus — search, category picker, and the number-pad button
+                // are navigated normally. Once focus reaches the topmost row of
+                // controls, the next UP press triggers fullscreen.
                 val focused = currentFocus
-                val onRibbon = focused != null &&
-                    channelRibbon.findContainingItemView(focused) != null
-                if (onRibbon) {
+                val nothingAbove = focused == null || focused.focusSearch(View.FOCUS_UP) == null
+                if (nothingAbove) {
                     currentChannel?.let { goFullScreen(it) }
                     true
                 } else super.onKeyDown(keyCode, event)

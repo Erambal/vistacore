@@ -191,11 +191,24 @@
             android:exported="false"
             android:screenOrientation="landscape" />
 
-        <!-- Voice Search Results -->
+        <!-- Voice Search Results.
+             Exported + intent filters so the system can route search / assist /
+             voice-command intents here instead of Google Assistant. Whether
+             those intents actually land depends on whether VistaCore is set as
+             the default Assistant app on the device. -->
         <activity
             android:name=".ui.VoiceSearchActivity"
-            android:exported="false"
-            android:screenOrientation="landscape" />
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.SEARCH" />
+                <action android:name="android.intent.action.ASSIST" />
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
         <!-- Wallpaper Picker -->
         <activity

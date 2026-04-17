@@ -458,6 +458,19 @@ class MainActivity : BaseActivity() {
         }, onLongClick = { entry ->
             showRemoveHistoryDialog(entry, watchHistory)
         })
+
+        binding.btnClearWatchHistory.setOnClickListener {
+            AlertDialog.Builder(this, R.style.Theme_VistaCore_Dialog)
+                .setTitle("Clear watch history?")
+                .setMessage("This will remove all Continue Watching entries.")
+                .setPositiveButton("Clear") { _, _ ->
+                    watchHistory.clearAll()
+                    loadContinueWatching()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+        binding.btnClearWatchHistory.setOnFocusChangeListener { v, f -> animateFocus(v, f) }
     }
 
     private fun showRemoveHistoryDialog(entry: com.vistacore.launcher.data.WatchEntry, watchHistory: com.vistacore.launcher.data.WatchHistoryManager) {

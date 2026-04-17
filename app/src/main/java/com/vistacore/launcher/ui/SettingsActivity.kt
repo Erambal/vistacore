@@ -111,19 +111,23 @@ class SettingsActivity : BaseActivity() {
     }
 
     private fun selectSection(index: Int) {
+        // Nav items trigger this on focus, which means it fires again every time
+        // focus returns to the rail after interacting with a control. Only do the
+        // layout work (and scroll reset) when the section actually changes so the
+        // user doesn't lose their scroll position.
+        val sectionChanged = index != selectedNavIndex || !navItems[index].isActivated
+        if (!sectionChanged) return
+
         selectedNavIndex = index
 
-        // Hide all sections, show selected
         sections.forEachIndexed { i, section ->
             section.visibility = if (i == index) View.VISIBLE else View.GONE
         }
 
-        // Update nav item activated state (for the drawable selector)
         navItems.forEachIndexed { i, nav ->
             nav.isActivated = (i == index)
         }
 
-        // Scroll to top of the newly-shown section
         (sections[index] as? android.widget.ScrollView)?.scrollTo(0, 0)
     }
 

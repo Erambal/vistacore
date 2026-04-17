@@ -296,7 +296,7 @@
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Show EPG in Channel List" style="@style/SettingsTitle" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Show what\'s playing next to each channel" style="@style/SettingsSummary" />
                     </LinearLayout>
-                    <Switch android:id="@+id/switch_epg_in_list" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+                    <Switch android:id="@+id/switch_epg_in_list" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
                 <!-- Auto-update channels -->
@@ -305,7 +305,7 @@
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto-Update Channels" style="@style/SettingsTitle" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Refresh channel list every 6 hours" style="@style/SettingsSummary" />
                     </LinearLayout>
-                    <Switch android:id="@+id/switch_auto_update" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+                    <Switch android:id="@+id/switch_auto_update" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
                 <!-- Open TV Guide -->
@@ -371,7 +371,7 @@
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Load Movies" style="@style/SettingsTitle" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Preload movie library on startup" style="@style/SettingsSummary" />
                     </LinearLayout>
-                    <Switch android:id="@+id/switch_load_movies" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+                    <Switch android:id="@+id/switch_load_movies" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="16dp">
@@ -379,7 +379,7 @@
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Load TV Shows" style="@style/SettingsTitle" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Preload TV show library on startup" style="@style/SettingsSummary" />
                     </LinearLayout>
-                    <Switch android:id="@+id/switch_load_shows" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+                    <Switch android:id="@+id/switch_load_shows" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="28dp">
@@ -387,7 +387,7 @@
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Load Kids" style="@style/SettingsTitle" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Preload kids content on startup" style="@style/SettingsSummary" />
                     </LinearLayout>
-                    <Switch android:id="@+id/switch_load_kids" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+                    <Switch android:id="@+id/switch_load_kids" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
                 <!-- Hidden Categories -->
@@ -442,7 +442,7 @@
                 <!-- Master toggle -->
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="20dp">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Enable content filtering by default" android:textSize="16sp" android:textColor="@color/text_primary" />
-                    <Switch android:id="@+id/switch_filter_enabled" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true" />
+                    <Switch android:id="@+id/switch_filter_enabled" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
                 <!-- Filter categories -->
@@ -451,19 +451,19 @@
 
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="8dp">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Profanity" android:textSize="16sp" android:textColor="@color/text_primary" />
-                    <Switch android:id="@+id/switch_filter_profanity" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true" />
+                    <Switch android:id="@+id/switch_filter_profanity" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="8dp">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Blasphemy" android:textSize="16sp" android:textColor="@color/text_primary" />
-                    <Switch android:id="@+id/switch_filter_blasphemy" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true" />
+                    <Switch android:id="@+id/switch_filter_blasphemy" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="8dp">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Slurs" android:textSize="16sp" android:textColor="@color/text_primary" />
-                    <Switch android:id="@+id/switch_filter_slurs" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true" />
+                    <Switch android:id="@+id/switch_filter_slurs" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="24dp">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Sexual dialogue" android:textSize="16sp" android:textColor="@color/text_primary" />
-                    <Switch android:id="@+id/switch_filter_sexual" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true" />
+                    <Switch android:id="@+id/switch_filter_sexual" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
                 <!-- Filter data -->
@@ -627,7 +627,7 @@
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Launch on Startup" style="@style/SettingsTitle" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto-open VistaCore when TV turns on" style="@style/SettingsSummary" />
                     </LinearLayout>
-                    <Switch android:id="@+id/switch_auto_launch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+                    <Switch android:id="@+id/switch_auto_launch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
                 <!-- Home button capture -->
@@ -648,7 +648,7 @@
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Enable PIN Lock" style="@style/SettingsTitle" />
                         <TextView android:id="@+id/pin_status_text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Off" style="@style/SettingsSummary" />
                     </LinearLayout>
-                    <Switch android:id="@+id/switch_pin_enabled" android:layout_width="wrap_content" android:layout_height="wrap_content" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+                    <Switch android:id="@+id/switch_pin_enabled" android:layout_width="wrap_content" android:layout_height="wrap_content" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
                 <Button android:id="@+id/btn_change_pin" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Change PIN" style="@style/LargeButton" android:backgroundTint="@color/settings_gray" android:visibility="gone" android:focusable="true" android:focusableInTouchMode="true" android:layout_marginBottom="28dp" />
 
@@ -666,7 +666,7 @@
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto-Update App" style="@style/SettingsTitle" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Check for new versions automatically" style="@style/SettingsSummary" />
                     </LinearLayout>
-                    <Switch android:id="@+id/switch_app_auto_update" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" />
+                    <Switch android:id="@+id/switch_app_auto_update" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
                 <Button android:id="@+id/btn_check_update" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Check for Updates" style="@style/LargeButton" android:backgroundTint="@color/accent_teal" android:focusable="true" android:focusableInTouchMode="true" android:layout_marginBottom="8dp" />

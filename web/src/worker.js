@@ -43,7 +43,7 @@ async function handleApi(url, request, env) {
   if (path === '/api/xtream')        return handleXtream(url);
   if (path === '/api/m3u')           return handleM3U(url);
   if (path === '/api/epg')           return handleEpg(url);
-  if (path === '/api/stream')        return handleStream(url);
+  if (path === '/api/stream')        return handleStream(url, request);
   if (path === '/api/image')         return handleImage(url);
 
   return jsonResponse({ error: 'Unknown API route' }, 404);
@@ -231,16 +231,23 @@ async function handleEpg(url) {
 }
 
 // ─── Stream proxy (HLS + direct video) ───
-async function handleStream(url) {
+async function handleStream(url, request) {
   const target = url.searchParams.get('url');
   if (!target) return jsonResponse({ error: 'Missing url param' }, 400);
 
+  // Forward Range header from the browser so <video> can seek MP4s
+  // and the player requests partial content instead of the full file.
+  const upstreamHeaders = { 'User-Agent': BROWSER_UA };
+  const range = request && request.headers.get('range');
+  if (range) upstreamHeaders['Range'] = range;
+
   const resp = await fetch(target, {
-    headers: { 'User-Agent': BROWSER_UA },
+    headers: upstreamHeaders,
     redirect: 'follow',
   });
 
-  if (!resp.ok) {
+  // Accept both 200 (full) and 206 (partial) — anything else is an error
+  if (!resp.ok && resp.status !== 206) {
     return new Response(`Upstream error: ${resp.status}`, {
       status: resp.status,
       headers: CORS_HEADERS,
@@ -273,12 +280,19 @@ async function handleStream(url) {
     });
   }
 
-  // Pass through video segments, MP4, etc.
+  // Pass through video segments, MP4, etc. — preserve status (200/206)
+  // and range-relevant headers so seeking works.
+  const passHeaders = { ...CORS_HEADERS };
+  passHeaders['Content-Type'] = contentType || 'video/mp4';
+  passHeaders['Accept-Ranges'] = resp.headers.get('accept-ranges') || 'bytes';
+  const cl = resp.headers.get('content-length');
+  if (cl) passHeaders['Content-Length'] = cl;
+  const cr = resp.headers.get('content-range');
+  if (cr) passHeaders['Content-Range'] = cr;
+
   return new Response(resp.body, {
-    headers: {
-      'Content-Type': contentType || 'video/mp2t',
-      ...CORS_HEADERS,
-    },
+    status: resp.status,
+    headers: passHeaders,
   });
 }
 
@@ -286,8 +300,14 @@ async function handleStream(url) {
 // Needed because many Xtream providers serve images over plain HTTP,
 // which browsers block as mixed content on an HTTPS page.
 async function handleImage(url) {
-  const target = url.searchParams.get('url');
-  if (!target) return new Response('Missing url param', { status: 400, headers: CORS_HEADERS });
+  const raw = url.searchParams.get('url');
+  if (!raw) return new Response('Missing url param', { status: 400, headers: CORS_HEADERS });
+
+  // Defensive: some providers return values like "https, https://host/path".
+  // Extract the last http(s) URL in the string.
+  const matches = raw.match(/https?:\/\/[^\s,"']+/g);
+  const target = matches && matches.length ? matches[matches.length - 1] : null;
+  if (!target) return new Response(`Invalid image URL: ${raw}`, { status: 400, headers: CORS_HEADERS });
 
   try {
     const resp = await fetch(target, {

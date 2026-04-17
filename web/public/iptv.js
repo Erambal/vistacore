@@ -72,8 +72,14 @@ class IPTVService {
   // ─── Image URLs (proxied to bypass mixed-content + HTTP-only providers) ───
   _imageUrl(rawUrl) {
     if (!rawUrl) return '';
-    if (rawUrl.startsWith('/') || rawUrl.startsWith('data:')) return rawUrl;
-    return `/api/image?url=${encodeURIComponent(rawUrl)}`;
+    const s = String(rawUrl);
+    if (s.startsWith('/') || s.startsWith('data:')) return s;
+    // Some providers return garbage like "https, https://host/path".
+    // Extract the last valid http(s) URL in the string.
+    const matches = s.match(/https?:\/\/[^\s,"']+/g);
+    if (!matches || matches.length === 0) return '';
+    const clean = matches[matches.length - 1];
+    return `/api/image?url=${encodeURIComponent(clean)}`;
   }
 
   getLiveStreamUrl(streamId, ext = 'm3u8') {

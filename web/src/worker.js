@@ -235,16 +235,35 @@ async function handleStream(url, request) {
   const target = url.searchParams.get('url');
   if (!target) return jsonResponse({ error: 'Missing url param' }, 400);
 
-  // Forward Range header from the browser so <video> can seek MP4s
-  // and the player requests partial content instead of the full file.
-  const upstreamHeaders = { 'User-Agent': BROWSER_UA };
+  // Forward Range header from the browser so <video> can seek MP4s.
+  const upstreamHeaders = { 'User-Agent': BROWSER_UA, 'Accept': '*/*' };
   const range = request && request.headers.get('range');
   if (range) upstreamHeaders['Range'] = range;
 
-  const resp = await fetch(target, {
-    headers: upstreamHeaders,
-    redirect: 'follow',
-  });
+  // Follow redirects manually — Workers' automatic follow can drop the
+  // Range header, and some VOD providers 301 to a session-scoped URL
+  // (e.g. ?session_id=...) where that matters for 206 framing.
+  let resp;
+  try {
+    resp = await fetchFollow(target, upstreamHeaders);
+  } catch (err) {
+    return new Response(`Stream proxy error: ${err.message}`, {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain', ...CORS_HEADERS },
+    });
+  }
+
+  // Some providers reject Range requests with 5xx — retry without Range once.
+  if (range && resp.status >= 500) {
+    try {
+      resp = await fetchFollow(target, { 'User-Agent': BROWSER_UA, 'Accept': '*/*' });
+    } catch (err) {
+      return new Response(`Stream proxy error: ${err.message}`, {
+        status: 502,
+        headers: { 'Content-Type': 'text/plain', ...CORS_HEADERS },
+      });
+    }
+  }
 
   // Accept both 200 (full) and 206 (partial) — anything else is an error
   if (!resp.ok && resp.status !== 206) {
@@ -280,20 +299,39 @@ async function handleStream(url, request) {
     });
   }
 
-  // Pass through video segments, MP4, etc. — preserve status (200/206)
-  // and range-relevant headers so seeking works.
-  const passHeaders = { ...CORS_HEADERS };
-  passHeaders['Content-Type'] = contentType || 'video/mp4';
-  passHeaders['Accept-Ranges'] = resp.headers.get('accept-ranges') || 'bytes';
-  const cl = resp.headers.get('content-length');
-  if (cl) passHeaders['Content-Length'] = cl;
-  const cr = resp.headers.get('content-range');
-  if (cr) passHeaders['Content-Range'] = cr;
+  // Pass through video segments, MP4, etc. Copy upstream headers so
+  // Content-Length / Content-Range / Accept-Ranges all line up with the
+  // body — mismatches cause a 520 from the Cloudflare edge.
+  const headers = new Headers(resp.headers);
+  for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v);
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'video/mp4');
+  // Strip hop-by-hop headers that don't belong in a proxied response.
+  for (const h of ['connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer']) {
+    headers.delete(h);
+  }
 
   return new Response(resp.body, {
     status: resp.status,
-    headers: passHeaders,
+    statusText: resp.statusText,
+    headers,
   });
+}
+
+// Manual redirect follower that re-sends the given headers (including Range)
+// on every hop. Max 5 redirects.
+async function fetchFollow(url, headers) {
+  let currentUrl = url;
+  for (let i = 0; i < 5; i++) {
+    const resp = await fetch(currentUrl, { headers, redirect: 'manual' });
+    if (resp.status >= 300 && resp.status < 400) {
+      const loc = resp.headers.get('location');
+      if (!loc) return resp;
+      currentUrl = new URL(loc, currentUrl).toString();
+      continue;
+    }
+    return resp;
+  }
+  throw new Error('Too many redirects');
 }
 
 // ─── Image proxy (posters, channel logos, thumbnails) ───

@@ -327,10 +327,18 @@ async function loadIPTVData() {
     if (el) el.textContent = data.phase;
   });
 
+  iptv.on('refreshed', () => {
+    toast('Catalog updated in the background');
+    buildHomeSections();
+  });
+
   try {
+    const start = performance.now();
     await iptv.loadAll();
+    const elapsed = Math.round(performance.now() - start);
     document.getElementById('loading-section').style.display = 'none';
-    toast(`Loaded ${iptv.channels.length} channels, ${iptv.movies.length} movies, ${iptv.series.length} series`);
+    const counts = `${iptv.channels.length} channels, ${iptv.movies.length} movies, ${iptv.series.length} series`;
+    toast(elapsed < 500 ? `Loaded ${counts} from cache` : `Loaded ${counts}`);
 
     // Load EPG in background
     if (settings.epg) {
@@ -1047,6 +1055,23 @@ document.getElementById('btn-save-settings').addEventListener('click', () => {
   dashboardInitialized = false;
   liveTvInitialized = false;
   initDashboard();
+});
+
+document.getElementById('btn-refresh-catalog')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-refresh-catalog');
+  const prevText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Refreshing…';
+  try {
+    await iptv.refreshCatalog();
+    toast(`Catalog refreshed: ${iptv.channels.length} channels, ${iptv.movies.length} movies, ${iptv.series.length} series`);
+    buildHomeSections();
+  } catch (err) {
+    toast('Refresh failed: ' + err.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prevText;
+  }
 });
 
 document.getElementById('btn-logout').addEventListener('click', logout);

@@ -716,6 +716,11 @@ input { font-family: inherit; }
 .settings-row-2 {
   display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
 }
+.settings-hint {
+  font-size: 0.85rem; line-height: 1.5;
+  color: rgba(255,255,255,0.55);
+  margin: 0 0 0.9rem;
+}
 
 .setting-toggle {
   display: flex; align-items: center; justify-content: space-between;

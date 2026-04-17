@@ -3,6 +3,67 @@
    Handles Xtream Codes API + M3U parsing
    ═══════════════════════════════════════════ */
 
+// ─── Catalog cache (IndexedDB) ───
+// localStorage caps ~5-10 MB; large VOD catalogs blow past that,
+// so we use IndexedDB to persist channels/movies/series between sessions.
+class CatalogCache {
+  static DB_NAME = 'vistacore';
+  static STORE   = 'catalog';
+  static TTL_MS  = 24 * 60 * 60 * 1000; // 24h freshness
+
+  static _db = null;
+
+  static async _open() {
+    if (this._db) return this._db;
+    this._db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open(this.DB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(this.STORE, { keyPath: 'key' });
+      req.onsuccess = () => resolve(req.result);
+      req.onerror   = () => reject(req.error);
+    });
+    return this._db;
+  }
+
+  static async get(key) {
+    try {
+      const db = await this._open();
+      return await new Promise((resolve, reject) => {
+        const req = db.transaction(this.STORE, 'readonly').objectStore(this.STORE).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror   = () => reject(req.error);
+      });
+    } catch { return null; }
+  }
+
+  static async put(key, data) {
+    try {
+      const db = await this._open();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(this.STORE, 'readwrite');
+        tx.objectStore(this.STORE).put({ key, savedAt: Date.now(), data });
+        tx.oncomplete = () => resolve();
+        tx.onerror    = () => reject(tx.error);
+      });
+    } catch {}
+  }
+
+  static async delete(key) {
+    try {
+      const db = await this._open();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(this.STORE, 'readwrite');
+        tx.objectStore(this.STORE).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror    = () => reject(tx.error);
+      });
+    } catch {}
+  }
+
+  static isStale(entry, ttl = this.TTL_MS) {
+    return !entry || (Date.now() - entry.savedAt) > ttl;
+  }
+}
+
 class IPTVService {
   constructor() {
     this.channels = [];
@@ -107,28 +168,99 @@ class IPTVService {
     return null;
   }
 
+  // ─── Cache plumbing ───
+  _cacheKey() {
+    if (this.xtream) return `xtream:${this.xtream.server}|${this.xtream.username}`;
+    if (this.m3uUrl) return `m3u:${this.m3uUrl}`;
+    return null;
+  }
+
+  _snapshot() {
+    return {
+      channels:         this.channels,
+      categories:       this.categories,
+      movies:           this.movies,
+      movieCategories:  this.movieCategories,
+      series:           this.series,
+      seriesCategories: this.seriesCategories,
+    };
+  }
+
+  _hydrate(data) {
+    this.channels         = data.channels         || [];
+    this.categories       = data.categories       || [];
+    this.movies           = data.movies           || [];
+    this.movieCategories  = data.movieCategories  || [];
+    this.series           = data.series           || [];
+    this.seriesCategories = data.seriesCategories || [];
+  }
+
   // ─── Load Everything ───
-  async loadAll() {
+  async loadAll(opts = {}) {
+    const { forceRefresh = false } = opts;
     this.emit('loading', { phase: 'Starting...' });
 
     try {
-      if (this.xtream) {
-        await this._loadXtream();
-      } else if (this.m3uUrl) {
-        await this._loadM3U();
-      } else {
-        throw new Error('No IPTV source configured');
+      const key = this._cacheKey();
+      const cached = (key && !forceRefresh) ? await CatalogCache.get(key) : null;
+
+      if (cached) {
+        // Instant hydrate from cache — user sees content immediately.
+        this._hydrate(cached.data);
+        this._loaded = true;
+        this.emit('loaded', {
+          channels:  this.channels.length,
+          movies:    this.movies.length,
+          series:    this.series.length,
+          fromCache: true,
+          ageHours:  (Date.now() - cached.savedAt) / 3600000,
+        });
+
+        // Kick off a silent background refresh if the cache is stale.
+        if (CatalogCache.isStale(cached)) this._backgroundRefresh(key);
+        return;
       }
+
+      // No cache (or forced) — do a full network load.
+      if (this.xtream)      await this._loadXtream();
+      else if (this.m3uUrl) await this._loadM3U();
+      else throw new Error('No IPTV source configured');
+
       this._loaded = true;
+      if (key) await CatalogCache.put(key, this._snapshot());
+
       this.emit('loaded', {
-        channels: this.channels.length,
-        movies: this.movies.length,
-        series: this.series.length
+        channels:  this.channels.length,
+        movies:    this.movies.length,
+        series:    this.series.length,
+        fromCache: false,
       });
     } catch (err) {
       this.emit('error', err);
       throw err;
     }
+  }
+
+  async _backgroundRefresh(key) {
+    try {
+      if (this.xtream)      await this._loadXtream();
+      else if (this.m3uUrl) await this._loadM3U();
+      else return;
+      await CatalogCache.put(key, this._snapshot());
+      this.emit('refreshed', {
+        channels: this.channels.length,
+        movies:   this.movies.length,
+        series:   this.series.length,
+      });
+    } catch (err) {
+      console.warn('Background catalog refresh failed:', err);
+    }
+  }
+
+  async refreshCatalog() {
+    const key = this._cacheKey();
+    if (key) await CatalogCache.delete(key);
+    return this.loadAll({ forceRefresh: true });
   }
 
   // ─── Xtream: Load All Data ───
@@ -278,6 +410,12 @@ class IPTVService {
     const resp = await fetch(`/api/m3u?url=${encodeURIComponent(this.m3uUrl)}`);
     if (!resp.ok) throw new Error(`Failed to fetch M3U: ${resp.status}`);
     const text = await resp.text();
+
+    // Reset — this loader appends, so a refresh over existing data
+    // would otherwise duplicate every entry.
+    this.channels = [];
+    this.movies   = [];
+    this.series   = [];
 
     this.emit('loading', { phase: 'Parsing playlist...' });
     const lines = text.split('\n');

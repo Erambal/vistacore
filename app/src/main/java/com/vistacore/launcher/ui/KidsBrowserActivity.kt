@@ -17,139 +17,109 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.vistacore.launcher.R
 import com.vistacore.launcher.data.ContentCache
 import com.vistacore.launcher.data.PrefsManager
+import com.vistacore.launcher.data.WatchHistoryManager
 import com.vistacore.launcher.iptv.*
 import com.vistacore.launcher.system.ChannelUpdateWorker
 import kotlinx.coroutines.*
 
 /**
- * Kids section — Disney+ inspired two-panel layout.
- * Left sidebar: Movies / Shows / Live TV tabs.
- * Right panel: content for selected tab.
+ * Kids section — discovery-driven layout with age bands.
+ *
+ * Sidebar tabs are age bands (Toddler / Younger / Older / All Ages) instead
+ * of content type (Movies / Shows / Live TV) — kids and grandparents pick
+ * "what's appropriate?" first, "what kind?" never.
+ *
+ * Right pane shows shelves: Continue Watching → Franchise rows
+ * (Bluey, Paw Patrol, etc.) → Mood rows (Animals, Vehicles, Sing-Along…) →
+ * source category rows. Adult-coded items are filtered out via KidsDiscovery.BLOCK_RE.
  */
 class KidsBrowserActivity : BaseActivity() {
-
-    private enum class Tab { MOVIES, SHOWS, LIVE_TV }
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val handler = Handler(Looper.getMainLooper())
 
     private lateinit var contentList: RecyclerView
-    private lateinit var tabMovies: LinearLayout
-    private lateinit var tabShows: LinearLayout
-    private lateinit var tabLive: LinearLayout
+    private lateinit var tabToddler: LinearLayout
+    private lateinit var tabYounger: LinearLayout
+    private lateinit var tabOlder: LinearLayout
+    private lateinit var tabAll: LinearLayout
     private lateinit var loadingView: View
     private lateinit var emptyView: TextView
     private lateinit var searchInput: EditText
 
-    private var currentTab = Tab.MOVIES
-    private var movieRows: List<NetflixRow> = emptyList()
-    private var showRows: List<NetflixRow> = emptyList()
-    private var liveRows: List<NetflixRow> = emptyList()
+    private lateinit var bandPrefs: KidsBandPrefs
+    private var currentBand: KidsDiscovery.AgeBand = KidsDiscovery.AgeBand.ALL
+
     private var allKidsContent: List<Channel> = emptyList()
     private var kidsShowIndex: Map<String, List<Channel>>? = null
-
-    // Adventure removed — only these exact categories
-    private val allowedCategories = setOf("animation", "family", "kids")
-    private val blockedCategories = setOf("action & adventure (shows)", "family (shows)")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_kids_browser)
 
         contentList = findViewById(R.id.kids_content_list)
-        tabMovies = findViewById(R.id.kids_tab_movies)
-        tabShows = findViewById(R.id.kids_tab_shows)
-        tabLive = findViewById(R.id.kids_tab_live)
+        // The 3 original tabs were repurposed; IDs kept so this binding stays stable.
+        tabToddler = findViewById(R.id.kids_tab_movies)
+        tabYounger = findViewById(R.id.kids_tab_shows)
+        tabOlder = findViewById(R.id.kids_tab_live)
+        tabAll = findViewById(R.id.kids_tab_all)
         loadingView = findViewById(R.id.kids_loading)
         emptyView = findViewById(R.id.kids_empty)
         searchInput = findViewById(R.id.kids_search_input)
 
+        bandPrefs = KidsBandPrefs(this)
+        currentBand = bandPrefs.get()
+
         contentList.layoutManager = LinearLayoutManager(this)
         setupSearch()
 
-        fun setupTab(tab: LinearLayout, type: Tab) {
-            tab.setOnClickListener { selectTab(type) }
+        fun setupTab(tab: LinearLayout, band: KidsDiscovery.AgeBand) {
+            tab.setOnClickListener { selectBand(band) }
             tab.setOnFocusChangeListener { v, focused ->
                 MainActivity.animateFocus(v, focused)
-                if (focused) selectTab(type)
+                if (focused) selectBand(band)
             }
         }
-        setupTab(tabMovies, Tab.MOVIES)
-        setupTab(tabShows, Tab.SHOWS)
-        setupTab(tabLive, Tab.LIVE_TV)
+        setupTab(tabToddler, KidsDiscovery.AgeBand.TODDLER)
+        setupTab(tabYounger, KidsDiscovery.AgeBand.YOUNGER)
+        setupTab(tabOlder, KidsDiscovery.AgeBand.OLDER)
+        setupTab(tabAll, KidsDiscovery.AgeBand.ALL)
 
         loadContent()
     }
 
-    private fun isKidsContent(channel: Channel): Boolean {
-        val cat = channel.category.lowercase().trim()
-        if (cat in blockedCategories) return false
-        return allowedCategories.any { cat == it }
-    }
-
     private fun loadContent() {
-        // Try pre-loaded cache (instant path)
-        if (ContentCache.kidsRows != null && ContentCache.kidsItems != null) {
-            allKidsContent = ContentCache.kidsItems!!
+        // Try the preloaded ContentCache first for instant display.
+        if (ContentCache.kidsItems != null && ContentCache.kidsItems!!.isNotEmpty()) {
+            allKidsContent = filterToKids(ContentCache.kidsItems!!)
             kidsShowIndex = ContentCache.kidsShowIndex
-            // Rebuild split rows from cache
-            scope.launch {
-                val split = withContext(Dispatchers.IO) {
-                    buildSplitRows(
-                        allKidsContent.filter { it.contentType == ContentType.MOVIE },
-                        allKidsContent.filter { it.contentType == ContentType.SERIES },
-                        allKidsContent.filter { it.contentType == ContentType.LIVE }
-                    )
-                }
-                movieRows = split.first
-                showRows = split.second
-                liveRows = split.third
-                selectTab(Tab.MOVIES)
-            }
+            applyCurrentBand()
             return
         }
 
         showLoading(true)
-
         scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) {
+                val combined = withContext(Dispatchers.IO) {
                     val movies = ChannelUpdateWorker.getCachedMovies(this@KidsBrowserActivity) ?: emptyList()
                     val series = ChannelUpdateWorker.getCachedSeries(this@KidsBrowserActivity) ?: emptyList()
                     val live = ChannelUpdateWorker.getCachedChannels(this@KidsBrowserActivity) ?: emptyList()
-
-                    val kidsMovies = movies.filter { isKidsContent(it) }
-                    val kidsSeries = series.filter { isKidsContent(it) }
-                    val kidsLive = live.filter { isKidsContent(it) }
-
-                    val all = kidsMovies + kidsSeries + kidsLive
-                    if (all.isEmpty()) return@withContext null
-
-                    kidsShowIndex = kidsSeries.groupBy { extractShowName(it.name) }
-                    val split = buildSplitRows(kidsMovies, kidsSeries, kidsLive)
-                    Pair(all, split)
+                    val all = movies + series + live
+                    filterToKids(all)
                 }
-
                 showLoading(false)
-
-                if (result == null) {
-                    showEmpty()
-                    return@launch
-                }
-
-                allKidsContent = result.first
-                movieRows = result.second.first
-                showRows = result.second.second
-                liveRows = result.second.third
-                selectTab(Tab.MOVIES)
-
+                if (combined.isEmpty()) { showEmpty(); return@launch }
+                allKidsContent = combined
+                kidsShowIndex = combined
+                    .filter { it.contentType == ContentType.SERIES }
+                    .groupBy { extractShowName(it.name) }
+                applyCurrentBand()
             } catch (e: Exception) {
                 showLoading(false)
                 Toast.makeText(this@KidsBrowserActivity, "Failed to load kids content", Toast.LENGTH_LONG).show()
@@ -158,71 +128,105 @@ class KidsBrowserActivity : BaseActivity() {
         }
     }
 
-    /**
-     * Build separate row lists for Movies, Shows, and Live TV tabs.
-     * Returns Triple(movieRows, showRows, liveRows).
-     */
-    private fun buildSplitRows(
-        movies: List<Channel>,
-        series: List<Channel>,
-        live: List<Channel>
-    ): Triple<List<NetflixRow>, List<NetflixRow>, List<NetflixRow>> {
-        // --- Movies ---
-        val movieRows = mutableListOf<NetflixRow>()
-        val movieGroups = movies.groupBy { it.category }
-        for ((cat, items) in movieGroups.entries.sortedByDescending { it.value.size }.take(20)) {
-            if (items.isNotEmpty()) movieRows.add(NetflixRow.CategoryRow(cat, items))
-        }
+    private fun filterToKids(items: List<Channel>): List<Channel> =
+        items.filter { KidsDiscovery.isKidsItem(it) }
 
-        // --- Shows ---
-        val showRows = mutableListOf<NetflixRow>()
-        val uniqueShows = deduplicateShows(series)
-        val showGroups = uniqueShows.groupBy { it.category }
-        for ((cat, items) in showGroups.entries.sortedByDescending { it.value.size }.take(15)) {
-            if (items.isNotEmpty()) showRows.add(NetflixRow.CategoryRow(cat, items))
-        }
-
-        // --- Live TV ---
-        val liveRows = mutableListOf<NetflixRow>()
-        if (live.isNotEmpty()) liveRows.add(NetflixRow.CategoryRow("Kids Live TV", live))
-
-        return Triple(movieRows, showRows, liveRows)
+    private fun selectBand(band: KidsDiscovery.AgeBand) {
+        if (currentBand == band && contentList.adapter != null) return
+        currentBand = band
+        bandPrefs.set(band)
+        applyCurrentBand()
     }
 
-    private fun selectTab(tab: Tab) {
-        currentTab = tab
+    private fun applyCurrentBand() {
         updateTabHighlights()
-        val rows = when (tab) {
-            Tab.MOVIES -> movieRows
-            Tab.SHOWS -> showRows
-            Tab.LIVE_TV -> liveRows
+        if (allKidsContent.isEmpty()) { showEmpty(); return }
+        scope.launch {
+            val rows = withContext(Dispatchers.IO) { buildKidsDiscoveryRows(currentBand) }
+            if (rows.isEmpty()) showEmpty() else showContent(rows)
         }
-        if (rows.isNotEmpty()) {
-            showContent(rows)
-        } else if (allKidsContent.isNotEmpty()) {
-            showEmpty()
+    }
+
+    /** Build the stack of shelves: Continue Watching → franchises → moods → categories. */
+    private fun buildKidsDiscoveryRows(band: KidsDiscovery.AgeBand): List<NetflixRow> {
+        val pool = KidsDiscovery.all(allKidsContent, band)
+        if (pool.isEmpty()) return emptyList()
+
+        val rows = mutableListOf<NetflixRow>()
+
+        // Continue Watching — oversized hero row at the top
+        val history = WatchHistoryManager(this)
+        val cw = Discovery.continueWatching(history, pool)
+        if (cw.isNotEmpty()) {
+            rows.add(NetflixRow.CategoryRow(
+                title = "▶  Pick Up Where You Left Off",
+                items = cw,
+                hero = true,
+                origin = "kids-continue"
+            ))
         }
+        val seenUrls = Discovery.seenStreamUrls(history)
+
+        // Franchise shelves — Bluey, Paw Patrol, Disney, Pixar, Marvel, Star Wars, etc.
+        for (fr in KidsDiscovery.FRANCHISES) {
+            val items = KidsDiscovery.byFranchise(pool, fr, band)
+            if (items.isEmpty()) continue
+            rows.add(NetflixRow.CategoryRow(
+                title = "${fr.emoji}  ${fr.label}",
+                items = items,
+                tintHex = fr.tintHex,
+                origin = "kids-franchise:${fr.key}"
+            ))
+        }
+
+        // Mood shelves — Animals, Vehicles, Sing-Along, etc. Skip in-progress items
+        // so we don't keep showing the same poster after a few rewatches.
+        for (mood in KidsDiscovery.MOODS) {
+            val items = KidsDiscovery.byMood(pool, mood, band, exclude = seenUrls)
+            if (items.size < 3) continue
+            rows.add(NetflixRow.CategoryRow(
+                title = "${mood.emoji}  ${mood.label}",
+                items = items,
+                tintHex = mood.tintHex,
+                origin = "kids-mood:${mood.key}"
+            ))
+        }
+
+        // Source categories last — only the largest few, to give a familiar fallback.
+        val grouped = pool.groupBy { it.category }
+            .filter { (_, list) -> list.size >= 3 }
+            .entries.sortedByDescending { it.value.size }
+            .take(8)
+        for ((cat, items) in grouped) {
+            rows.add(NetflixRow.CategoryRow(cat, items))
+        }
+
+        return rows
     }
 
     private fun updateTabHighlights() {
-        fun style(tab: LinearLayout, labelId: Int, iconId: Int, selected: Boolean) {
-            val label = tab.findViewById<TextView>(labelId)
+        fun style(tab: LinearLayout, label: TextView, selected: Boolean) {
             if (selected) {
                 val bg = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
-                    cornerRadius = 10f
-                    setColor(0x22FFC107) // kids_yellow 13% opacity
+                    cornerRadius = 12f
+                    setColor(0x33FFC107) // kids_yellow 20% opacity
                 }
                 tab.background = bg
-                label.setTextColor(0xFFFFC107.toInt()) // kids_yellow
+                label.setTextColor(0xFFFFC107.toInt())
             } else {
                 tab.background = ColorDrawable(Color.TRANSPARENT)
-                label.setTextColor(0xCCB0B8C8.toInt()) // text_secondary
+                label.setTextColor(0xCCB0B8C8.toInt())
             }
         }
-        style(tabMovies, R.id.kids_tab_movies_label, R.id.kids_tab_movies_icon, currentTab == Tab.MOVIES)
-        style(tabShows, R.id.kids_tab_shows_label, R.id.kids_tab_shows_icon, currentTab == Tab.SHOWS)
-        style(tabLive, R.id.kids_tab_live_label, R.id.kids_tab_live_icon, currentTab == Tab.LIVE_TV)
+        val toddlerLabel = findViewById<TextView>(R.id.kids_tab_movies_label)
+        val youngerLabel = findViewById<TextView>(R.id.kids_tab_shows_label)
+        val olderLabel = findViewById<TextView>(R.id.kids_tab_live_label)
+        val allLabel = findViewById<TextView>(R.id.kids_tab_all_label)
+        style(tabToddler, toddlerLabel, currentBand == KidsDiscovery.AgeBand.TODDLER)
+        style(tabYounger, youngerLabel, currentBand == KidsDiscovery.AgeBand.YOUNGER)
+        style(tabOlder, olderLabel, currentBand == KidsDiscovery.AgeBand.OLDER)
+        style(tabAll, allLabel, currentBand == KidsDiscovery.AgeBand.ALL)
     }
 
     private fun showContent(rows: List<NetflixRow>) {
@@ -238,11 +242,8 @@ class KidsBrowserActivity : BaseActivity() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
                 val query = s?.toString()?.trim() ?: ""
-                if (query.length >= 2) {
-                    showSearchResults(query)
-                } else if (query.isEmpty()) {
-                    selectTab(currentTab)
-                }
+                if (query.length >= 2) showSearchResults(query)
+                else if (query.isEmpty()) applyCurrentBand()
             }
         })
     }
@@ -250,33 +251,17 @@ class KidsBrowserActivity : BaseActivity() {
     private fun showSearchResults(query: String) {
         scope.launch {
             val rows = withContext(Dispatchers.IO) {
-                val results = allKidsContent.filter {
+                val pool = KidsDiscovery.all(allKidsContent, currentBand)
+                val results = pool.filter {
                     it.name.contains(query, ignoreCase = true) ||
                             it.category.contains(query, ignoreCase = true)
                 }
-                val rowList = mutableListOf<NetflixRow>()
-
-                // Split results by content type so series are handled correctly
-                val seriesResults = results.filter { it.contentType == ContentType.SERIES }
-                val movieResults = results.filter { it.contentType == ContentType.MOVIE }
-                val liveResults = results.filter { it.contentType == ContentType.LIVE }
-
-                // For series: deduplicate by show name, but prefer series items
-                if (seriesResults.isNotEmpty()) {
-                    val uniqueShows = deduplicateShows(seriesResults)
-                    rowList.add(NetflixRow.CategoryRow("Shows matching \"$query\"", uniqueShows.take(50)))
-                }
-                if (movieResults.isNotEmpty()) {
-                    rowList.add(NetflixRow.CategoryRow("Movies matching \"$query\"", movieResults.take(50)))
-                }
-                if (liveResults.isNotEmpty()) {
-                    rowList.add(NetflixRow.CategoryRow("Live TV matching \"$query\"", liveResults.take(50)))
-                }
-                rowList
+                if (results.isNotEmpty())
+                    listOf(NetflixRow.CategoryRow("Results for \"$query\"", results.take(50)))
+                else emptyList()
             }
-            if (rows.isNotEmpty()) {
-                showContent(rows)
-            } else {
+            if (rows.isNotEmpty()) showContent(rows)
+            else {
                 contentList.adapter = KidsNetflixAdapter(emptyList(), this@KidsBrowserActivity)
                 emptyView.visibility = View.VISIBLE
                 emptyView.text = "No results for \"$query\""
@@ -286,13 +271,10 @@ class KidsBrowserActivity : BaseActivity() {
 
     fun onItemClicked(item: Channel) {
         if (item.contentType == ContentType.SERIES) {
-            // Xtream series: id starts with "xt_series_" and needs episode fetch
-            val xtreamSeriesId = if (item.id.startsWith("xt_series_")) {
-                item.id.removePrefix("xt_series_").toIntOrNull()
-            } else null
+            val xtreamSeriesId = if (item.id.startsWith("xt_series_"))
+                item.id.removePrefix("xt_series_").toIntOrNull() else null
 
             if (xtreamSeriesId != null) {
-                // Fetch actual episodes from Xtream API
                 val showName = extractShowName(item.name)
                 showLoading(true)
                 scope.launch {
@@ -301,19 +283,15 @@ class KidsBrowserActivity : BaseActivity() {
                             val prefs = PrefsManager(this@KidsBrowserActivity)
                             val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
                             XtreamClient(auth).getSeriesInfo(xtreamSeriesId)
-                        } catch (e: Exception) {
-                            emptyList()
-                        }
+                        } catch (_: Exception) { emptyList() }
                     }
                     showLoading(false)
-                    if (episodes.isNotEmpty()) {
+                    if (episodes.isNotEmpty())
                         ShowDetailActivity.launch(this@KidsBrowserActivity, showName, item.category, item.logoUrl, episodes)
-                    } else {
+                    else
                         Toast.makeText(this@KidsBrowserActivity, "Could not load episodes", Toast.LENGTH_SHORT).show()
-                    }
                 }
             } else {
-                // M3U-based series: episodes already in the show index
                 val showName = extractShowName(item.name)
                 if (kidsShowIndex == null) {
                     val allSeries = allKidsContent.filter { it.contentType == ContentType.SERIES }
@@ -323,7 +301,6 @@ class KidsBrowserActivity : BaseActivity() {
                 if (episodes.size > 1) {
                     ShowDetailActivity.launch(this, showName, item.category, item.logoUrl, episodes)
                 } else {
-                    // Single episode or no index match — play directly
                     startActivity(Intent(this, IPTVPlayerActivity::class.java).apply {
                         putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
                         putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, item.name)
@@ -344,11 +321,6 @@ class KidsBrowserActivity : BaseActivity() {
                 }
             })
         }
-    }
-
-    private fun deduplicateShows(items: List<Channel>): List<Channel> {
-        val seen = mutableSetOf<String>()
-        return items.filter { seen.add(extractShowName(it.name)) }
     }
 
     private val showNameStripper = Regex(
@@ -373,7 +345,7 @@ class KidsBrowserActivity : BaseActivity() {
     private fun showEmpty() {
         contentList.visibility = View.GONE
         emptyView.visibility = View.VISIBLE
-        emptyView.text = "No kids content found.\nMake sure your playlist includes kids categories."
+        emptyView.text = "No kids content for this age band.\nTry switching to All Ages."
     }
 
     override fun onDestroy() {
@@ -383,7 +355,7 @@ class KidsBrowserActivity : BaseActivity() {
     }
 }
 
-// --- Kids Adapter (two-panel version, no banner) ---
+// ─── Kids adapter — applies tint/hero/origin from the row metadata. ───
 
 class KidsNetflixAdapter(
     private val rows: List<NetflixRow>,
@@ -407,11 +379,37 @@ class KidsNetflixAdapter(
         private val recycler: RecyclerView = itemView.findViewById(R.id.row_recycler)
 
         fun bind(row: NetflixRow.CategoryRow) {
-            title.text = "${row.title} (${row.items.size})"
+            title.text = if (row.origin.isNotEmpty()) row.title
+                         else "${row.title} (${row.items.size})"
+            title.textSize = if (row.hero) 22f else 18f
+
+            // Tinted background wash so kids can navigate by color even
+            // before they can read the headers.
+            if (row.tintHex.isNotBlank()) {
+                try {
+                    val base = Color.parseColor(row.tintHex)
+                    val bg = GradientDrawable(
+                        GradientDrawable.Orientation.TL_BR,
+                        intArrayOf(
+                            Color.argb(48, Color.red(base), Color.green(base), Color.blue(base)),
+                            Color.TRANSPARENT
+                        )
+                    )
+                    bg.cornerRadius = 20f
+                    itemView.background = bg
+                    itemView.setPadding(28, 24, 28, 12)
+                } catch (_: Exception) {
+                    itemView.background = null
+                }
+            } else {
+                itemView.background = null
+                itemView.setPadding(0, 0, 0, 0)
+            }
+
             recycler.layoutManager = LinearLayoutManager(
                 itemView.context, LinearLayoutManager.HORIZONTAL, false
             )
-            val posterAdapter = KidsPosterAdapter(row.items, activity)
+            val posterAdapter = KidsPosterAdapter(row.items, activity, row.hero, row.tintHex)
             recycler.adapter = posterAdapter
             recycler.clearOnScrollListeners()
             recycler.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -429,7 +427,9 @@ class KidsNetflixAdapter(
 
 class KidsPosterAdapter(
     private val items: List<Channel>,
-    private val activity: KidsBrowserActivity
+    private val activity: KidsBrowserActivity,
+    private val hero: Boolean = false,
+    private val tintHex: String = ""
 ) : RecyclerView.Adapter<KidsPosterAdapter.VH>() {
 
     private var visibleCount = minOf(30, items.size)
@@ -448,6 +448,16 @@ class KidsPosterAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_netflix_poster, parent, false)
+        // Bigger tiles for the Kids section overall — easier remote targeting.
+        // Hero shelves (Continue Watching) get bigger still.
+        val density = parent.context.resources.displayMetrics.density
+        val widthDp = if (hero) 250 else 220
+        val heightDp = if (hero) 360 else 320
+        view.layoutParams = view.layoutParams?.also { it.width = (widthDp * density).toInt() }
+            ?: ViewGroup.LayoutParams((widthDp * density).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        (view as? ViewGroup)?.getChildAt(0)?.let { card ->
+            card.layoutParams = card.layoutParams?.apply { height = (heightDp * density).toInt() }
+        }
         return VH(view)
     }
 

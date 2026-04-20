@@ -309,6 +309,65 @@ class VODBrowserActivity : BaseActivity() {
             rows.add(NetflixRow.Banner(withPosters.first()))
         }
 
+        // ─── Discovery shelves (built before category rows) ───────────────
+        // Continue Watching, Surprise Me, Just Added, mood/decade rows.
+        // Items already started/finished are hidden from discovery rows so the
+        // user doesn't keep seeing the same posters they've already watched.
+        val watchHistory = com.vistacore.launcher.data.WatchHistoryManager(this)
+        val seenUrls = Discovery.seenStreamUrls(watchHistory)
+
+        val cw = Discovery.continueWatching(watchHistory, displayItems)
+        if (cw.isNotEmpty()) {
+            rows.add(NetflixRow.CategoryRow(
+                title = "▶  Pick Up Where You Left Off",
+                items = cw,
+                hero = true,
+                origin = "continue"
+            ))
+        }
+
+        // "Surprise Me" hero — only for movies (series detail page is a
+        // commitment, but movies tap-to-play immediately so a random pick
+        // is a one-button "just play something" experience).
+        if (contentType == TYPE_MOVIES) {
+            rows.add(NetflixRow.SurpriseMe())
+        }
+
+        // Just Added — filter to items with parsable years, sort newest first
+        val fresh = Discovery.justAdded(displayItems, limit = 24, exclude = seenUrls)
+        if (fresh.size >= 4) {
+            rows.add(NetflixRow.CategoryRow("✨  Just Added", fresh, origin = "just-added"))
+        }
+
+        // Mood shelves — sorted by user click history so favorites bubble up
+        val moodPrefs = MoodPrefsManager(this)
+        for (mood in moodPrefs.sortMoods(Discovery.MOVIE_MOODS)) {
+            val moodItems = Discovery.byMood(displayItems, mood, exclude = seenUrls)
+            if (moodItems.size >= 4) {
+                rows.add(NetflixRow.CategoryRow(
+                    title = "${mood.emoji}  ${mood.label}",
+                    items = moodItems,
+                    origin = "mood:${mood.key}"
+                ))
+            }
+        }
+
+        // Decade shelves (movies only — series episode names rarely have years)
+        if (contentType == TYPE_MOVIES) {
+            for (decade in listOf(1980, 1970, 1960, 1990, 2000)) {
+                val decItems = Discovery.byDecade(displayItems, decade, exclude = seenUrls)
+                if (decItems.size >= 4) {
+                    val short = decade.toString().substring(2)
+                    rows.add(NetflixRow.CategoryRow(
+                        title = "From the ${short}s",
+                        items = decItems,
+                        origin = "decade:$decade"
+                    ))
+                }
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         // Group by category, filter hidden, sort by user usage then size
         val tracker = com.vistacore.launcher.data.UsageTracker(this)
         val grouped = displayItems.groupBy { it.category }
@@ -330,6 +389,14 @@ class VODBrowserActivity : BaseActivity() {
         }
 
         return rows
+    }
+
+    /** Pick a random unwatched movie and play it immediately. Wired to the SurpriseMe row. */
+    fun onSurpriseMeClicked() {
+        val watchHistory = com.vistacore.launcher.data.WatchHistoryManager(this)
+        val seen = Discovery.seenStreamUrls(watchHistory)
+        val pick = Discovery.surpriseMovie(allItems, exclude = seen) ?: allItems.firstOrNull()
+        if (pick != null) onItemClicked(pick)
     }
 
     /** Returns keywords for boosting categories that match the app language. */
@@ -549,7 +616,23 @@ class VODBrowserActivity : BaseActivity() {
 
 sealed class NetflixRow {
     data class Banner(val item: Channel) : NetflixRow()
-    data class CategoryRow(val title: String, val items: List<Channel>) : NetflixRow()
+    /**
+     * `tintHex` (#RRGGBB) decorates the row with a subtle background wash —
+     * used by Kids franchise/mood shelves. Empty string = no tint.
+     * `hero=true` renders the row with bigger tiles for high-priority shelves
+     * like Continue Watching.
+     * `origin` is a tag like "mood:funny" or "franchise:bluey" used to bump
+     * MoodPrefs counts when an item in the row is opened.
+     */
+    data class CategoryRow(
+        val title: String,
+        val items: List<Channel>,
+        val tintHex: String = "",
+        val hero: Boolean = false,
+        val origin: String = ""
+    ) : NetflixRow()
+    /** Single hero tile inviting the user to be served a random pick. */
+    data class SurpriseMe(val title: String = "Don't know what to watch?") : NetflixRow()
 }
 
 // --- Netflix Main Adapter (banner + category rows) ---
@@ -562,7 +645,8 @@ class NetflixAdapter(
     companion object {
         const val TYPE_BANNER = 0
         const val TYPE_ROW = 1
-        private const val INITIAL_ROWS = 4 // banner + 3 category rows
+        const val TYPE_SURPRISE = 2
+        private const val INITIAL_ROWS = 5 // banner + a few discovery shelves
     }
 
     private var currentBanner: Channel? = (rows.firstOrNull() as? NetflixRow.Banner)?.item
@@ -571,6 +655,7 @@ class NetflixAdapter(
     override fun getItemViewType(position: Int) = when (rows[position]) {
         is NetflixRow.Banner -> TYPE_BANNER
         is NetflixRow.CategoryRow -> TYPE_ROW
+        is NetflixRow.SurpriseMe -> TYPE_SURPRISE
     }
 
     override fun getItemCount() = visibleCount
@@ -590,6 +675,10 @@ class NetflixAdapter(
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_netflix_banner, parent, false)
                 BannerVH(view)
             }
+            TYPE_SURPRISE -> {
+                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_surprise_hero, parent, false)
+                SurpriseVH(view)
+            }
             else -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_netflix_row, parent, false)
                 RowVH(view)
@@ -601,6 +690,18 @@ class NetflixAdapter(
         when (val row = rows[position]) {
             is NetflixRow.Banner -> (holder as BannerVH).bind(currentBanner ?: row.item)
             is NetflixRow.CategoryRow -> (holder as RowVH).bind(row)
+            is NetflixRow.SurpriseMe -> (holder as SurpriseVH).bind(row)
+        }
+    }
+
+    inner class SurpriseVH(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val title: TextView = itemView.findViewById(R.id.surprise_title)
+        private val button: Button = itemView.findViewById(R.id.surprise_button)
+
+        fun bind(row: NetflixRow.SurpriseMe) {
+            title.text = row.title
+            button.setOnClickListener { activity.onSurpriseMeClicked() }
+            button.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         }
     }
 
@@ -635,11 +736,39 @@ class NetflixAdapter(
         private val recycler: RecyclerView = itemView.findViewById(R.id.row_recycler)
 
         fun bind(row: NetflixRow.CategoryRow) {
-            title.text = "${row.title} (${row.items.size})"
+            // Discovery shelves (origin set) hide the count — it's noisy in
+            // headers like "✨ Just Added (24)". Categories keep it.
+            title.text = if (row.origin.isNotEmpty()) row.title
+                         else "${row.title} (${row.items.size})"
+            // Hero shelves (Continue Watching) get a slightly larger title
+            title.textSize = if (row.hero) 22f else 18f
+
+            // Subtle tinted wash for color-coded shelves (kids franchises/moods)
+            if (row.tintHex.isNotBlank()) {
+                try {
+                    val base = android.graphics.Color.parseColor(row.tintHex)
+                    val bg = android.graphics.drawable.GradientDrawable(
+                        android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                        intArrayOf(
+                            android.graphics.Color.argb(36, android.graphics.Color.red(base), android.graphics.Color.green(base), android.graphics.Color.blue(base)),
+                            android.graphics.Color.TRANSPARENT
+                        )
+                    )
+                    bg.cornerRadius = 18f
+                    itemView.background = bg
+                    itemView.setPadding(28, 24, 28, 12)
+                } catch (_: Exception) {
+                    itemView.background = null
+                }
+            } else {
+                itemView.background = null
+                itemView.setPadding(0, 0, 0, 0)
+            }
+
             recycler.layoutManager = LinearLayoutManager(
                 itemView.context, LinearLayoutManager.HORIZONTAL, false
             )
-            val posterAdapter = PosterAdapter(row.items, activity)
+            val posterAdapter = PosterAdapter(row.items, activity, row.origin, row.hero)
             recycler.adapter = posterAdapter
             recycler.clearOnScrollListeners()
             recycler.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -659,10 +788,14 @@ class NetflixAdapter(
 
 class PosterAdapter(
     private val items: List<Channel>,
-    private val activity: VODBrowserActivity
+    private val activity: VODBrowserActivity,
+    private val origin: String = "",
+    private val hero: Boolean = false
 ) : RecyclerView.Adapter<PosterAdapter.VH>() {
 
     private var visibleCount = minOf(30, items.size)
+    // Cached so we don't allocate per-click.
+    private val moodPrefs by lazy { MoodPrefsManager(activity) }
 
     /** Load the next batch when the user scrolls near the end of the row. */
     fun loadMore() {
@@ -683,6 +816,19 @@ class PosterAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_netflix_poster, parent, false)
+        // Hero rows (Continue Watching) get bigger tiles — 250dp wide, 360dp tall —
+        // so the most-likely click lands the user's eye.
+        if (hero) {
+            val density = parent.context.resources.displayMetrics.density
+            val widthPx = (250 * density).toInt()
+            val heightPx = (360 * density).toInt()
+            view.layoutParams = view.layoutParams?.also { it.width = widthPx }
+                ?: ViewGroup.LayoutParams(widthPx, ViewGroup.LayoutParams.WRAP_CONTENT)
+            // Resize the inner CardView (poster art) to match
+            (view as? ViewGroup)?.getChildAt(0)?.let { card ->
+                card.layoutParams = card.layoutParams?.apply { height = heightPx }
+            }
+        }
         return VH(view)
     }
 
@@ -708,7 +854,12 @@ class PosterAdapter(
             holder.sourceBadge.visibility = View.GONE
         }
 
-        holder.itemView.setOnClickListener { activity.onItemClicked(item) }
+        holder.itemView.setOnClickListener {
+            // Bump the mood-pref counter so the user's favorite shelves
+            // float to the top of the discovery view next time.
+            if (origin.startsWith("mood:")) moodPrefs.bump(origin.removePrefix("mood:"))
+            activity.onItemClicked(item)
+        }
         holder.itemView.setOnFocusChangeListener { v, f ->
             MainActivity.animateFocus(v, f)
             holder.focusBorder.visibility = if (f) View.VISIBLE else View.GONE

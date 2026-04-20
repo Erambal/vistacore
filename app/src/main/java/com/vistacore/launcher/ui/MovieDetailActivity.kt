@@ -145,6 +145,22 @@ class MovieDetailActivity : BaseActivity() {
             binding.movieTagline.text = "\"${d.tagline}\""
             binding.movieTagline.visibility = View.VISIBLE
         }
+
+        // Prominent "Rated R" line — users wanted this more visible than the
+        // small pill badge. If the "Hide R-rated" toggle is on and the
+        // rating is restricted, we also gate the Play button.
+        val ratedLine = DetailBinders.formatRatedLine(d.mpaa)
+        if (ratedLine != null) {
+            binding.movieRatedLine.text = ratedLine
+            binding.movieRatedLine.visibility = View.VISIBLE
+        }
+        val prefs = PrefsManager(this)
+        if (prefs.hideRestrictedRatings && DetailBinders.isRestrictedRating(d.mpaa)) {
+            binding.moviePlayBtn.isEnabled = false
+            binding.moviePlayBtn.text = "Blocked (${d.mpaa})"
+            binding.moviePlayBtn.alpha = 0.6f
+        }
+
         DetailBinders.renderBadges(
             binding.movieBadges,
             rating = d.rating,

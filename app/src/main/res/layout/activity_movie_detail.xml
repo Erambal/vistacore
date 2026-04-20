@@ -70,6 +70,25 @@
                     tools:text="&quot;In space, no one can hear you scream.&quot;"
                     tools:visibility="visible" />
 
+                <!-- Prominent "Rated R" line. Only appears when the provider
+                     gives us an MPAA rating so it doesn't lie about unknown. -->
+                <TextView
+                    android:id="@+id/movie_rated_line"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary"
+                    android:background="@drawable/detail_rated_line_background"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
+                    android:visibility="gone"
+                    android:layout_marginBottom="12dp"
+                    tools:text="Rated R"
+                    tools:visibility="visible" />
+
                 <LinearLayout
                     android:id="@+id/movie_badges"
                     android:layout_width="match_parent"

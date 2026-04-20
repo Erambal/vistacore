@@ -323,6 +323,14 @@ class SettingsActivity : BaseActivity() {
         binding.switchFilterSlurs.setOnCheckedChangeListener { _, checked -> prefs.filterSlurs = checked }
         binding.switchFilterSexual.setOnCheckedChangeListener { _, checked -> prefs.filterSexualDialogue = checked }
 
+        binding.switchHideRestricted.isChecked = prefs.hideRestrictedRatings
+        binding.switchHideRestricted.setOnCheckedChangeListener { _, checked ->
+            prefs.hideRestrictedRatings = checked
+            // Rebuild cached rows so the filter takes effect without a restart.
+            com.vistacore.launcher.data.ContentCache.movieRows = null
+            com.vistacore.launcher.data.ContentCache.showRows = null
+        }
+
         // Show filter file count
         val filters = filterManager.listFilters()
         binding.filterDataSummary.text = if (filters.isEmpty()) {

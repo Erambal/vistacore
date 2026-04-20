@@ -47,6 +47,7 @@ class PrefsManager(context: Context) {
         private const val KEY_FILTER_BLASPHEMY = "filter_blasphemy"
         private const val KEY_FILTER_SLURS = "filter_slurs"
         private const val KEY_FILTER_SEXUAL_DIALOGUE = "filter_sexual_dialogue"
+        private const val KEY_HIDE_RESTRICTED_RATINGS = "hide_restricted_ratings"
         private const val KEY_LIVE_TV_STYLE = "live_tv_style"
         private const val KEY_JELLYFIN_SERVER = "jellyfin_server"
         private const val KEY_JELLYFIN_USERNAME = "jellyfin_username"
@@ -274,6 +275,16 @@ class PrefsManager(context: Context) {
     var filterSexualDialogue: Boolean
         get() = prefs.getBoolean(KEY_FILTER_SEXUAL_DIALOGUE, false)
         set(value) = prefs.edit().putBoolean(KEY_FILTER_SEXUAL_DIALOGUE, value).apply()
+
+    /**
+     * Hide movies/shows with restricted MPAA ratings (R, NC-17, TV-MA, etc.)
+     * and obvious adult-coded titles/categories in the catalog. Applied at
+     * browse time as a name/category regex plus per-title MPAA blocking on
+     * the detail screen when metadata is fetched.
+     */
+    var hideRestrictedRatings: Boolean
+        get() = prefs.getBoolean(KEY_HIDE_RESTRICTED_RATINGS, false)
+        set(value) = prefs.edit().putBoolean(KEY_HIDE_RESTRICTED_RATINGS, value).apply()
 
     /** Get the set of enabled filter categories. */
     fun getEnabledFilterCategories(): Set<String> {

@@ -298,7 +298,11 @@ class VODBrowserActivity : BaseActivity() {
     private fun buildRows(items: List<Channel>): List<NetflixRow> {
         if (items.isEmpty()) return emptyList()
 
-        val displayItems = deduplicateShows(items)
+        // Respect the "Hide R-rated content" toggle before any shelving.
+        val prefs = PrefsManager(this)
+        val filteredItems = com.vistacore.launcher.iptv.Discovery
+            .applyRestrictedFilter(items, prefs.hideRestrictedRatings)
+        val displayItems = deduplicateShows(filteredItems)
         val rows = mutableListOf<NetflixRow>()
 
         // Banner: pick random items with posters (sample from first 500 to avoid scanning all 60K)
@@ -448,9 +452,12 @@ class VODBrowserActivity : BaseActivity() {
 
     private fun showSearchResults(query: String) {
         scope.launch {
+            val prefs = PrefsManager(this@VODBrowserActivity)
             val rows = withContext(Dispatchers.IO) {
                 val normalizedQuery = normalizeApostrophes(query)
-                val results = allItems.filter {
+                val pool = com.vistacore.launcher.iptv.Discovery
+                    .applyRestrictedFilter(allItems, prefs.hideRestrictedRatings)
+                val results = pool.filter {
                     val name = normalizeApostrophes(it.name)
                     val showName = precomputedShowNames?.get(it.id)?.let { sn -> normalizeApostrophes(sn) }
                     name.contains(normalizedQuery, ignoreCase = true) ||

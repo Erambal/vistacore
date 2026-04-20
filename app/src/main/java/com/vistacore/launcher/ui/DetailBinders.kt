@@ -66,6 +66,31 @@ object DetailBinders {
      * Xtream serves runtime in several shapes ("01:32:00", "120 min", raw
      * seconds). Normalize to "1h 32m" or "45m" for display.
      */
+    /**
+     * Normalize an MPAA/age rating string into a user-facing line:
+     * "R" → "Rated R", "TV-MA" → "Rated TV-MA", "17+" → "17+".
+     * Returns null if [raw] doesn't look like a rating we should surface.
+     */
+    fun formatRatedLine(raw: String): String? {
+        val r = raw.trim()
+        if (r.isBlank()) return null
+        if (r.equals("unrated", true) || r.equals("not rated", true) || r.equals("nr", true)) return "Not Rated"
+        // Bare age codes (e.g. "12+", "17+", "R18+") keep their form.
+        if (Regex("""^\d+\+?$""").matches(r)) return r
+        if (Regex("""^R\d+\+?$""", RegexOption.IGNORE_CASE).matches(r)) return r.uppercase()
+        // Standard MPAA / TV-PG labels look clearer with "Rated " prefix.
+        return "Rated $r"
+    }
+
+    /** True if [raw] represents an adult-restricted rating (R / NC-17 / TV-MA / X / 18+). */
+    fun isRestrictedRating(raw: String): Boolean {
+        val r = raw.trim().uppercase()
+        if (r.isBlank()) return false
+        return r == "R" || r == "NC-17" || r == "NC17" || r == "TV-MA" || r == "TVMA" ||
+               r == "X" || r == "XXX" || r.startsWith("18") || r == "MA15+" || r == "R18+" ||
+               r == "AO" || r == "ADULT"
+    }
+
     fun formatRuntime(duration: String, durationSecs: Long, episodeRunTime: String): String {
         val hhmm = Regex("""^(\d{1,2}):(\d{1,2})(?::\d{1,2})?$""").find(duration)
         if (hhmm != null) {

@@ -48,6 +48,26 @@ object Discovery {
 
     fun isUnwatched(item: Channel, seenUrls: Set<String>) = item.streamUrl !in seenUrls
 
+    /**
+     * Heuristic match for titles / categories that are restricted or
+     * adult-coded. Used when [com.vistacore.launcher.data.PrefsManager.hideRestrictedRatings]
+     * is on to exclude obvious matches at browse time. This is catch-only —
+     * IPTV providers rarely put MPAA codes in the catalog, so many R-rated
+     * movies slip through; those get caught on the detail page instead.
+     */
+    private val RESTRICTED_NAME_RE = Regex(
+        """\b(?:NC[- ]?17|TV[- ]?MA|XXX|18\+|R[- ]?rated|\[R\]|\(R\)|adult|erotic|porn)\b""",
+        RegexOption.IGNORE_CASE
+    )
+
+    fun isRestrictedByName(item: Channel): Boolean =
+        RESTRICTED_NAME_RE.containsMatchIn(item.name) ||
+            RESTRICTED_NAME_RE.containsMatchIn(item.category)
+
+    /** Filter a list to hide restricted/adult titles when [enabled] is true. */
+    fun applyRestrictedFilter(items: List<Channel>, enabled: Boolean): List<Channel> =
+        if (!enabled) items else items.filterNot { isRestrictedByName(it) }
+
     // ─── Movie shelves ───
 
     fun byMood(items: List<Channel>, mood: Mood, limit: Int = 30, exclude: Set<String> = emptySet()): List<Channel> =

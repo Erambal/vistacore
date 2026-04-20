@@ -184,33 +184,53 @@ class XtreamClient(private val auth: XtreamAuth) {
     /**
      * Fetch both the rich metadata block (plot, cast, rating, etc.) and the
      * episode list for a series. Null on network/parse failure.
+     *
+     * Providers vary wildly in the shape of get_series_info responses (some
+     * return info as an object, others nest it differently; some return
+     * backdrop_path as a string, others as an array; ratings may be strings
+     * or numbers). We parse element-by-element via [com.google.gson.JsonElement]
+     * so a single inconsistent field doesn't null out the whole response.
      */
     suspend fun getSeriesDetail(seriesId: Int): SeriesDetail? = withContext(Dispatchers.IO) {
         val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_series_info&series_id=$seriesId"
         try {
             val body = fetchWithClient(vodClient, url)
-            val parsed = gson.fromJson(body, XtreamSeriesInfo::class.java) ?: return@withContext null
+            val root = com.google.gson.JsonParser.parseString(body)?.asJsonObject ?: return@withContext null
+
+            val infoBlock = XtreamSafeParser.parseInfoBlock(root.get("info"))
+
             val episodes = mutableListOf<Channel>()
-            parsed.episodes?.forEach { (seasonNum, episodeList) ->
-                for (ep in episodeList) {
-                    val ext = ep.container_extension.ifBlank { "mp4" }
-                    val epName = if (ep.title.isNotBlank()) {
-                        "S${seasonNum.padStart(2, '0')}E${ep.episode_num.toString().padStart(2, '0')} - ${ep.title}"
-                    } else {
-                        "S${seasonNum.padStart(2, '0')}E${ep.episode_num.toString().padStart(2, '0')}"
-                    }
-                    episodes.add(
-                        Channel(
-                            id = "xt_ep_${ep.id}",
-                            name = epName,
-                            streamUrl = "${auth.seriesStreamUrl}/${ep.id}.$ext",
-                            category = "Season $seasonNum",
-                            contentType = ContentType.SERIES
+            val epsElem = root.get("episodes")
+            if (epsElem != null && epsElem.isJsonObject) {
+                for ((seasonNum, seasonList) in epsElem.asJsonObject.entrySet()) {
+                    if (!seasonList.isJsonArray) continue
+                    for (epElem in seasonList.asJsonArray) {
+                        if (!epElem.isJsonObject) continue
+                        val ep = epElem.asJsonObject
+                        val id = XtreamSafeParser.stringOrEmpty(ep.get("id"))
+                        if (id.isBlank()) continue
+                        val epNumRaw = XtreamSafeParser.stringOrEmpty(ep.get("episode_num"))
+                        val epNum = epNumRaw.toIntOrNull() ?: 0
+                        val title = XtreamSafeParser.stringOrEmpty(ep.get("title"))
+                        val ext = XtreamSafeParser.stringOrEmpty(ep.get("container_extension")).ifBlank { "mp4" }
+                        val epName = if (title.isNotBlank()) {
+                            "S${seasonNum.padStart(2, '0')}E${epNum.toString().padStart(2, '0')} - $title"
+                        } else {
+                            "S${seasonNum.padStart(2, '0')}E${epNum.toString().padStart(2, '0')}"
+                        }
+                        episodes.add(
+                            Channel(
+                                id = "xt_ep_$id",
+                                name = epName,
+                                streamUrl = "${auth.seriesStreamUrl}/$id.$ext",
+                                category = "Season $seasonNum",
+                                contentType = ContentType.SERIES
+                            )
                         )
-                    )
+                    }
                 }
             }
-            XtreamInfoMapper.toSeriesDetail(parsed.info, episodes)
+            XtreamInfoMapper.toSeriesDetail(infoBlock, episodes)
         } catch (e: Exception) {
             Log.e("XtreamClient", "Failed to fetch series info for $seriesId", e)
             null
@@ -219,14 +239,23 @@ class XtreamClient(private val auth: XtreamAuth) {
 
     /**
      * Fetch rich metadata for a single movie via get_vod_info.
-     * Null on network/parse failure.
+     * Parsed element-by-element for robustness against provider quirks —
+     * see the long comment on [getSeriesDetail] above.
      */
     suspend fun getVodInfo(vodId: Int): VodDetail? = withContext(Dispatchers.IO) {
         val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_vod_info&vod_id=$vodId"
         try {
             val body = fetchWithClient(vodClient, url)
-            val parsed = gson.fromJson(body, XtreamVodInfoResponse::class.java) ?: return@withContext null
-            XtreamInfoMapper.toVodDetail(parsed.info)
+            val root = com.google.gson.JsonParser.parseString(body)?.asJsonObject ?: return@withContext null
+            val info = XtreamSafeParser.parseInfoBlock(root.get("info"))
+            if (info == null) {
+                // Some providers put the movie fields under "movie_data" or
+                // at the top level instead of "info".
+                val alt = XtreamSafeParser.parseInfoBlock(root.get("movie_data"))
+                    ?: XtreamSafeParser.parseInfoBlock(root)
+                return@withContext XtreamInfoMapper.toVodDetail(alt)
+            }
+            XtreamInfoMapper.toVodDetail(info)
         } catch (e: Exception) {
             Log.e("XtreamClient", "Failed to fetch VOD info for $vodId", e)
             null

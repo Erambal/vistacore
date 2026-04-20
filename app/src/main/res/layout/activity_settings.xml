@@ -466,6 +466,16 @@
                     <Switch android:id="@+id/switch_filter_sexual" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
+                <!-- Restricted content toggle — hides R / NC-17 / TV-MA / 18+
+                     titles from browse and blocks Play on the detail page. -->
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginBottom="20dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Restricted Content" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Hide R / NC-17 / TV-MA / 18+ movies and shows from browse and block playback from the detail page." style="@style/SettingsSummary" android:layout_marginBottom="12dp" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="24dp">
+                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Hide R-rated content" android:textSize="16sp" android:textColor="@color/text_primary" />
+                    <Switch android:id="@+id/switch_hide_restricted" android:layout_width="wrap_content" android:layout_height="wrap_content" android:focusable="true"  android:background="@drawable/focus_indicator" />
+                </LinearLayout>
+
                 <!-- Filter data -->
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginBottom="20dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Filter Data" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />

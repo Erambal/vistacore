@@ -150,6 +150,10 @@ class ShowDetailActivity : BaseActivity() {
             binding.showTagline.text = "\"${d.tagline}\""
             binding.showTagline.visibility = View.VISIBLE
         }
+        DetailBinders.formatRatedLine(d.mpaa)?.let { line ->
+            binding.showRatedLine.text = line
+            binding.showRatedLine.visibility = View.VISIBLE
+        }
         DetailBinders.renderBadges(
             binding.showBadges,
             rating = d.rating,

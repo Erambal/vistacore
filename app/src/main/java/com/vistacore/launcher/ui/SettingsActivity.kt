@@ -39,6 +39,11 @@ class SettingsActivity : BaseActivity() {
     private lateinit var navItems: List<TextView>
     private lateinit var sections: List<View>
     private var selectedNavIndex = 0
+    private var pendingNavIndex = 0
+
+    companion object {
+        private const val STATE_NAV_INDEX = "selected_nav_index"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,6 +51,11 @@ class SettingsActivity : BaseActivity() {
         setContentView(binding.root)
 
         prefs = PrefsManager(this)
+
+        // Restore the section the user was on. Needed because changing UI
+        // scale or app language calls recreate(), which otherwise dumps the
+        // user back on the first section ("Connections").
+        pendingNavIndex = savedInstanceState?.getInt(STATE_NAV_INDEX, 0) ?: 0
 
         setupNavigation()
         loadSavedSettings()
@@ -106,8 +116,17 @@ class SettingsActivity : BaseActivity() {
             }
         }
 
-        // Start with first section selected
-        selectSection(0)
+        // Restore the previously-selected section (survives recreate() from
+        // scale / language changes). Focus the matching nav item so that
+        // Android doesn't auto-focus nav item 0 and flip us back.
+        val initial = pendingNavIndex.coerceIn(0, navItems.lastIndex)
+        selectSection(initial)
+        navItems[initial].post { navItems[initial].requestFocus() }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_NAV_INDEX, selectedNavIndex)
     }
 
     private fun selectSection(index: Int) {

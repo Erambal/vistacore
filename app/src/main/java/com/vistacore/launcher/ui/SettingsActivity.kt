@@ -111,9 +111,23 @@ class SettingsActivity : BaseActivity() {
         navItems.forEachIndexed { index, nav ->
             nav.setOnClickListener { selectSection(index) }
             nav.setOnFocusChangeListener { v, hasFocus ->
-                if (hasFocus) selectSection(index)
+                // Only switch sections when the user is actually navigating
+                // through the rail (D-pad up/down from another nav item). If
+                // focus was auto-transferred here because a button inside a
+                // section got disabled (e.g. "Check for update" → "Checking…"),
+                // we leave the current section alone — otherwise the user
+                // gets teleported to a random tab every time they click.
+                if (hasFocus && lastFocusWasInNav) {
+                    selectSection(index)
+                }
                 MainActivity.animateFocus(v, hasFocus)
             }
+        }
+
+        // Track whether focus previously sat on a nav item, so the listener
+        // above can tell user navigation apart from spurious auto-transfers.
+        window.decorView.viewTreeObserver.addOnGlobalFocusChangeListener { old, _ ->
+            lastFocusWasInNav = old != null && navItems.contains(old)
         }
 
         // Restore the previously-selected section (survives recreate() from
@@ -123,6 +137,11 @@ class SettingsActivity : BaseActivity() {
         selectSection(initial)
         navItems[initial].post { navItems[initial].requestFocus() }
     }
+
+    // Set by the global focus change listener. True when focus just left
+    // a nav rail item — meaning any new focus on a nav item is the user
+    // arrow-navigating within the rail, not a spurious Android auto-focus.
+    private var lastFocusWasInNav: Boolean = false
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)

@@ -97,6 +97,8 @@ class ShowDetailActivity : BaseActivity() {
         binding.castList.layoutManager =
             LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
 
+        binding.trailerCloseBtn.setOnClickListener { hideFullscreenTrailer() }
+
         // Kick off the rich-metadata fetch in the background. If it
         // succeeds, we'll swap in plot/rating/badges/cast above the
         // seasons. If it fails (M3U-only provider, no Xtream, network
@@ -104,6 +106,29 @@ class ShowDetailActivity : BaseActivity() {
         if (xtreamSeriesId > 0) {
             loadSeriesMetadata(showName)
         }
+    }
+
+    override fun onBackPressed() {
+        if (binding.trailerOverlay.visibility == View.VISIBLE) {
+            hideFullscreenTrailer()
+            return
+        }
+        @Suppress("DEPRECATION")
+        super.onBackPressed()
+    }
+
+    private var resolvedTrailerId: String? = null
+
+    private fun showFullscreenTrailer() {
+        val id = resolvedTrailerId ?: return
+        binding.trailerOverlay.visibility = View.VISIBLE
+        TrailerPlayer.configureFullscreen(binding.trailerFullscreen, id)
+        binding.trailerCloseBtn.requestFocus()
+    }
+
+    private fun hideFullscreenTrailer() {
+        TrailerPlayer.stop(binding.trailerFullscreen)
+        binding.trailerOverlay.visibility = View.GONE
     }
 
     /**
@@ -147,22 +172,27 @@ class ShowDetailActivity : BaseActivity() {
                 binding.castList.adapter = CastAdapter(render)
             }
 
-            // Trailer fallback — same as MovieDetailActivity.
-            if (binding.showTrailerBtn.visibility != View.VISIBLE && tmdbIdResolved != null) {
-                val ytId = withContext(Dispatchers.IO) {
+            val ytId = TrailerPlayer.extractId(detail.trailer) ?: run {
+                if (tmdbIdResolved == null) null else withContext(Dispatchers.IO) {
                     try {
                         TmdbClient(this@ShowDetailActivity)
                             .getTrailerYoutubeId(tmdbIdResolved, TmdbType.TV)
                     } catch (_: Exception) { null }
                 }
-                if (!ytId.isNullOrBlank()) {
-                    val fullUrl = "https://www.youtube.com/watch?v=$ytId"
-                    binding.showTrailerBtn.visibility = View.VISIBLE
-                    binding.showTrailerBtn.setOnClickListener {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
-                    }
-                }
             }
+            if (!ytId.isNullOrBlank()) onTrailerResolved(ytId)
+        }
+    }
+
+    private fun onTrailerResolved(youtubeId: String) {
+        resolvedTrailerId = youtubeId
+        binding.showTrailerBtn.visibility = View.VISIBLE
+        binding.showTrailerBtn.setOnClickListener { showFullscreenTrailer() }
+        if (PrefsManager(this).bannerAutoplayTrailer) {
+            binding.detailBackdropTrailer.visibility = View.VISIBLE
+            TrailerPlayer.configureBackdropPreview(binding.detailBackdropTrailer, youtubeId)
+            binding.detailBackdropTrailer.animate()
+                .alpha(1f).setDuration(600).setStartDelay(1500).start()
         }
     }
 

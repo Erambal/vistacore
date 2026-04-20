@@ -827,7 +827,7 @@ class NetflixAdapter(
                     } catch (_: Exception) { "" }
                 }
 
-                val ytId = extractYoutubeId(xtTrailer) ?: withContext(Dispatchers.IO) {
+                val ytId = TrailerPlayer.extractId(xtTrailer) ?: withContext(Dispatchers.IO) {
                     try {
                         val tmdb = com.vistacore.launcher.iptv.TmdbClient(activity)
                         val type = if (item.contentType == com.vistacore.launcher.iptv.ContentType.SERIES)
@@ -842,33 +842,16 @@ class NetflixAdapter(
                 // Bail if the banner rotated to a different item while we waited.
                 if (boundItemId != item.id) return@launch
 
-                val src = "https://www.youtube.com/embed/$ytId" +
-                    "?autoplay=1&mute=1&controls=0&loop=1&playlist=$ytId" +
-                    "&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&playsinline=1"
-                trailer.loadData(
-                    "<html><head><style>" +
-                        "html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;}" +
-                        "iframe{width:100%;height:100%;border:0;display:block;}" +
-                        "</style></head><body>" +
-                        "<iframe src='$src' frameborder='0' " +
-                        "allow='autoplay; encrypted-media'></iframe>" +
-                        "</body></html>",
-                    "text/html", "utf-8"
-                )
+                // Load the YouTube embed URL directly. Wrapping it in a
+                // data:-scheme HTML page creates a null-origin context
+                // that YouTube blocks (black screen). loadUrl keeps the
+                // proper youtube.com origin and the player starts cleanly.
+                TrailerPlayer.configureBackdropPreview(trailer, ytId)
                 trailer.visibility = View.VISIBLE
                 trailer.animate().alpha(1f).setDuration(500).setStartDelay(1500).start()
             }
         }
 
-        /** Accept either a bare YouTube id, a youtu.be link, or a watch URL. */
-        private fun extractYoutubeId(raw: String): String? {
-            if (raw.isBlank()) return null
-            val m = Regex("""(?:v=|youtu\.be/|embed/)([A-Za-z0-9_-]{11})""").find(raw)
-            if (m != null) return m.groupValues[1]
-            // Already bare? YouTube IDs are 11 chars of [A-Za-z0-9_-].
-            if (Regex("""^[A-Za-z0-9_-]{11}$""").matches(raw.trim())) return raw.trim()
-            return null
-        }
     }
 
     inner class RowVH(itemView: View) : RecyclerView.ViewHolder(itemView) {

@@ -101,7 +101,34 @@ class MovieDetailActivity : BaseActivity() {
         binding.castList.layoutManager =
             LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
 
+        binding.trailerCloseBtn.setOnClickListener { hideFullscreenTrailer() }
+
         if (vodId > 0) loadMetadata()
+    }
+
+    override fun onBackPressed() {
+        if (binding.trailerOverlay.visibility == View.VISIBLE) {
+            hideFullscreenTrailer()
+            return
+        }
+        @Suppress("DEPRECATION")
+        super.onBackPressed()
+    }
+
+    /** Resolved YouTube trailer id — set by loadMetadata once known. */
+    private var resolvedTrailerId: String? = null
+
+    private fun showFullscreenTrailer() {
+        val id = resolvedTrailerId ?: return
+        binding.trailerOverlay.visibility = View.VISIBLE
+        TrailerPlayer.configureFullscreen(binding.trailerFullscreen, id)
+        binding.trailerCloseBtn.requestFocus()
+    }
+
+    private fun hideFullscreenTrailer() {
+        TrailerPlayer.stop(binding.trailerFullscreen)
+        binding.trailerOverlay.visibility = View.GONE
+        binding.moviePlayBtn.requestFocus()
     }
 
     /**
@@ -146,23 +173,38 @@ class MovieDetailActivity : BaseActivity() {
                 binding.castList.adapter = CastAdapter(render)
             }
 
-            // Trailer: if Xtream didn't include a youtube_trailer, try
-            // TMDB's /videos. Only show the button once we have one.
-            if (binding.movieTrailerBtn.visibility != View.VISIBLE && tmdbIdResolved != null) {
-                val ytId = withContext(Dispatchers.IO) {
+            // Resolve a YouTube id for the trailer. Prefer whatever Xtream
+            // returned (on `detail.trailer`), fall back to TMDB's /videos.
+            val ytId = TrailerPlayer.extractId(detail.trailer) ?: run {
+                if (tmdbIdResolved == null) null else withContext(Dispatchers.IO) {
                     try {
                         TmdbClient(this@MovieDetailActivity)
                             .getTrailerYoutubeId(tmdbIdResolved, TmdbType.MOVIE)
                     } catch (_: Exception) { null }
                 }
-                if (!ytId.isNullOrBlank()) {
-                    val fullUrl = "https://www.youtube.com/watch?v=$ytId"
-                    binding.movieTrailerBtn.visibility = View.VISIBLE
-                    binding.movieTrailerBtn.setOnClickListener {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
-                    }
-                }
             }
+            if (!ytId.isNullOrBlank()) onTrailerResolved(ytId)
+        }
+    }
+
+    /**
+     * Wire up the trailer button for fullscreen playback, and kick off a
+     * muted autoplay preview that fades in over the backdrop after a
+     * short delay — Netflix-style ambient motion.
+     */
+    private fun onTrailerResolved(youtubeId: String) {
+        resolvedTrailerId = youtubeId
+        binding.movieTrailerBtn.visibility = View.VISIBLE
+        binding.movieTrailerBtn.setOnClickListener { showFullscreenTrailer() }
+
+        // Ambient autoplay over the backdrop image. Respects the user's
+        // existing "Banner trailer autoplay" pref so they can turn it off
+        // everywhere in one place.
+        if (PrefsManager(this).bannerAutoplayTrailer) {
+            binding.detailBackdropTrailer.visibility = View.VISIBLE
+            TrailerPlayer.configureBackdropPreview(binding.detailBackdropTrailer, youtubeId)
+            binding.detailBackdropTrailer.animate()
+                .alpha(1f).setDuration(600).setStartDelay(1500).start()
         }
     }
 

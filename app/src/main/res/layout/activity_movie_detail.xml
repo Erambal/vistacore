@@ -1,179 +1,231 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Movie detail: rich metadata, play button, cast row. Same visual
-     language as activity_show_detail but no season/episode section. -->
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Movie detail: rich metadata, play button, cast row, and two trailer
+     surfaces — a muted preview over the backdrop that autoplays on page
+     entry, and a fullscreen overlay launched by the Trailer button. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_dark"
-    android:fillViewport="true">
+    android:background="@color/background_dark">
 
-    <FrameLayout
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/detail_scroll"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="match_parent"
+        android:fillViewport="true">
 
-        <ImageView
-            android:id="@+id/detail_backdrop"
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="420dp"
-            android:scaleType="centerCrop"
-            android:contentDescription="@null"
-            android:alpha="0.4" />
+            android:layout_height="wrap_content">
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="420dp"
-            android:background="@drawable/detail_backdrop_scrim" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:padding="32dp">
-
-            <!-- Left: poster -->
             <ImageView
-                android:id="@+id/movie_poster"
-                android:layout_width="320dp"
-                android:layout_height="480dp"
+                android:id="@+id/detail_backdrop"
+                android:layout_width="match_parent"
+                android:layout_height="420dp"
                 android:scaleType="centerCrop"
-                android:contentDescription="Movie poster"
-                android:layout_marginEnd="32dp" />
+                android:contentDescription="@null"
+                android:alpha="0.4" />
 
-            <!-- Right: metadata + play + cast -->
+            <!-- Muted auto-playing trailer that fades in over the backdrop
+                 a couple of seconds after the detail page loads. Hidden by
+                 default; visibility controlled in MovieDetailActivity. -->
+            <WebView
+                android:id="@+id/detail_backdrop_trailer"
+                android:layout_width="match_parent"
+                android:layout_height="420dp"
+                android:alpha="0"
+                android:visibility="gone"
+                android:focusable="false"
+                android:focusableInTouchMode="false" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="420dp"
+                android:background="@drawable/detail_backdrop_scrim" />
+
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
+                android:orientation="horizontal"
+                android:padding="32dp">
 
-                <TextView
-                    android:id="@+id/movie_title"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textSize="34sp"
-                    android:textColor="@color/text_primary"
-                    android:fontFamily="sans-serif-medium"
-                    android:maxLines="2"
-                    android:ellipsize="end"
-                    android:layout_marginBottom="6dp" />
+                <!-- Left: poster -->
+                <ImageView
+                    android:id="@+id/movie_poster"
+                    android:layout_width="320dp"
+                    android:layout_height="480dp"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="Movie poster"
+                    android:layout_marginEnd="32dp" />
 
-                <TextView
-                    android:id="@+id/movie_tagline"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textSize="15sp"
-                    android:textColor="@color/accent_gold_light"
-                    android:textStyle="italic"
-                    android:visibility="gone"
-                    android:layout_marginBottom="10dp"
-                    tools:text="&quot;In space, no one can hear you scream.&quot;"
-                    tools:visibility="visible" />
-
-                <!-- Prominent "Rated R" line. Only appears when the provider
-                     gives us an MPAA rating so it doesn't lie about unknown. -->
-                <TextView
-                    android:id="@+id/movie_rated_line"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/text_primary"
-                    android:background="@drawable/detail_rated_line_background"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"
-                    android:paddingTop="6dp"
-                    android:paddingBottom="6dp"
-                    android:visibility="gone"
-                    android:layout_marginBottom="12dp"
-                    tools:text="Rated R"
-                    tools:visibility="visible" />
-
+                <!-- Right: metadata + play + cast -->
                 <LinearLayout
-                    android:id="@+id/movie_badges"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="10dp" />
+                    android:layout_weight="1"
+                    android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/movie_meta"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textSize="15sp"
-                    android:textColor="@color/text_secondary"
-                    android:layout_marginBottom="14dp"
-                    tools:text="Sci-Fi · USA · Dir. Ridley Scott" />
+                    <TextView
+                        android:id="@+id/movie_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="34sp"
+                        android:textColor="@color/text_primary"
+                        android:fontFamily="sans-serif-medium"
+                        android:maxLines="2"
+                        android:ellipsize="end"
+                        android:layout_marginBottom="6dp" />
 
-                <TextView
-                    android:id="@+id/movie_plot"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textSize="15sp"
-                    android:textColor="@color/text_secondary"
-                    android:lineSpacingExtra="4dp"
-                    android:layout_marginBottom="18dp"
-                    tools:text="The crew of a commercial starship…" />
+                    <TextView
+                        android:id="@+id/movie_tagline"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="15sp"
+                        android:textColor="@color/accent_gold_light"
+                        android:textStyle="italic"
+                        android:visibility="gone"
+                        android:layout_marginBottom="10dp"
+                        tools:text="&quot;In space, no one can hear you scream.&quot;"
+                        tools:visibility="visible" />
 
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="24dp">
-
-                    <Button
-                        android:id="@+id/movie_play_btn"
+                    <!-- Prominent "Rated R" line. Only appears when the provider
+                         gives us an MPAA rating so it doesn't lie about unknown. -->
+                    <TextView
+                        android:id="@+id/movie_rated_line"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="▶  Play"
                         android:textSize="16sp"
                         android:textStyle="bold"
-                        android:textColor="@color/background_dark"
-                        android:background="@drawable/button_background"
-                        android:paddingStart="28dp"
-                        android:paddingEnd="28dp"
-                        android:paddingTop="12dp"
-                        android:paddingBottom="12dp"
-                        android:layout_marginEnd="12dp" />
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/detail_rated_line_background"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="6dp"
+                        android:paddingBottom="6dp"
+                        android:visibility="gone"
+                        android:layout_marginBottom="12dp"
+                        tools:text="Rated R"
+                        tools:visibility="visible" />
 
-                    <Button
-                        android:id="@+id/movie_trailer_btn"
+                    <LinearLayout
+                        android:id="@+id/movie_badges"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="10dp" />
+
+                    <TextView
+                        android:id="@+id/movie_meta"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary"
+                        android:layout_marginBottom="14dp"
+                        tools:text="Sci-Fi · USA · Dir. Ridley Scott" />
+
+                    <TextView
+                        android:id="@+id/movie_plot"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary"
+                        android:lineSpacingExtra="4dp"
+                        android:layout_marginBottom="18dp"
+                        tools:text="The crew of a commercial starship…" />
+
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="▶  Trailer"
-                        android:textColor="@color/text_primary"
-                        android:background="@drawable/button_outline"
-                        android:paddingStart="20dp"
-                        android:paddingEnd="20dp"
-                        android:paddingTop="12dp"
-                        android:paddingBottom="12dp"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="24dp">
+
+                        <Button
+                            android:id="@+id/movie_play_btn"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="▶  Play"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/background_dark"
+                            android:background="@drawable/button_background"
+                            android:paddingStart="28dp"
+                            android:paddingEnd="28dp"
+                            android:paddingTop="12dp"
+                            android:paddingBottom="12dp"
+                            android:layout_marginEnd="12dp" />
+
+                        <Button
+                            android:id="@+id/movie_trailer_btn"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="▶  Trailer"
+                            android:textColor="@color/text_primary"
+                            android:background="@drawable/button_outline"
+                            android:paddingStart="20dp"
+                            android:paddingEnd="20dp"
+                            android:paddingTop="12dp"
+                            android:paddingBottom="12dp"
+                            android:visibility="gone"
+                            tools:visibility="visible" />
+                    </LinearLayout>
+
+                    <!-- Cast section -->
+                    <TextView
+                        android:id="@+id/cast_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="CAST"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.15"
+                        android:textColor="@color/text_hint"
+                        android:layout_marginBottom="10dp"
+                        android:visibility="gone"
+                        tools:visibility="visible" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/cast_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:clipToPadding="false"
+                        android:overScrollMode="never"
                         android:visibility="gone"
                         tools:visibility="visible" />
                 </LinearLayout>
-
-                <!-- Cast section -->
-                <TextView
-                    android:id="@+id/cast_title"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="CAST"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.15"
-                    android:textColor="@color/text_hint"
-                    android:layout_marginBottom="10dp"
-                    android:visibility="gone"
-                    tools:visibility="visible" />
-
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/cast_list"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:clipToPadding="false"
-                    android:overScrollMode="never"
-                    android:visibility="gone"
-                    tools:visibility="visible" />
             </LinearLayout>
-        </LinearLayout>
+        </FrameLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- Fullscreen trailer overlay. Shown when the Trailer button is
+         clicked. Press BACK to dismiss — handled in the Activity. -->
+    <FrameLayout
+        android:id="@+id/trailer_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FF000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+
+        <WebView
+            android:id="@+id/trailer_fullscreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <Button
+            android:id="@+id/trailer_close_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="16dp"
+            android:text="✕  Close"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/button_outline"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
     </FrameLayout>
-</androidx.core.widget.NestedScrollView>
+</FrameLayout>

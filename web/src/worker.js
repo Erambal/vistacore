@@ -45,8 +45,42 @@ async function handleApi(url, request, env) {
   if (path === '/api/epg')           return handleEpg(url);
   if (path === '/api/stream')        return handleStream(url, request);
   if (path === '/api/image')         return handleImage(url);
+  if (path === '/api/tmdb')          return handleTmdb(url, env);
 
   return jsonResponse({ error: 'Unknown API route' }, 404);
+}
+
+// ─── TMDB proxy (for actor photos & credits) ───
+async function handleTmdb(url, env) {
+  const key = env && env.TMDB_KEY;
+  if (!key) return jsonResponse({ error: 'TMDB not configured' }, 501);
+
+  const tmdbPath = url.searchParams.get('path');
+  if (!tmdbPath) return jsonResponse({ error: 'Missing path' }, 400);
+
+  // Only allow TMDB paths, no arbitrary host
+  const cleanPath = tmdbPath.replace(/^\/+/, '');
+  const qs = new URLSearchParams();
+  for (const [k, v] of url.searchParams) {
+    if (k !== 'path') qs.set(k, v);
+  }
+  qs.set('api_key', key);
+
+  const tmdbUrl = `https://api.themoviedb.org/3/${cleanPath}?${qs.toString()}`;
+  try {
+    const resp = await fetch(tmdbUrl);
+    const body = await resp.text();
+    return new Response(body, {
+      status: resp.status,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=86400',
+        ...CORS_HEADERS,
+      },
+    });
+  } catch (err) {
+    return jsonResponse({ error: String(err.message || err) }, 502);
+  }
 }
 
 // ─── Config (client reads Google client ID from here) ───

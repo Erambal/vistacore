@@ -125,8 +125,14 @@ class IPTVService {
       });
   }
 
-  // ─── Stream URLs (proxied through worker to avoid CORS) ───
+  // ─── Stream URLs ───
+  // If the origin is HTTPS, return the URL directly so the browser gets
+  // native Range support (seeking MP4s) and traffic bypasses our Worker.
+  // Only HTTP origins go through the Worker proxy (to upgrade to HTTPS
+  // and avoid browser mixed-content blocks).
   _proxyUrl(rawUrl) {
+    if (!rawUrl) return rawUrl;
+    if (String(rawUrl).startsWith('https://')) return rawUrl;
     return `/api/stream?url=${encodeURIComponent(rawUrl)}`;
   }
 
@@ -376,8 +382,28 @@ class IPTVService {
         rating: ep.info?.rating || ''
       }));
     }
+
+    const info = data.info || {};
+    const firstBackdrop = Array.isArray(info.backdrop_path) ? info.backdrop_path[0] : info.backdrop_path;
     return {
-      info: data.info || {},
+      info: {
+        ...info,
+        plot: info.plot || info.description || '',
+        cast: info.cast || '',
+        director: info.director || '',
+        genre: info.genre || '',
+        country: info.country || '',
+        releaseDate: info.releaseDate || info.release_date || '',
+        year: (info.releaseDate || info.release_date || '').slice(0, 4),
+        rating: info.rating || '',
+        ratingFive: info.rating_5based || '',
+        mpaa: info.mpaa_rating || info.age || '',
+        episodeRunTime: info.episode_run_time || '',
+        trailer: info.youtube_trailer || '',
+        tmdbId: info.tmdb || info.tmdb_id || '',
+        poster: this._imageUrl(info.cover || info.movie_image),
+        backdrop: this._imageUrl(firstBackdrop),
+      },
       seasons
     };
   }
@@ -388,17 +414,60 @@ class IPTVService {
     try {
       const data = await this._xtreamApi('get_vod_info', { vod_id: movieId });
       if (!data || !data.info) return null;
+      const info = data.info;
+      const firstBackdrop = Array.isArray(info.backdrop_path) ? info.backdrop_path[0] : info.backdrop_path;
       return {
-        ...data.info,
-        plot: data.info.plot || data.info.description || '',
-        cast: data.info.cast || '',
-        director: data.info.director || '',
-        genre: data.info.genre || '',
-        duration: data.info.duration || '',
-        year: data.info.releasedate || data.info.year || '',
-        rating: data.info.rating || '',
-        poster: this._imageUrl(data.info.movie_image || data.info.stream_icon)
+        ...info,
+        plot: info.plot || info.description || '',
+        cast: info.cast || '',
+        director: info.director || '',
+        genre: info.genre || '',
+        country: info.country || '',
+        duration: info.duration || '',
+        durationSecs: info.duration_secs || 0,
+        year: info.releasedate || info.year || '',
+        rating: info.rating || '',
+        ratingFive: info.rating_5based || '',
+        mpaa: info.mpaa_rating || info.age || '',
+        trailer: info.youtube_trailer || '',
+        tagline: info.tagline || '',
+        tmdbId: info.tmdb_id || info.tmdb || '',
+        poster: this._imageUrl(info.movie_image || info.stream_icon),
+        backdrop: this._imageUrl(firstBackdrop),
       };
+    } catch {
+      return null;
+    }
+  }
+
+  // ─── TMDB: fetch rich credits (cast with profile photos) ───
+  async getTmdbCredits(tmdbId, type = 'movie') {
+    if (!tmdbId) return null;
+    try {
+      const resp = await fetch(`/api/tmdb?path=${encodeURIComponent(type + '/' + tmdbId + '/credits')}`);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const cast = (data.cast || []).slice(0, 12).map(c => ({
+        name: c.name || '',
+        character: c.character || '',
+        photo: c.profile_path ? `https://image.tmdb.org/t/p/w300${c.profile_path}` : ''
+      }));
+      return cast.length ? cast : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ─── TMDB: search by title when tmdb_id is unknown ───
+  async searchTmdb(title, year, type = 'movie') {
+    if (!title) return null;
+    try {
+      const q = new URLSearchParams({ query: title });
+      if (year) q.set('year', String(year).slice(0, 4));
+      const resp = await fetch(`/api/tmdb?path=${encodeURIComponent('search/' + type)}&${q.toString()}`);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return (data.results && data.results[0]) ? data.results[0].id : null;
     } catch {
       return null;
     }

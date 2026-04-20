@@ -228,17 +228,27 @@
         </div>
         <div class="detail-info">
           <h1 class="detail-title" id="detail-title"></h1>
+          <p class="detail-tagline" id="detail-tagline" style="display:none"></p>
+          <div class="detail-badges" id="detail-badges"></div>
           <div class="detail-meta" id="detail-meta"></div>
           <p class="detail-plot" id="detail-plot"></p>
-          <div class="detail-cast" id="detail-cast"></div>
+          <div class="detail-facts" id="detail-facts"></div>
           <div class="detail-actions">
             <button class="btn-play" id="detail-play">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
               <span>Play</span>
             </button>
+            <button class="btn-trailer" id="detail-trailer" style="display:none">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              <span>Trailer</span>
+            </button>
             <button class="btn-fav" id="detail-fav" title="Favorite">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
             </button>
+          </div>
+          <div class="detail-cast-section" id="detail-cast-section" style="display:none">
+            <h3 class="detail-cast-title">Cast</h3>
+            <div class="detail-cast-row" id="detail-cast-row"></div>
           </div>
           <!-- Seasons/Episodes for shows -->
           <div class="detail-seasons" id="detail-seasons" style="display:none">

@@ -736,12 +736,17 @@ function initDetail(params) {
   poster.onerror = () => { poster.style.display = 'none'; };
   poster.style.display = item.poster ? '' : 'none';
 
-  // Info
+  // Title + baseline info from catalog entry
   document.getElementById('detail-title').textContent = item.name;
-  const metaParts = [item.year, item.rating ? `★ ${item.rating}` : '', item.category].filter(Boolean);
-  document.getElementById('detail-meta').textContent = metaParts.join(' · ');
-  document.getElementById('detail-plot').textContent = item.plot || '';
-  document.getElementById('detail-cast').textContent = item.cast ? `Cast: ${item.cast}` : '';
+  document.getElementById('detail-tagline').style.display = 'none';
+  document.getElementById('detail-tagline').textContent = '';
+  renderDetailBadges({ rating: item.rating, mpaa: '', duration: '', year: item.year });
+  renderDetailMeta({ year: item.year, genre: item.category, country: '', director: '' });
+  document.getElementById('detail-plot').textContent = item.plot || 'Loading details…';
+  document.getElementById('detail-facts').innerHTML = '';
+  document.getElementById('detail-cast-section').style.display = 'none';
+  document.getElementById('detail-cast-row').innerHTML = '';
+  document.getElementById('detail-trailer').style.display = 'none';
 
   // Favorite
   const favBtn = document.getElementById('detail-fav');
@@ -768,19 +773,165 @@ function initDetail(params) {
     document.getElementById('detail-play').style.display = '';
   }
 
-  // Load more details in background
+  // Fetch rich details (async — Xtream + optional TMDB for cast photos)
   if (type === 'movie') {
-    iptv.getMovieInfo(item.id).then(info => {
-      if (info) {
-        if (info.plot) document.getElementById('detail-plot').textContent = info.plot;
-        if (info.cast) document.getElementById('detail-cast').textContent = `Cast: ${info.cast}`;
-        if (info.year) {
-          const parts = [info.year, info.rating ? `★ ${info.rating}` : '', info.genre || item.category].filter(Boolean);
-          document.getElementById('detail-meta').textContent = parts.join(' · ');
-        }
-      }
-    }).catch(() => {});
+    iptv.getMovieInfo(item.id)
+      .then(info => info && applyDetail(info, 'movie'))
+      .catch(() => {});
+  } else if (type === 'series') {
+    iptv.getSeriesInfo(item.id)
+      .then(data => data?.info && applyDetail(data.info, 'tv'))
+      .catch(() => {});
   }
+}
+
+function applyDetail(info, tmdbType) {
+  if (!info) return;
+
+  // Upgrade backdrop/poster with richer TMDB-derived assets if available
+  if (info.backdrop) {
+    document.getElementById('detail-backdrop').style.backgroundImage = `url('${info.backdrop}')`;
+  }
+  if (info.poster) {
+    const poster = document.getElementById('detail-poster');
+    if (!poster.src || poster.src.endsWith('/')) {
+      poster.src = info.poster;
+      poster.style.display = '';
+    }
+  }
+
+  // Tagline
+  const taglineEl = document.getElementById('detail-tagline');
+  if (info.tagline) {
+    taglineEl.textContent = `"${info.tagline}"`;
+    taglineEl.style.display = '';
+  }
+
+  // Plot
+  if (info.plot) document.getElementById('detail-plot').textContent = info.plot;
+  else if (!currentDetailItem.plot) document.getElementById('detail-plot').textContent = '';
+
+  // Badges + meta line + facts grid
+  renderDetailBadges(info);
+  renderDetailMeta(info);
+  renderDetailFacts(info);
+
+  // Trailer
+  const trailerBtn = document.getElementById('detail-trailer');
+  const trailerUrl = extractTrailerUrl(info.trailer);
+  if (trailerUrl) {
+    trailerBtn.style.display = '';
+    trailerBtn.onclick = () => window.open(trailerUrl, '_blank', 'noopener');
+  }
+
+  // Cast: try TMDB credits first (photos), else parse Xtream's cast string
+  renderCastFromString(info.cast);
+  resolveTmdbCast(info, tmdbType);
+}
+
+function renderDetailBadges(info) {
+  const el = document.getElementById('detail-badges');
+  const parts = [];
+  const rating = parseFloat(info.rating);
+  if (!Number.isNaN(rating) && rating > 0) {
+    const scaled = rating > 10 ? (rating / 10).toFixed(1) : rating.toFixed(1);
+    parts.push(`<span class="badge badge-rating">★ ${scaled}</span>`);
+  }
+  if (info.mpaa) parts.push(`<span class="badge badge-mpaa">${escHtml(info.mpaa)}</span>`);
+  const runtime = formatRuntime(info);
+  if (runtime) parts.push(`<span class="badge">${runtime}</span>`);
+  const year = (info.year || info.releaseDate || '').toString().slice(0, 4);
+  if (year) parts.push(`<span class="badge">${escHtml(year)}</span>`);
+  el.innerHTML = parts.join('');
+}
+
+function renderDetailMeta(info) {
+  const parts = [];
+  if (info.genre) parts.push(escHtml(info.genre));
+  if (info.country) parts.push(escHtml(info.country));
+  if (info.director) parts.push(`Dir. ${escHtml(info.director)}`);
+  document.getElementById('detail-meta').innerHTML = parts.join(' <span class="dot">·</span> ');
+}
+
+function renderDetailFacts(info) {
+  const rows = [];
+  if (info.director) rows.push(['Director', info.director]);
+  if (info.releaseDate || info.releasedate) rows.push(['Released', info.releaseDate || info.releasedate]);
+  if (info.country) rows.push(['Country', info.country]);
+  if (info.genre) rows.push(['Genre', info.genre]);
+  if (info.episodeRunTime) rows.push(['Episode', `${info.episodeRunTime} min`]);
+  const el = document.getElementById('detail-facts');
+  el.innerHTML = rows.map(([k, v]) =>
+    `<div class="fact"><span class="fact-key">${k}</span><span class="fact-val">${escHtml(String(v))}</span></div>`
+  ).join('');
+}
+
+function formatRuntime(info) {
+  if (info.duration && /^\d+:\d+/.test(info.duration)) {
+    const [h, m] = info.duration.split(':').map(Number);
+    if (h) return `${h}h ${m || 0}m`;
+    return `${m}m`;
+  }
+  if (info.durationSecs && Number(info.durationSecs) > 0) {
+    const total = Number(info.durationSecs);
+    const h = Math.floor(total / 3600);
+    const m = Math.round((total % 3600) / 60);
+    return h ? `${h}h ${m}m` : `${m}m`;
+  }
+  return '';
+}
+
+function extractTrailerUrl(raw) {
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  // Bare YouTube IDs are common in Xtream responses
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(raw)}`;
+}
+
+function renderCastFromString(castStr) {
+  if (!castStr) return;
+  const section = document.getElementById('detail-cast-section');
+  const row = document.getElementById('detail-cast-row');
+  const names = castStr.split(/\s*,\s*/).map(s => s.trim()).filter(Boolean).slice(0, 12);
+  if (!names.length) return;
+  row.innerHTML = names.map(name => castCardHtml(name, '', '')).join('');
+  section.style.display = '';
+}
+
+async function resolveTmdbCast(info, tmdbType) {
+  try {
+    let tmdbId = info.tmdbId || info.tmdb || info.tmdb_id;
+    if (!tmdbId) {
+      tmdbId = await iptv.searchTmdb(currentDetailItem?.name, info.year, tmdbType);
+    }
+    if (!tmdbId) return;
+    const cast = await iptv.getTmdbCredits(tmdbId, tmdbType);
+    if (!cast || !cast.length) return;
+    const section = document.getElementById('detail-cast-section');
+    const row = document.getElementById('detail-cast-row');
+    row.innerHTML = cast.map(c => castCardHtml(c.name, c.character, c.photo)).join('');
+    section.style.display = '';
+  } catch {
+    // TMDB not configured or unavailable — fallback cast string already rendered
+  }
+}
+
+function castCardHtml(name, character, photo) {
+  const initials = name.split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+  const avatar = photo
+    ? `<img class="cast-photo" src="${escAttr(photo)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;cast-photo cast-initials&quot;>${escHtml(initials)}</div>'">`
+    : `<div class="cast-photo cast-initials">${escHtml(initials)}</div>`;
+  return `
+    <div class="cast-card">
+      ${avatar}
+      <div class="cast-name">${escHtml(name)}</div>
+      ${character ? `<div class="cast-role">${escHtml(character)}</div>` : ''}
+    </div>
+  `;
+}
+
+function escAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
 async function loadSeriesSeasons(seriesId) {

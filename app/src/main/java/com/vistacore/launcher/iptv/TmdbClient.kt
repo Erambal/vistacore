@@ -1,9 +1,11 @@
 package com.vistacore.launcher.iptv
 
+import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import com.vistacore.launcher.BuildConfig
+import com.vistacore.launcher.data.PrefsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -12,16 +14,20 @@ import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
- * Fetches cast photos and backdrops from TMDB via our Cloudflare Worker
- * proxy. The Worker holds the TMDB API key server-side so the APK ships
- * without one.
+ * Fetches cast photos, backdrops, and trailer video IDs from TMDB.
  *
- * Base URL comes from [BuildConfig.TMDB_PROXY_BASE] and is overridable via
- * the `tmdbProxyBase` gradle property. If the Worker isn't configured or
- * returns non-200, every method returns empty results — callers fall back
- * to Xtream's plain cast-as-string.
+ * Two transport modes:
+ *  1. Direct — if the user has entered their own TMDB v3 API key under
+ *     Settings → Connections → "TMDB API Key", every request goes to
+ *     api.themoviedb.org with `?api_key=…`. This is the recommended path.
+ *  2. Worker proxy — if no key is set, requests go to
+ *     [BuildConfig.TMDB_PROXY_BASE]/api/tmdb which attaches the key
+ *     server-side. Useful when you don't want to ship a key in the APK.
+ *
+ * Both paths return empty results on any failure so callers degrade
+ * gracefully to Xtream-only data / initial avatars.
  */
-class TmdbClient {
+class TmdbClient(context: Context? = null) {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -29,34 +35,27 @@ class TmdbClient {
         .build()
     private val gson = Gson()
 
-    private val base: String = BuildConfig.TMDB_PROXY_BASE
+    private val userKey: String = context?.let { PrefsManager(it).tmdbApiKey }.orEmpty()
+    private val proxyBase: String = BuildConfig.TMDB_PROXY_BASE
 
-    /**
-     * Look up a TMDB id by title + year. Returns null when no match is
-     * returned or the proxy is unreachable.
-     */
     suspend fun searchId(title: String, year: String, type: TmdbType): Int? =
         withContext(Dispatchers.IO) {
             if (title.isBlank()) return@withContext null
-            val qs = StringBuilder()
-            qs.append("path=").append(enc("search/${type.path}"))
-            qs.append("&query=").append(enc(title))
-            if (year.isNotBlank()) qs.append("&year=").append(enc(year.take(4)))
-            val body = fetch("$base/api/tmdb?$qs") ?: return@withContext null
+            val path = "search/${type.path}"
+            val extra = buildMap<String, String> {
+                put("query", title)
+                if (year.isNotBlank()) put("year", year.take(4))
+            }
+            val body = get(path, extra) ?: return@withContext null
             try {
                 val resp = gson.fromJson(body, TmdbSearchResponse::class.java)
                 resp?.results?.firstOrNull()?.id
             } catch (_: Exception) { null }
         }
 
-    /**
-     * Fetch top N cast members with profile photos. Returns an empty list
-     * on any failure so callers can degrade gracefully to initials avatars.
-     */
     suspend fun getCredits(tmdbId: Int, type: TmdbType, limit: Int = 12): List<CastMember> =
         withContext(Dispatchers.IO) {
-            val path = "${type.path}/$tmdbId/credits"
-            val body = fetch("$base/api/tmdb?path=${enc(path)}") ?: return@withContext emptyList()
+            val body = get("${type.path}/$tmdbId/credits") ?: return@withContext emptyList()
             try {
                 val resp = gson.fromJson(body, TmdbCreditsResponse::class.java)
                 resp?.cast?.take(limit)?.map {
@@ -69,20 +68,58 @@ class TmdbClient {
             } catch (_: Exception) { emptyList() }
         }
 
-    private fun fetch(url: String): String? {
+    /**
+     * Best YouTube trailer video id for a title. Prefers official Trailer
+     * videos, falls back to Teaser, then any YouTube video. Returns null
+     * when nothing matches.
+     */
+    suspend fun getTrailerYoutubeId(tmdbId: Int, type: TmdbType): String? =
+        withContext(Dispatchers.IO) {
+            val body = get("${type.path}/$tmdbId/videos") ?: return@withContext null
+            try {
+                val resp = gson.fromJson(body, TmdbVideosResponse::class.java)
+                val videos = resp?.results.orEmpty()
+                    .filter { (it.site ?: "").equals("YouTube", true) && !it.key.isNullOrBlank() }
+                val trailer = videos.firstOrNull { (it.type ?: "").equals("Trailer", true) && it.official == true }
+                    ?: videos.firstOrNull { (it.type ?: "").equals("Trailer", true) }
+                    ?: videos.firstOrNull { (it.type ?: "").equals("Teaser", true) }
+                    ?: videos.firstOrNull()
+                trailer?.key
+            } catch (_: Exception) { null }
+        }
+
+    private fun get(path: String, params: Map<String, String> = emptyMap()): String? {
+        val url = buildUrl(path, params) ?: return null
         return try {
             val req = Request.Builder().url(url).build()
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    Log.d(TAG, "TMDB proxy ${resp.code} for $url")
+                    Log.d(TAG, "TMDB ${resp.code} for $path")
                     return null
                 }
                 resp.body?.string()
             }
         } catch (e: Exception) {
-            Log.d(TAG, "TMDB proxy fetch failed: ${e.message}")
+            Log.d(TAG, "TMDB fetch failed for $path: ${e.message}")
             null
         }
+    }
+
+    private fun buildUrl(path: String, params: Map<String, String>): String? {
+        val clean = path.trimStart('/')
+        val qs = StringBuilder()
+        if (userKey.isNotBlank()) {
+            // Direct to TMDB.
+            qs.append("api_key=").append(enc(userKey))
+            for ((k, v) in params) qs.append('&').append(enc(k)).append('=').append(enc(v))
+            return "https://api.themoviedb.org/3/$clean?$qs"
+        }
+        if (proxyBase.isBlank()) return null
+        // Via Worker proxy: it prepends its own api_key server-side, we just
+        // pass `path` and any extra query params.
+        qs.append("path=").append(enc(clean))
+        for ((k, v) in params) qs.append('&').append(enc(k)).append('=').append(enc(v))
+        return "${proxyBase.trimEnd('/')}/api/tmdb?$qs"
     }
 
     private fun enc(s: String) = URLEncoder.encode(s, Charsets.UTF_8.name())
@@ -107,4 +144,12 @@ private data class TmdbCastMember(
     val name: String? = null,
     val character: String? = null,
     @SerializedName("profile_path") val profile_path: String? = null
+)
+
+private data class TmdbVideosResponse(val results: List<TmdbVideo>?)
+private data class TmdbVideo(
+    val key: String? = null,
+    val site: String? = null,
+    val type: String? = null,
+    val official: Boolean? = null
 )

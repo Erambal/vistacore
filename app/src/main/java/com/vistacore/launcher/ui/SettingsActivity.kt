@@ -306,6 +306,23 @@ class SettingsActivity : BaseActivity() {
                 prefs.openSubtitlesApiKey = binding.inputOpensubtitlesKey.text.toString().trim()
             }
         }
+
+        // TMDB API key — unlocks cast photos, trailer lookup, and banner
+        // autoplay by letting the app talk to api.themoviedb.org directly.
+        binding.inputTmdbKey.setText(prefs.tmdbApiKey)
+        binding.inputTmdbKey.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) prefs.tmdbApiKey = binding.inputTmdbKey.text.toString()
+        }
+
+        // Playback behavior toggles
+        binding.switchAutoplayNext.isChecked = prefs.autoplayNextEpisode
+        binding.switchAutoplayNext.setOnCheckedChangeListener { _, checked ->
+            prefs.autoplayNextEpisode = checked
+        }
+        binding.switchBannerTrailer.isChecked = prefs.bannerAutoplayTrailer
+        binding.switchBannerTrailer.setOnCheckedChangeListener { _, checked ->
+            prefs.bannerAutoplayTrailer = checked
+        }
     }
 
     private fun setupContentFiltering() {

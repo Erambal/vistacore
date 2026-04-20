@@ -753,13 +753,37 @@ class NetflixAdapter(
 
     inner class BannerVH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val image: ImageView = itemView.findViewById(R.id.banner_image)
+        private val trailer: android.webkit.WebView = itemView.findViewById(R.id.banner_trailer)
         private val title: TextView = itemView.findViewById(R.id.banner_title)
         private val category: TextView = itemView.findViewById(R.id.banner_category)
         private val playBtn: Button = itemView.findViewById(R.id.banner_play)
+        // Scope for trailer lookups. Bound to the VH — cancelled on
+        // rebind so an in-flight lookup from an earlier banner never
+        // fires after the user has rotated past it.
+        private val bannerScope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.Dispatchers.Main + kotlinx.coroutines.SupervisorJob()
+        )
+        private var trailerJob: kotlinx.coroutines.Job? = null
+        private var boundItemId: String = ""
+
+        init {
+            // Configure the trailer WebView once; we'll load URLs into it as
+            // the banner rotates, without rebuilding the view. Muted YouTube
+            // iframe is allowed to autoplay on Android WebView.
+            @Suppress("SetJavaScriptEnabled")
+            trailer.settings.javaScriptEnabled = true
+            trailer.settings.mediaPlaybackRequiresUserGesture = false
+            trailer.settings.domStorageEnabled = true
+            trailer.setBackgroundColor(android.graphics.Color.BLACK)
+            trailer.isVerticalScrollBarEnabled = false
+            trailer.isHorizontalScrollBarEnabled = false
+            trailer.webChromeClient = android.webkit.WebChromeClient()
+        }
 
         fun bind(item: Channel) {
             title.text = activity.getDisplayName(item)
             category.text = item.category
+            boundItemId = item.id
 
             if (item.logoUrl.isNotBlank()) {
                 Glide.with(itemView.context).load(item.logoUrl).into(image)
@@ -767,6 +791,83 @@ class NetflixAdapter(
 
             playBtn.setOnClickListener { activity.onItemClicked(item) }
             playBtn.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+
+            // Cancel any in-flight trailer lookup from the previous bound
+            // item, and reset the overlay so we start on the poster image.
+            trailerJob?.cancel()
+            trailer.visibility = View.GONE
+            trailer.alpha = 0f
+            trailer.loadUrl("about:blank")
+
+            if (PrefsManager(itemView.context).bannerAutoplayTrailer) {
+                loadTrailerFor(item)
+            }
+        }
+
+        /**
+         * Resolve a YouTube trailer id for [item] and, if found, fade the
+         * WebView in over the poster a moment later. Stays aware of banner
+         * rotation — if the banner has moved on by the time the lookup
+         * completes, we no-op.
+         */
+        private fun loadTrailerFor(item: Channel) {
+            trailerJob = bannerScope.launch {
+                val title = activity.getDisplayName(item)
+                val year = com.vistacore.launcher.iptv.Discovery.yearOf(item)?.toString().orEmpty()
+
+                // 1) If this is an Xtream movie we already have a vod id for,
+                //    check Xtream's info block first — it sometimes includes
+                //    a trailer and doing so skips a TMDB roundtrip.
+                val xtTrailer = withContext(Dispatchers.IO) {
+                    val vodId = item.id.removePrefix("xt_vod_").toIntOrNull() ?: return@withContext ""
+                    try {
+                        val prefs = PrefsManager(activity)
+                        val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
+                        XtreamClient(auth).getVodInfo(vodId)?.trailer ?: ""
+                    } catch (_: Exception) { "" }
+                }
+
+                val ytId = extractYoutubeId(xtTrailer) ?: withContext(Dispatchers.IO) {
+                    try {
+                        val tmdb = com.vistacore.launcher.iptv.TmdbClient(activity)
+                        val type = if (item.contentType == com.vistacore.launcher.iptv.ContentType.SERIES)
+                            com.vistacore.launcher.iptv.TmdbType.TV
+                        else com.vistacore.launcher.iptv.TmdbType.MOVIE
+                        val id = tmdb.searchId(title, year, type) ?: return@withContext null
+                        tmdb.getTrailerYoutubeId(id, type)
+                    } catch (_: Exception) { null }
+                }
+
+                if (ytId.isNullOrBlank()) return@launch
+                // Bail if the banner rotated to a different item while we waited.
+                if (boundItemId != item.id) return@launch
+
+                val src = "https://www.youtube.com/embed/$ytId" +
+                    "?autoplay=1&mute=1&controls=0&loop=1&playlist=$ytId" +
+                    "&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&playsinline=1"
+                trailer.loadData(
+                    "<html><head><style>" +
+                        "html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;}" +
+                        "iframe{width:100%;height:100%;border:0;display:block;}" +
+                        "</style></head><body>" +
+                        "<iframe src='$src' frameborder='0' " +
+                        "allow='autoplay; encrypted-media'></iframe>" +
+                        "</body></html>",
+                    "text/html", "utf-8"
+                )
+                trailer.visibility = View.VISIBLE
+                trailer.animate().alpha(1f).setDuration(500).setStartDelay(1500).start()
+            }
+        }
+
+        /** Accept either a bare YouTube id, a youtu.be link, or a watch URL. */
+        private fun extractYoutubeId(raw: String): String? {
+            if (raw.isBlank()) return null
+            val m = Regex("""(?:v=|youtu\.be/|embed/)([A-Za-z0-9_-]{11})""").find(raw)
+            if (m != null) return m.groupValues[1]
+            // Already bare? YouTube IDs are 11 chars of [A-Za-z0-9_-].
+            if (Regex("""^[A-Za-z0-9_-]{11}$""").matches(raw.trim())) return raw.trim()
+            return null
         }
     }
 

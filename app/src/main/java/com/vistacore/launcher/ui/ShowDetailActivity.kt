@@ -123,17 +123,21 @@ class ShowDetailActivity : BaseActivity() {
 
             applyDetail(detail)
 
-            // Cast photos via TMDB proxy. Purely additive — if TMDB fails,
-            // we keep the Xtream cast string rendered with initials.
-            val cast = withContext(Dispatchers.IO) {
+            val tmdbIdResolved = withContext(Dispatchers.IO) {
                 try {
-                    val tmdb = TmdbClient()
-                    val id = detail.tmdbId.toIntOrNull()
+                    val tmdb = TmdbClient(this@ShowDetailActivity)
+                    detail.tmdbId.toIntOrNull()
                         ?: tmdb.searchId(showName, detail.year, TmdbType.TV)
-                        ?: return@withContext emptyList<CastMember>()
-                    tmdb.getCredits(id, TmdbType.TV)
-                } catch (_: Exception) { emptyList() }
+                } catch (_: Exception) { null }
             }
+
+            val cast = if (tmdbIdResolved != null) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        TmdbClient(this@ShowDetailActivity).getCredits(tmdbIdResolved, TmdbType.TV)
+                    } catch (_: Exception) { emptyList() }
+                }
+            } else emptyList()
 
             val fallback = fallbackCast(detail.cast)
             val render = if (cast.isNotEmpty()) cast else fallback
@@ -141,6 +145,23 @@ class ShowDetailActivity : BaseActivity() {
                 binding.castTitle.visibility = View.VISIBLE
                 binding.castList.visibility = View.VISIBLE
                 binding.castList.adapter = CastAdapter(render)
+            }
+
+            // Trailer fallback — same as MovieDetailActivity.
+            if (binding.showTrailerBtn.visibility != View.VISIBLE && tmdbIdResolved != null) {
+                val ytId = withContext(Dispatchers.IO) {
+                    try {
+                        TmdbClient(this@ShowDetailActivity)
+                            .getTrailerYoutubeId(tmdbIdResolved, TmdbType.TV)
+                    } catch (_: Exception) { null }
+                }
+                if (!ytId.isNullOrBlank()) {
+                    val fullUrl = "https://www.youtube.com/watch?v=$ytId"
+                    binding.showTrailerBtn.visibility = View.VISIBLE
+                    binding.showTrailerBtn.setOnClickListener {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
+                    }
+                }
             }
         }
     }
@@ -243,11 +264,24 @@ class ShowDetailActivity : BaseActivity() {
         val eps = seasons[season] ?: emptyList()
         binding.episodeList.layoutManager = LinearLayoutManager(this)
         binding.episodeList.adapter = EpisodeAdapter(eps) { episode ->
+            // Build a queue from the current season so the player can
+            // auto-advance through the season on episode end.
+            val queueJson = org.json.JSONArray().apply {
+                for (ep in eps) {
+                    put(org.json.JSONObject().apply {
+                        put("url", ep.streamUrl)
+                        put("name", ep.name)
+                    })
+                }
+            }.toString()
+            val idx = eps.indexOfFirst { it.streamUrl == episode.streamUrl }
             val intent = Intent(this, IPTVPlayerActivity::class.java).apply {
                 putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, episode.streamUrl)
                 putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, episode.name)
                 putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, episode.logoUrl)
                 putExtra(IPTVPlayerActivity.EXTRA_IS_VOD, true)
+                putExtra(IPTVPlayerActivity.EXTRA_EPISODE_QUEUE_JSON, queueJson)
+                putExtra(IPTVPlayerActivity.EXTRA_EPISODE_INDEX, idx.coerceAtLeast(0))
             }
             startActivity(intent)
         }

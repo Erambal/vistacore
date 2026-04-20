@@ -4,13 +4,26 @@
     android:layout_height="400dp"
     android:layout_marginBottom="24dp">
 
-    <!-- Full-width background image -->
+    <!-- Full-width background image. Always visible; the trailer WebView
+         overlays it once the YouTube iframe reports the video is playing. -->
     <ImageView
         android:id="@+id/banner_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
         android:contentDescription="Featured" />
+
+    <!-- Muted YouTube trailer that fades in over the image a couple of
+         seconds after the banner appears. Hidden by default — made visible
+         in BannerVH.bind when we have a trailer id. -->
+    <WebView
+        android:id="@+id/banner_trailer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:alpha="0"
+        android:focusable="false"
+        android:focusableInTouchMode="false" />
 
     <!-- Gradient fade to background -->
     <View

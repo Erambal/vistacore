@@ -390,6 +390,26 @@
                     <Switch android:id="@+id/switch_load_kids" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true"  android:background="@drawable/focus_indicator" />
                 </LinearLayout>
 
+                <!-- Playback / Discovery preferences -->
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginBottom="24dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Playback" style="@style/SettingsTitle" android:layout_marginBottom="12dp" />
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="16dp">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Autoplay next episode" style="@style/SettingsTitle" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto-advance to the next episode when one ends" style="@style/SettingsSummary" />
+                    </LinearLayout>
+                    <Switch android:id="@+id/switch_autoplay_next" android:layout_width="wrap_content" android:layout_height="wrap_content" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" android:background="@drawable/focus_indicator" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="28dp">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Banner trailer autoplay" style="@style/SettingsTitle" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Play a muted trailer behind the featured banner on Movies / Shows" style="@style/SettingsSummary" />
+                    </LinearLayout>
+                    <Switch android:id="@+id/switch_banner_trailer" android:layout_width="wrap_content" android:layout_height="wrap_content" android:thumbTint="@color/accent_gold" android:trackTint="@color/settings_gray" android:focusable="true" android:background="@drawable/focus_indicator" />
+                </LinearLayout>
+
                 <!-- Hidden Categories -->
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginBottom="24dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Hidden Categories" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
@@ -404,7 +424,13 @@
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginBottom="24dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="OpenSubtitles" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="API key for online subtitle search. Get one free at opensubtitles.com" style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
-                <EditText android:id="@+id/input_opensubtitles_key" android:layout_width="match_parent" android:layout_height="52dp" android:hint="OpenSubtitles API key" android:textSize="16sp" android:textColor="@color/text_primary" android:textColorHint="@color/text_hint" android:background="@drawable/edit_text_background" android:fontFamily="monospace" android:inputType="text" android:singleLine="true" android:padding="12dp" />
+                <EditText android:id="@+id/input_opensubtitles_key" android:layout_width="match_parent" android:layout_height="52dp" android:hint="OpenSubtitles API key" android:textSize="16sp" android:textColor="@color/text_primary" android:textColorHint="@color/text_hint" android:background="@drawable/edit_text_background" android:fontFamily="monospace" android:inputType="text" android:singleLine="true" android:padding="12dp" android:layout_marginBottom="24dp" />
+
+                <!-- TMDB — powers cast photos, trailer lookup, and banner autoplay. -->
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginBottom="24dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TMDB (The Movie Database)" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Free v3 API key. Unlocks cast photos, backdrops, and trailer autoplay. Get one at themoviedb.org/settings/api" style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
+                <EditText android:id="@+id/input_tmdb_key" android:layout_width="match_parent" android:layout_height="52dp" android:hint="TMDB v3 API key" android:textSize="16sp" android:textColor="@color/text_primary" android:textColorHint="@color/text_hint" android:background="@drawable/edit_text_background" android:fontFamily="monospace" android:inputType="text" android:singleLine="true" android:padding="12dp" />
 
             </LinearLayout>
         </ScrollView>

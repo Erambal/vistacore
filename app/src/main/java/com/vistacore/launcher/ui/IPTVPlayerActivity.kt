@@ -57,6 +57,11 @@ class IPTVPlayerActivity : BaseActivity() {
         const val EXTRA_RESUME_POSITION = "resume_position"
         const val EXTRA_IS_VOD = "is_vod"
         const val EXTRA_CONTENT_YEAR = "content_year"
+        // Episode auto-advance. When set, the player will start the next
+        // queued episode on STATE_ENDED if prefs.autoplayNextEpisode is on.
+        // JSON is an array of { "url": "...", "name": "..." } objects.
+        const val EXTRA_EPISODE_QUEUE_JSON = "episode_queue_json"
+        const val EXTRA_EPISODE_INDEX = "episode_index"
         private const val OVERLAY_DISPLAY_MS = 4000L
         private const val SCRUB_HIDE_DELAY_MS = 15000L
         private const val SEEK_INCREMENT_MS = 10000L
@@ -82,6 +87,11 @@ class IPTVPlayerActivity : BaseActivity() {
     private var isVodMode = false
     private var allChannels: List<Channel> = emptyList()
     private var currentChannelIndex: Int = -1
+
+    // Episode queue for auto-advance (null when not playing a series).
+    private data class QueuedEpisode(val url: String, val name: String)
+    private var episodeQueue: List<QueuedEpisode> = emptyList()
+    private var episodeIndex: Int = -1
 
     // Content filtering
     private lateinit var filterManager: ContentFilterManager
@@ -141,6 +151,7 @@ class IPTVPlayerActivity : BaseActivity() {
         channelId = intent.getStringExtra(EXTRA_CHANNEL_ID) ?: ""
         contentYear = intent.getStringExtra(EXTRA_CONTENT_YEAR) ?: ""
         isVodMode = intent.getBooleanExtra(EXTRA_IS_VOD, false) || channelId.isBlank()
+        parseEpisodeQueue()
 
         if (streamUrl.isBlank()) {
             showError()
@@ -509,7 +520,12 @@ class IPTVPlayerActivity : BaseActivity() {
                         Player.STATE_ENDED -> {
                             // Mark as finished
                             saveCurrentPosition()
-                            finish()
+                            // If we're inside a series queue and the user
+                            // hasn't disabled auto-advance, chain straight
+                            // into the next episode. Otherwise just exit.
+                            if (!advanceToNextEpisode()) {
+                                finish()
+                            }
                         }
                         Player.STATE_IDLE -> { /* no-op */ }
                     }
@@ -1333,5 +1349,45 @@ class IPTVPlayerActivity : BaseActivity() {
         numberPad?.destroy()
         player?.release()
         player = null
+    }
+
+    // ─── Episode auto-advance ───────────────────────────────────────────
+
+    private fun parseEpisodeQueue() {
+        val json = intent.getStringExtra(EXTRA_EPISODE_QUEUE_JSON) ?: return
+        val idx = intent.getIntExtra(EXTRA_EPISODE_INDEX, -1)
+        if (idx < 0) return
+        try {
+            val arr = org.json.JSONArray(json)
+            val list = mutableListOf<QueuedEpisode>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(QueuedEpisode(o.optString("url"), o.optString("name")))
+            }
+            episodeQueue = list
+            episodeIndex = idx
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse episode queue: ${e.message}")
+        }
+    }
+
+    /**
+     * Start the next queued episode if one exists and the user hasn't
+     * disabled auto-advance. Returns true when we launched a next episode
+     * (caller should NOT finish() in that case); false otherwise.
+     */
+    private fun advanceToNextEpisode(): Boolean {
+        if (!prefs.autoplayNextEpisode) return false
+        val next = episodeQueue.getOrNull(episodeIndex + 1) ?: return false
+        val nextIntent = Intent(this, IPTVPlayerActivity::class.java).apply {
+            putExtra(EXTRA_STREAM_URL, next.url)
+            putExtra(EXTRA_CHANNEL_NAME, next.name)
+            putExtra(EXTRA_IS_VOD, true)
+            putExtra(EXTRA_EPISODE_QUEUE_JSON, intent.getStringExtra(EXTRA_EPISODE_QUEUE_JSON))
+            putExtra(EXTRA_EPISODE_INDEX, episodeIndex + 1)
+        }
+        startActivity(nextIntent)
+        finish()
+        return true
     }
 }

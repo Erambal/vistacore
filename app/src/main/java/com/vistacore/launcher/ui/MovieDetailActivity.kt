@@ -120,15 +120,23 @@ class MovieDetailActivity : BaseActivity() {
 
             applyDetail(detail)
 
-            val cast = withContext(Dispatchers.IO) {
+            // Resolve a TMDB id once — used for both cast credits and
+            // the trailer fallback when Xtream didn't hand us one.
+            val tmdbIdResolved = withContext(Dispatchers.IO) {
                 try {
-                    val tmdb = TmdbClient()
-                    val id = detail.tmdbId.toIntOrNull()
+                    val tmdb = TmdbClient(this@MovieDetailActivity)
+                    detail.tmdbId.toIntOrNull()
                         ?: tmdb.searchId(title, detail.year.ifBlank { year }, TmdbType.MOVIE)
-                        ?: return@withContext emptyList<CastMember>()
-                    tmdb.getCredits(id, TmdbType.MOVIE)
-                } catch (_: Exception) { emptyList() }
+                } catch (_: Exception) { null }
             }
+
+            val cast = if (tmdbIdResolved != null) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        TmdbClient(this@MovieDetailActivity).getCredits(tmdbIdResolved, TmdbType.MOVIE)
+                    } catch (_: Exception) { emptyList() }
+                }
+            } else emptyList()
 
             val fallback = fallbackCast(detail.cast)
             val render = if (cast.isNotEmpty()) cast else fallback
@@ -136,6 +144,24 @@ class MovieDetailActivity : BaseActivity() {
                 binding.castTitle.visibility = View.VISIBLE
                 binding.castList.visibility = View.VISIBLE
                 binding.castList.adapter = CastAdapter(render)
+            }
+
+            // Trailer: if Xtream didn't include a youtube_trailer, try
+            // TMDB's /videos. Only show the button once we have one.
+            if (binding.movieTrailerBtn.visibility != View.VISIBLE && tmdbIdResolved != null) {
+                val ytId = withContext(Dispatchers.IO) {
+                    try {
+                        TmdbClient(this@MovieDetailActivity)
+                            .getTrailerYoutubeId(tmdbIdResolved, TmdbType.MOVIE)
+                    } catch (_: Exception) { null }
+                }
+                if (!ytId.isNullOrBlank()) {
+                    val fullUrl = "https://www.youtube.com/watch?v=$ytId"
+                    binding.movieTrailerBtn.visibility = View.VISIBLE
+                    binding.movieTrailerBtn.setOnClickListener {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl)))
+                    }
+                }
             }
         }
     }

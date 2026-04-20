@@ -48,6 +48,9 @@ class PrefsManager(context: Context) {
         private const val KEY_FILTER_SLURS = "filter_slurs"
         private const val KEY_FILTER_SEXUAL_DIALOGUE = "filter_sexual_dialogue"
         private const val KEY_HIDE_RESTRICTED_RATINGS = "hide_restricted_ratings"
+        private const val KEY_TMDB_API_KEY = "tmdb_api_key"
+        private const val KEY_AUTOPLAY_NEXT_EPISODE = "autoplay_next_episode"
+        private const val KEY_BANNER_AUTOPLAY_TRAILER = "banner_autoplay_trailer"
         private const val KEY_LIVE_TV_STYLE = "live_tv_style"
         private const val KEY_JELLYFIN_SERVER = "jellyfin_server"
         private const val KEY_JELLYFIN_USERNAME = "jellyfin_username"
@@ -285,6 +288,26 @@ class PrefsManager(context: Context) {
     var hideRestrictedRatings: Boolean
         get() = prefs.getBoolean(KEY_HIDE_RESTRICTED_RATINGS, false)
         set(value) = prefs.edit().putBoolean(KEY_HIDE_RESTRICTED_RATINGS, value).apply()
+
+    /**
+     * TMDB v3 API key. If set, the app hits api.themoviedb.org directly
+     * for cast photos, backdrops, and trailers. Free to get at
+     * https://www.themoviedb.org/settings/api . Leave blank to fall back
+     * to the Worker proxy ([BuildConfig.TMDB_PROXY_BASE]).
+     */
+    var tmdbApiKey: String
+        get() = prefs.getString(KEY_TMDB_API_KEY, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_TMDB_API_KEY, value.trim()).apply()
+
+    /** Auto-advance to the next episode after one finishes (series only). */
+    var autoplayNextEpisode: Boolean
+        get() = prefs.getBoolean(KEY_AUTOPLAY_NEXT_EPISODE, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTOPLAY_NEXT_EPISODE, value).apply()
+
+    /** Play a muted YouTube trailer behind the featured banner on the Movies page. */
+    var bannerAutoplayTrailer: Boolean
+        get() = prefs.getBoolean(KEY_BANNER_AUTOPLAY_TRAILER, true)
+        set(value) = prefs.edit().putBoolean(KEY_BANNER_AUTOPLAY_TRAILER, value).apply()
 
     /** Get the set of enabled filter categories. */
     fun getEnabledFilterCategories(): Set<String> {

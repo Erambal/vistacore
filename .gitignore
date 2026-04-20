@@ -45,3 +45,7 @@ Thumbs.db
 # Cloudflare Worker web app
 web/node_modules/
 web/.wrangler/
+
+# Local VPS deploy helpers — contain hardcoded credentials, never commit.
+server/remote_exec.py
+server/remote_upload.py

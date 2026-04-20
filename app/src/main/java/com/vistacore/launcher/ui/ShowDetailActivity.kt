@@ -164,6 +164,19 @@ class ShowDetailActivity : BaseActivity() {
                 }
             } else emptyList()
 
+            // Xtream providers rarely populate mpaa_rating on series.
+            // Fall back to TMDB's /content_ratings so the "Rated TV-MA"
+            // line shows up for the whole catalog.
+            if (detail.mpaa.isBlank() && tmdbIdResolved != null) {
+                val cert = withContext(Dispatchers.IO) {
+                    try {
+                        TmdbClient(this@ShowDetailActivity)
+                            .getCertification(tmdbIdResolved, TmdbType.TV)
+                    } catch (_: Exception) { null }
+                }
+                if (!cert.isNullOrBlank()) applyMpaa(cert)
+            }
+
             val fallback = fallbackCast(detail.cast)
             val render = if (cast.isNotEmpty()) cast else fallback
             if (render.isNotEmpty()) {
@@ -201,10 +214,7 @@ class ShowDetailActivity : BaseActivity() {
             binding.showTagline.text = "\"${d.tagline}\""
             binding.showTagline.visibility = View.VISIBLE
         }
-        DetailBinders.formatRatedLine(d.mpaa)?.let { line ->
-            binding.showRatedLine.text = line
-            binding.showRatedLine.visibility = View.VISIBLE
-        }
+        applyMpaa(d.mpaa)
         DetailBinders.renderBadges(
             binding.showBadges,
             rating = d.rating,
@@ -236,6 +246,19 @@ class ShowDetailActivity : BaseActivity() {
             binding.showTrailerBtn.setOnClickListener {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerUrl)))
             }
+        }
+    }
+
+    /**
+     * Show the "Rated TV-MA" line. Called from both applyDetail (Xtream
+     * data) and the TMDB certification fallback. Leaves the badge row
+     * alone — that's owned by applyDetail.
+     */
+    private fun applyMpaa(mpaa: String) {
+        if (mpaa.isBlank()) return
+        DetailBinders.formatRatedLine(mpaa)?.let { line ->
+            binding.showRatedLine.text = line
+            binding.showRatedLine.visibility = View.VISIBLE
         }
     }
 

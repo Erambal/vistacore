@@ -74,6 +74,51 @@ class TmdbClient(context: Context? = null) {
         }
 
     /**
+     * US certification (MPAA / TV Parental Guidelines) for a title.
+     * Returns "R", "PG-13", "TV-MA", etc. Null when TMDB has no US
+     * certification on file.
+     *
+     * Needed because most Xtream providers don't include mpaa_rating in
+     * get_vod_info — without this, the "Rated R" line and the
+     * "Hide R-rated content" filter would only work for a tiny slice of
+     * the catalog.
+     */
+    suspend fun getCertification(tmdbId: Int, type: TmdbType): String? =
+        withContext(Dispatchers.IO) {
+            val path = when (type) {
+                TmdbType.MOVIE -> "${type.path}/$tmdbId/release_dates"
+                TmdbType.TV    -> "${type.path}/$tmdbId/content_ratings"
+            }
+            val body = get(path) ?: return@withContext null
+            try {
+                when (type) {
+                    TmdbType.MOVIE -> parseMovieCert(body)
+                    TmdbType.TV    -> parseTvCert(body)
+                }
+            } catch (_: Exception) { null }
+        }
+
+    private fun parseMovieCert(body: String): String? {
+        val resp = gson.fromJson(body, TmdbReleaseDatesResponse::class.java) ?: return null
+        val us = resp.results?.firstOrNull { it.iso_3166_1 == "US" } ?: return null
+        // A country block can list multiple release dates (theatrical,
+        // digital, physical). Any non-blank certification is fine — TMDB
+        // keeps them consistent for US releases.
+        return us.release_dates
+            ?.firstOrNull { !it.certification.isNullOrBlank() }
+            ?.certification
+            ?.trim()
+    }
+
+    private fun parseTvCert(body: String): String? {
+        val resp = gson.fromJson(body, TmdbContentRatingsResponse::class.java) ?: return null
+        return resp.results?.firstOrNull { it.iso_3166_1 == "US" }
+            ?.rating
+            ?.trim()
+            ?.ifBlank { null }
+    }
+
+    /**
      * Best YouTube trailer video id for a title. Prefers official Trailer
      * videos, falls back to Teaser, then any YouTube video. Returns null
      * when nothing matches.
@@ -157,4 +202,19 @@ private data class TmdbVideo(
     val site: String? = null,
     val type: String? = null,
     val official: Boolean? = null
+)
+
+// /movie/{id}/release_dates
+private data class TmdbReleaseDatesResponse(val results: List<TmdbCountryReleases>?)
+private data class TmdbCountryReleases(
+    @SerializedName("iso_3166_1") val iso_3166_1: String? = null,
+    @SerializedName("release_dates") val release_dates: List<TmdbReleaseDate>? = null
+)
+private data class TmdbReleaseDate(val certification: String? = null)
+
+// /tv/{id}/content_ratings
+private data class TmdbContentRatingsResponse(val results: List<TmdbContentRating>?)
+private data class TmdbContentRating(
+    @SerializedName("iso_3166_1") val iso_3166_1: String? = null,
+    val rating: String? = null
 )

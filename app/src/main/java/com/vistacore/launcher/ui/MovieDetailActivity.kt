@@ -165,6 +165,19 @@ class MovieDetailActivity : BaseActivity() {
                 }
             } else emptyList()
 
+            // Xtream providers almost never include mpaa_rating. Fill it
+            // in from TMDB's US certification so the "Rated R" line and
+            // the "Hide R-rated" filter work for the whole catalog.
+            if (detail.mpaa.isBlank() && tmdbIdResolved != null) {
+                val cert = withContext(Dispatchers.IO) {
+                    try {
+                        TmdbClient(this@MovieDetailActivity)
+                            .getCertification(tmdbIdResolved, TmdbType.MOVIE)
+                    } catch (_: Exception) { null }
+                }
+                if (!cert.isNullOrBlank()) applyMpaa(cert)
+            }
+
             val fallback = fallbackCast(detail.cast)
             val render = if (cast.isNotEmpty()) cast else fallback
             if (render.isNotEmpty()) {
@@ -214,20 +227,7 @@ class MovieDetailActivity : BaseActivity() {
             binding.movieTagline.visibility = View.VISIBLE
         }
 
-        // Prominent "Rated R" line — users wanted this more visible than the
-        // small pill badge. If the "Hide R-rated" toggle is on and the
-        // rating is restricted, we also gate the Play button.
-        val ratedLine = DetailBinders.formatRatedLine(d.mpaa)
-        if (ratedLine != null) {
-            binding.movieRatedLine.text = ratedLine
-            binding.movieRatedLine.visibility = View.VISIBLE
-        }
-        val prefs = PrefsManager(this)
-        if (prefs.hideRestrictedRatings && DetailBinders.isRestrictedRating(d.mpaa)) {
-            binding.moviePlayBtn.isEnabled = false
-            binding.moviePlayBtn.text = "Blocked (${d.mpaa})"
-            binding.moviePlayBtn.alpha = 0.6f
-        }
+        applyMpaa(d.mpaa)
 
         DetailBinders.renderBadges(
             binding.movieBadges,
@@ -259,6 +259,27 @@ class MovieDetailActivity : BaseActivity() {
             binding.movieTrailerBtn.setOnClickListener {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerUrl)))
             }
+        }
+    }
+
+    /**
+     * Show the "Rated R" line and gate Play when the rating is restricted
+     * and the user has the hide-R-rated toggle on. Called from both the
+     * Xtream path (baseline data) and the TMDB fallback (when Xtream
+     * didn't include an MPAA rating). Only touches the rated line + Play
+     * button — the badge row is owned by applyDetail so we don't stomp
+     * the ★ rating / runtime / year pills set there.
+     */
+    private fun applyMpaa(mpaa: String) {
+        if (mpaa.isBlank()) return
+        DetailBinders.formatRatedLine(mpaa)?.let { line ->
+            binding.movieRatedLine.text = line
+            binding.movieRatedLine.visibility = View.VISIBLE
+        }
+        if (PrefsManager(this).hideRestrictedRatings && DetailBinders.isRestrictedRating(mpaa)) {
+            binding.moviePlayBtn.isEnabled = false
+            binding.moviePlayBtn.text = "Blocked ($mpaa)"
+            binding.moviePlayBtn.alpha = 0.6f
         }
     }
 

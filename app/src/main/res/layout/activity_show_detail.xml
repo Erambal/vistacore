@@ -1,82 +1,183 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Rich show detail: backdrop header + metadata column on the left,
+     seasons / episodes / cast on the right. -->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background_dark"
-    android:orientation="horizontal">
+    android:fillViewport="true">
 
-    <!-- Left: Show info -->
-    <LinearLayout
-        android:layout_width="360dp"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:background="@color/surface_dark"
-        android:padding="24dp">
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
 
+        <!-- Backdrop image + gradient scrim (appears behind everything) -->
         <ImageView
-            android:id="@+id/show_poster"
+            android:id="@+id/detail_backdrop"
             android:layout_width="match_parent"
-            android:layout_height="280dp"
+            android:layout_height="360dp"
             android:scaleType="centerCrop"
-            android:contentDescription="Show poster"
-            android:layout_marginBottom="16dp" />
+            android:contentDescription="@null"
+            android:alpha="0.35" />
 
-        <TextView
-            android:id="@+id/show_title"
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="360dp"
+            android:background="@drawable/detail_backdrop_scrim" />
+
+        <!-- Two-column content over the backdrop -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="26sp"
-            android:textColor="@color/text_primary"
-            android:fontFamily="sans-serif-medium"
-            android:maxLines="3"
-            android:ellipsize="end"
-            android:layout_marginBottom="8dp" />
+            android:orientation="horizontal"
+            android:padding="24dp">
 
-        <TextView
-            android:id="@+id/show_category"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="16sp"
-            android:textColor="@color/accent_gold"
-            android:fontFamily="sans-serif"
-            android:layout_marginBottom="8dp" />
+            <!-- Left: poster + metadata -->
+            <LinearLayout
+                android:layout_width="360dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingEnd="24dp">
 
-        <TextView
-            android:id="@+id/show_episode_count"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="15sp"
-            android:textColor="@color/text_secondary"
-            android:fontFamily="sans-serif-light" />
-    </LinearLayout>
+                <ImageView
+                    android:id="@+id/show_poster"
+                    android:layout_width="match_parent"
+                    android:layout_height="440dp"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="Show poster"
+                    android:layout_marginBottom="16dp" />
 
-    <!-- Right: Season tabs + episodes -->
-    <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:clipChildren="false"
-        android:clipToPadding="false">
+                <TextView
+                    android:id="@+id/show_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="26sp"
+                    android:textColor="@color/text_primary"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="3"
+                    android:ellipsize="end"
+                    android:layout_marginBottom="6dp" />
 
-        <!-- Season tabs -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/season_tabs"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            android:clipToPadding="false"
-            android:clipChildren="false"
-            android:overScrollMode="never" />
+                <TextView
+                    android:id="@+id/show_tagline"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="@color/accent_gold_light"
+                    android:textStyle="italic"
+                    android:visibility="gone"
+                    android:layout_marginBottom="8dp"
+                    tools:text="&quot;Winter is coming.&quot;"
+                    tools:visibility="visible" />
 
-        <!-- Episode list -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/episode_list"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:clipToPadding="false"
-            android:overScrollMode="never" />
-    </LinearLayout>
-</LinearLayout>
+                <!-- Badge row: ★ rating · MPAA · runtime · year -->
+                <LinearLayout
+                    android:id="@+id/show_badges"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/show_meta"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary"
+                    android:layout_marginBottom="12dp"
+                    tools:text="Drama · USA · Dir. Jane Doe" />
+
+                <TextView
+                    android:id="@+id/show_plot"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary"
+                    android:lineSpacingExtra="3dp"
+                    android:layout_marginBottom="12dp"
+                    tools:text="A sweeping epic…" />
+
+                <TextView
+                    android:id="@+id/show_category"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="13sp"
+                    android:textColor="@color/accent_gold"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:id="@+id/show_episode_count"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_hint"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Trailer button (only visible if Xtream provides one) -->
+                <Button
+                    android:id="@+id/show_trailer_btn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="▶  Watch Trailer"
+                    android:background="@drawable/button_outline"
+                    android:textColor="@color/text_primary"
+                    android:padding="12dp"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+            </LinearLayout>
+
+            <!-- Right: season tabs + episodes + cast -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:clipChildren="false"
+                android:clipToPadding="false">
+
+                <!-- Season tabs -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/season_tabs"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:clipToPadding="false"
+                    android:clipChildren="false"
+                    android:overScrollMode="never" />
+
+                <!-- Episode list — fixed-ish height so cast row below is reachable -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/episode_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="480dp"
+                    android:clipToPadding="false"
+                    android:overScrollMode="never"
+                    android:layout_marginBottom="24dp" />
+
+                <!-- Cast section (shown once credits resolve) -->
+                <TextView
+                    android:id="@+id/cast_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CAST"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.15"
+                    android:textColor="@color/text_hint"
+                    android:layout_marginBottom="10dp"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/cast_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipToPadding="false"
+                    android:overScrollMode="never"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</androidx.core.widget.NestedScrollView>

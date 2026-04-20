@@ -121,5 +121,99 @@ data class XtreamSeriesEpisode(
 )
 
 data class XtreamSeriesInfo(
+    val info: XtreamInfoBlock? = null,
     val episodes: Map<String, List<XtreamSeriesEpisode>>? = null
+)
+
+data class XtreamVodInfoResponse(
+    val info: XtreamInfoBlock? = null,
+    val movie_data: Map<String, Any>? = null
+)
+
+/**
+ * Rich metadata block returned by Xtream's get_vod_info / get_series_info.
+ * Fields are optional because providers return inconsistent shapes; we
+ * merge them into [VodDetail] / [SeriesDetail] for the UI.
+ */
+data class XtreamInfoBlock(
+    val tmdb_id: String? = null,
+    val tmdb: String? = null,
+    val name: String? = null,
+    val o_name: String? = null,
+    val cover: String? = null,
+    val cover_big: String? = null,
+    val movie_image: String? = null,
+    val stream_icon: String? = null,
+    val backdrop_path: List<String>? = null,
+    val youtube_trailer: String? = null,
+    val genre: String? = null,
+    val plot: String? = null,
+    val description: String? = null,
+    val cast: String? = null,
+    val director: String? = null,
+    val country: String? = null,
+    val releaseDate: String? = null,
+    val release_date: String? = null,
+    val releasedate: String? = null,
+    val rating: String? = null,
+    val rating_5based: Double? = null,
+    val duration: String? = null,
+    val duration_secs: Long? = null,
+    val episode_run_time: String? = null,
+    val age: String? = null,
+    val mpaa_rating: String? = null,
+    val tagline: String? = null
+)
+
+/**
+ * Rich VOD (movie) metadata normalized for UI consumption. Built from the
+ * Xtream info block by [XtreamInfoMapper]; empty strings mean "unknown".
+ */
+data class VodDetail(
+    val tmdbId: String,
+    val plot: String,
+    val cast: String,
+    val director: String,
+    val genre: String,
+    val country: String,
+    val duration: String,
+    val durationSecs: Long,
+    val year: String,
+    val releaseDate: String,
+    val rating: String,
+    val mpaa: String,
+    val tagline: String,
+    val trailer: String,
+    val posterUrl: String,
+    val backdropUrl: String
+)
+
+/**
+ * Rich series metadata (plot, cast, rating, etc.) paired with the episode
+ * list. Constructed by [XtreamClient.getSeriesDetail].
+ */
+data class SeriesDetail(
+    val tmdbId: String,
+    val plot: String,
+    val cast: String,
+    val director: String,
+    val genre: String,
+    val country: String,
+    val year: String,
+    val releaseDate: String,
+    val rating: String,
+    val mpaa: String,
+    val episodeRunTime: String,
+    val tagline: String,
+    val trailer: String,
+    val posterUrl: String,
+    val backdropUrl: String,
+    val episodes: List<Channel>
+)
+
+/** Single actor returned by TMDB credits. */
+data class CastMember(
+    val name: String,
+    val character: String,
+    val profileUrl: String
 )

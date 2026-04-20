@@ -173,14 +173,25 @@ class XtreamClient(private val auth: XtreamAuth) {
     /**
      * Fetch episodes for a specific series via get_series_info.
      * Returns Channel objects for each episode, organized by season.
+     *
+     * Prefer [getSeriesDetail] for new callers — this one only returns the
+     * episode list and is kept for existing code paths that don't need the
+     * metadata block.
      */
-    suspend fun getSeriesInfo(seriesId: Int): List<Channel> = withContext(Dispatchers.IO) {
+    suspend fun getSeriesInfo(seriesId: Int): List<Channel> =
+        getSeriesDetail(seriesId)?.episodes ?: emptyList()
+
+    /**
+     * Fetch both the rich metadata block (plot, cast, rating, etc.) and the
+     * episode list for a series. Null on network/parse failure.
+     */
+    suspend fun getSeriesDetail(seriesId: Int): SeriesDetail? = withContext(Dispatchers.IO) {
         val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_series_info&series_id=$seriesId"
         try {
             val body = fetchWithClient(vodClient, url)
-            val info = gson.fromJson(body, XtreamSeriesInfo::class.java)
+            val parsed = gson.fromJson(body, XtreamSeriesInfo::class.java) ?: return@withContext null
             val episodes = mutableListOf<Channel>()
-            info?.episodes?.forEach { (seasonNum, episodeList) ->
+            parsed.episodes?.forEach { (seasonNum, episodeList) ->
                 for (ep in episodeList) {
                     val ext = ep.container_extension.ifBlank { "mp4" }
                     val epName = if (ep.title.isNotBlank()) {
@@ -199,10 +210,26 @@ class XtreamClient(private val auth: XtreamAuth) {
                     )
                 }
             }
-            episodes
+            XtreamInfoMapper.toSeriesDetail(parsed.info, episodes)
         } catch (e: Exception) {
             Log.e("XtreamClient", "Failed to fetch series info for $seriesId", e)
-            emptyList()
+            null
+        }
+    }
+
+    /**
+     * Fetch rich metadata for a single movie via get_vod_info.
+     * Null on network/parse failure.
+     */
+    suspend fun getVodInfo(vodId: Int): VodDetail? = withContext(Dispatchers.IO) {
+        val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_vod_info&vod_id=$vodId"
+        try {
+            val body = fetchWithClient(vodClient, url)
+            val parsed = gson.fromJson(body, XtreamVodInfoResponse::class.java) ?: return@withContext null
+            XtreamInfoMapper.toVodDetail(parsed.info)
+        } catch (e: Exception) {
+            Log.e("XtreamClient", "Failed to fetch VOD info for $vodId", e)
+            null
         }
     }
 

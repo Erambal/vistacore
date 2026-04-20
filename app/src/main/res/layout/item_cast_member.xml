@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Circular cast photo + name + character. Falls back to initials if the
+     TMDB profile_path is missing or fails to load. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="110dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:paddingStart="6dp"
+    android:paddingEnd="6dp"
+    android:paddingBottom="8dp"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:background="@drawable/cast_card_focus">
+
+    <FrameLayout
+        android:layout_width="96dp"
+        android:layout_height="96dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:id="@+id/cast_initials"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="@color/accent_gold"
+            android:background="@drawable/cast_initials_background" />
+
+        <ImageView
+            android:id="@+id/cast_photo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="@null"
+            android:background="@drawable/cast_photo_background"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/cast_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_primary"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+    <TextView
+        android:id="@+id/cast_role"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="11sp"
+        android:textColor="@color/text_hint"
+        android:maxLines="1"
+        android:ellipsize="end" />
+</LinearLayout>

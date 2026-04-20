@@ -2,19 +2,32 @@ package com.vistacore.launcher.ui
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.vistacore.launcher.R
+import com.vistacore.launcher.data.PrefsManager
 import com.vistacore.launcher.databinding.ActivityShowDetailBinding
+import com.vistacore.launcher.iptv.CastMember
 import com.vistacore.launcher.iptv.Channel
+import com.vistacore.launcher.iptv.SeriesDetail
+import com.vistacore.launcher.iptv.TmdbClient
+import com.vistacore.launcher.iptv.TmdbType
+import com.vistacore.launcher.iptv.XtreamAuth
+import com.vistacore.launcher.iptv.XtreamClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ShowDetailActivity : BaseActivity() {
 
@@ -22,17 +35,26 @@ class ShowDetailActivity : BaseActivity() {
         private const val EXTRA_SHOW_NAME = "show_name"
         private const val EXTRA_CATEGORY = "category"
         private const val EXTRA_POSTER = "poster_url"
-        private const val EXTRA_EPISODES_JSON = "episodes_json"
+        private const val EXTRA_XTREAM_ID = "xtream_series_id"
 
-        // Store episodes in a static field to avoid serialization limits
+        // Episodes can be a long list; passing via Intent runs into the
+        // Binder transaction cap on weak devices, so we stash them here.
         private var pendingEpisodes: List<Channel> = emptyList()
 
-        fun launch(activity: Activity, showName: String, category: String, posterUrl: String, episodes: List<Channel>) {
+        fun launch(
+            activity: Activity,
+            showName: String,
+            category: String,
+            posterUrl: String,
+            episodes: List<Channel>,
+            xtreamSeriesId: Int = 0
+        ) {
             pendingEpisodes = episodes
             val intent = Intent(activity, ShowDetailActivity::class.java).apply {
                 putExtra(EXTRA_SHOW_NAME, showName)
                 putExtra(EXTRA_CATEGORY, category)
                 putExtra(EXTRA_POSTER, posterUrl)
+                if (xtreamSeriesId > 0) putExtra(EXTRA_XTREAM_ID, xtreamSeriesId)
             }
             activity.startActivity(intent)
         }
@@ -42,6 +64,8 @@ class ShowDetailActivity : BaseActivity() {
     private var episodes: List<Channel> = emptyList()
     private var seasons: Map<Int, List<Channel>> = emptyMap()
     private var currentSeason: Int = 1
+    private var xtreamSeriesId: Int = 0
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +75,7 @@ class ShowDetailActivity : BaseActivity() {
         val showName = intent.getStringExtra(EXTRA_SHOW_NAME) ?: "Show"
         val category = intent.getStringExtra(EXTRA_CATEGORY) ?: ""
         val posterUrl = intent.getStringExtra(EXTRA_POSTER) ?: ""
+        xtreamSeriesId = intent.getIntExtra(EXTRA_XTREAM_ID, 0)
 
         episodes = pendingEpisodes
         pendingEpisodes = emptyList()
@@ -60,14 +85,126 @@ class ShowDetailActivity : BaseActivity() {
 
         if (posterUrl.isNotBlank()) {
             Glide.with(this).load(posterUrl).into(binding.showPoster)
+            Glide.with(this).load(posterUrl).into(binding.detailBackdrop)
         }
 
-        // Parse seasons from episode names
         seasons = parseSeasons(episodes)
         binding.showEpisodeCount.text = "${episodes.size} episode${if (episodes.size != 1) "s" else ""} · ${seasons.size} season${if (seasons.size != 1) "s" else ""}"
 
         setupSeasonTabs()
         showSeason(seasons.keys.minOrNull() ?: 1)
+
+        binding.castList.layoutManager =
+            LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+
+        // Kick off the rich-metadata fetch in the background. If it
+        // succeeds, we'll swap in plot/rating/badges/cast above the
+        // seasons. If it fails (M3U-only provider, no Xtream, network
+        // error), the screen just stays on the baseline layout.
+        if (xtreamSeriesId > 0) {
+            loadSeriesMetadata(showName)
+        }
+    }
+
+    /**
+     * Fetch rich series info + TMDB cast credits. Runs on a background
+     * thread; UI updates happen on main. Any failure is silent — the
+     * screen degrades to the baseline layout.
+     */
+    private fun loadSeriesMetadata(showName: String) {
+        scope.launch {
+            val detail = withContext(Dispatchers.IO) {
+                try {
+                    val prefs = PrefsManager(this@ShowDetailActivity)
+                    val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
+                    XtreamClient(auth).getSeriesDetail(xtreamSeriesId)
+                } catch (_: Exception) { null }
+            } ?: return@launch
+
+            applyDetail(detail)
+
+            // Cast photos via TMDB proxy. Purely additive — if TMDB fails,
+            // we keep the Xtream cast string rendered with initials.
+            val cast = withContext(Dispatchers.IO) {
+                try {
+                    val tmdb = TmdbClient()
+                    val id = detail.tmdbId.toIntOrNull()
+                        ?: tmdb.searchId(showName, detail.year, TmdbType.TV)
+                        ?: return@withContext emptyList<CastMember>()
+                    tmdb.getCredits(id, TmdbType.TV)
+                } catch (_: Exception) { emptyList() }
+            }
+
+            val fallback = fallbackCast(detail.cast)
+            val render = if (cast.isNotEmpty()) cast else fallback
+            if (render.isNotEmpty()) {
+                binding.castTitle.visibility = View.VISIBLE
+                binding.castList.visibility = View.VISIBLE
+                binding.castList.adapter = CastAdapter(render)
+            }
+        }
+    }
+
+    private fun applyDetail(d: SeriesDetail) {
+        if (d.tagline.isNotBlank()) {
+            binding.showTagline.text = "\"${d.tagline}\""
+            binding.showTagline.visibility = View.VISIBLE
+        }
+        DetailBinders.renderBadges(
+            binding.showBadges,
+            rating = d.rating,
+            mpaa = d.mpaa,
+            runtime = DetailBinders.formatRuntime("", 0L, d.episodeRunTime),
+            year = d.year
+        )
+        val meta = DetailBinders.buildMetaLine(d.genre, d.country, d.director)
+        if (meta.isNotBlank()) {
+            binding.showMeta.text = meta
+            binding.showMeta.visibility = View.VISIBLE
+        } else binding.showMeta.visibility = View.GONE
+
+        if (d.plot.isNotBlank()) {
+            binding.showPlot.text = d.plot
+            binding.showPlot.visibility = View.VISIBLE
+        } else binding.showPlot.visibility = View.GONE
+
+        if (d.backdropUrl.isNotBlank()) {
+            Glide.with(this).load(d.backdropUrl).into(binding.detailBackdrop)
+        }
+        if (d.posterUrl.isNotBlank()) {
+            Glide.with(this).load(d.posterUrl).into(binding.showPoster)
+        }
+
+        val trailerUrl = resolveTrailerUrl(d.trailer)
+        if (trailerUrl != null) {
+            binding.showTrailerBtn.visibility = View.VISIBLE
+            binding.showTrailerBtn.setOnClickListener {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerUrl)))
+            }
+        }
+    }
+
+    private fun fallbackCast(castStr: String): List<CastMember> {
+        if (castStr.isBlank()) return emptyList()
+        return castStr.split(Regex("""\s*,\s*"""))
+            .mapNotNull { it.trim().ifBlank { null } }
+            .take(12)
+            .map { CastMember(name = it, character = "", profileUrl = "") }
+    }
+
+    /**
+     * Xtream's youtube_trailer is usually a bare video id; occasionally a
+     * full URL. Accept both.
+     */
+    private fun resolveTrailerUrl(raw: String): String? {
+        if (raw.isBlank()) return null
+        if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
+        return "https://www.youtube.com/watch?v=${Uri.encode(raw)}"
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        scope.coroutineContext[Job]?.cancel()
     }
 
     private fun parseSeasons(episodes: List<Channel>): Map<Int, List<Channel>> {

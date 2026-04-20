@@ -179,6 +179,12 @@
             android:exported="false"
             android:screenOrientation="landscape" />
 
+        <!-- Movie Detail (plot, cast, trailer, play) -->
+        <activity
+            android:name=".ui.MovieDetailActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
         <!-- Kids Browser -->
         <activity
             android:name=".ui.KidsBrowserActivity"

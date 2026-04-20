@@ -25,8 +25,16 @@ android {
         applicationId = "com.vistacore.launcher"
         minSdk = 21
         targetSdk = 34
-        versionCode = 32
-        versionName = "1.4.8"
+        versionCode = 33
+        versionName = "1.4.9"
+
+        // TMDB proxy base — same Worker that serves the web app. The Worker's
+        // `/api/tmdb` endpoint attaches TMDB_KEY server-side so the APK ships
+        // with no API key. Override via local.properties if you self-host.
+        val tmdbBase = providers.gradleProperty("tmdbProxyBase")
+            .orElse("https://vistacore.app")
+            .get()
+        buildConfigField("String", "TMDB_PROXY_BASE", "\"$tmdbBase\"")
     }
 
     flavorDimensions += "device"

@@ -550,7 +550,13 @@ class VODBrowserActivity : BaseActivity() {
                     }
                     showLoading(false)
                     if (episodes.isNotEmpty()) {
-                        ShowDetailActivity.launch(this@VODBrowserActivity, showName, item.category, item.logoUrl, episodes)
+                        // Pass the Xtream id through so ShowDetailActivity can fetch
+                        // the rich metadata block (plot, cast, rating, trailer).
+                        ShowDetailActivity.launch(
+                            this@VODBrowserActivity,
+                            showName, item.category, item.logoUrl, episodes,
+                            xtreamSeriesId = xtreamSeriesId
+                        )
                     } else {
                         Toast.makeText(this@VODBrowserActivity, "Could not load episodes", Toast.LENGTH_SHORT).show()
                     }
@@ -561,16 +567,42 @@ class VODBrowserActivity : BaseActivity() {
                 ShowDetailActivity.launch(this, showName, item.category, item.logoUrl, episodes)
             }
         } else {
-            // Extract year from title if present, e.g. "The Matrix (1999)"
-            val yearMatch = Regex("""\((\d{4})\)""").find(item.name)
+            openMovieDetailOrPlay(item)
+        }
+    }
+
+    /**
+     * Xtream movies have an id like `xt_vod_1234`. We extract the numeric
+     * id so MovieDetailActivity can pull plot/cast/trailer from get_vod_info.
+     *
+     * M3U-only movies (no vod id) skip the detail screen and go straight to
+     * the player — there's nothing richer to show, and forcing an empty
+     * detail page would just add a click.
+     */
+    private fun openMovieDetailOrPlay(item: Channel) {
+        val yearMatch = Regex("""\((\d{4})\)""").find(item.name)
+        val year = yearMatch?.groupValues?.get(1) ?: ""
+        val vodId = if (item.id.startsWith("xt_vod_")) {
+            item.id.removePrefix("xt_vod_").toIntOrNull() ?: 0
+        } else 0
+
+        if (vodId > 0) {
+            MovieDetailActivity.launch(
+                activity = this,
+                title = item.name,
+                category = item.category,
+                posterUrl = item.logoUrl,
+                streamUrl = item.streamUrl,
+                vodId = vodId,
+                year = year
+            )
+        } else {
             val intent = Intent(this, IPTVPlayerActivity::class.java).apply {
                 putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
                 putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, item.name)
                 putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, item.logoUrl)
                 putExtra(IPTVPlayerActivity.EXTRA_IS_VOD, true)
-                if (yearMatch != null) {
-                    putExtra(IPTVPlayerActivity.EXTRA_CONTENT_YEAR, yearMatch.groupValues[1])
-                }
+                if (year.isNotBlank()) putExtra(IPTVPlayerActivity.EXTRA_CONTENT_YEAR, year)
             }
             startActivity(intent)
         }

@@ -25,8 +25,8 @@ android {
         applicationId = "com.vistacore.launcher"
         minSdk = 21
         targetSdk = 34
-        versionCode = 30
-        versionName = "1.4.4"
+        versionCode = 31
+        versionName = "1.4.7"
     }
 
     flavorDimensions += "device"

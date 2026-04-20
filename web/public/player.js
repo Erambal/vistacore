@@ -253,8 +253,8 @@ class VCPlayer {
     player.addEventListener('mousemove', () => this._showOverlay());
     player.addEventListener('mouseleave', () => this._startHideTimer());
 
-    // Keyboard
-    document.addEventListener('keydown', (e) => {
+    // Keyboard — stored as a bound handler so destroy() can remove it.
+    this._onKeyDown = (e) => {
       if (!this.container.querySelector('.vc-player').offsetParent) return;
       switch (e.key) {
         case ' ': e.preventDefault(); this.togglePlay(); break;
@@ -272,7 +272,8 @@ class VCPlayer {
         case 'ArrowDown': this.video.volume = Math.max(0, this.video.volume - 0.1); break;
         case 'm': case 'M': this.video.muted = !this.video.muted; this._updateVolumeIcon(); break;
       }
-    });
+    };
+    document.addEventListener('keydown', this._onKeyDown);
 
     // Fullscreen change
     document.addEventListener('fullscreenchange', () => {
@@ -393,6 +394,15 @@ class VCPlayer {
     this.isPlaying = false;
     this._updatePlayIcon();
     if (this.isFullscreen) this.toggleFullscreen();
+  }
+
+  destroy() {
+    this.stop();
+    if (this._onKeyDown) {
+      document.removeEventListener('keydown', this._onKeyDown);
+      this._onKeyDown = null;
+    }
+    if (this.container) this.container.innerHTML = '';
   }
 
   togglePlay() {

@@ -733,6 +733,140 @@ class IPTVService {
     return m ? parseInt(m[0].slice(1, 5), 10) : null;
   }
 
+  // ─── Kids: franchise / age / mood discovery ───
+  // Heuristic-only — basic Xtream catalog has no age rating until lazy-loaded,
+  // so we gate on franchise (known-age) + tightened keywords + a blocklist of
+  // adult-coded tokens (e.g. "anime" alone pulls in mature anime).
+
+  // Block these whenever they appear, even if a kids keyword matched.
+  static KIDS_BLOCK = /\b(adult|adults|18\+|nsfw|hentai|ecchi|yaoi|yuri|harem|seinen|josei|horror|gore|murder|crime|mafia|drug|narcos|erotic|xxx|porn)\b/i;
+
+  // Friendly-only keywords. Looser than franchise but stricter than the original list.
+  static KIDS_KEYWORDS = /\b(kids?|children|toddler|preschool|nursery|cartoon|toon|disney\s*junior|nick\s*jr|pbs\s*kids|sprout|cbeebies|playhouse|saturday\s*morning|family\s*film)\b/i;
+
+  // Franchises sorted by approximate age band. `pattern` is a title regex.
+  static FRANCHISES = [
+    // Toddler (under 5) — calm, simple, repetitive
+    { key: 'bluey',        label: 'Bluey',                 emoji: '🐕',  band: 'toddler', tint: '#f7d33a', pattern: /\bbluey\b/i },
+    { key: 'cocomelon',    label: 'Cocomelon',             emoji: '🍉',  band: 'toddler', tint: '#34c759', pattern: /\bcocomelon\b/i },
+    { key: 'peppa',        label: 'Peppa Pig',             emoji: '🐷',  band: 'toddler', tint: '#ff85b3', pattern: /\bpeppa\s*pig\b/i },
+    { key: 'sesame',       label: 'Sesame Street',         emoji: '🅰',  band: 'toddler', tint: '#e4002b', pattern: /\bsesame\s*street|elmo|big\s*bird\b/i },
+    { key: 'daniel-tiger', label: 'Daniel Tiger',          emoji: '🐯',  band: 'toddler', tint: '#ff7a3d', pattern: /\bdaniel\s*tiger\b/i },
+    { key: 'mickey',       label: 'Mickey Mouse',          emoji: '🐭',  band: 'toddler', tint: '#000000', pattern: /\bmickey\s*mouse|minnie\s*mouse|mickey\s*and\s*the\s*roadster\b/i },
+
+    // Younger kids (5-7)
+    { key: 'paw-patrol',   label: 'Paw Patrol',            emoji: '🚒',  band: 'younger', tint: '#0aaeef', pattern: /\bpaw\s*patrol\b/i },
+    { key: 'pj-masks',     label: 'PJ Masks',              emoji: '🦉',  band: 'younger', tint: '#7d3cf2', pattern: /\bpj\s*masks\b/i },
+    { key: 'octonauts',    label: 'Octonauts',             emoji: '🐙',  band: 'younger', tint: '#00b9d6', pattern: /\boctonauts\b/i },
+    { key: 'doc-mcs',      label: 'Doc McStuffins',        emoji: '🩺',  band: 'younger', tint: '#ff5fa2', pattern: /\bdoc\s*mcstuffins\b/i },
+    { key: 'sofia',        label: 'Sofia the First',       emoji: '👑',  band: 'younger', tint: '#9c27b0', pattern: /\bsofia\s*the\s*first\b/i },
+    { key: 'frozen',       label: 'Frozen',                emoji: '❄',  band: 'younger', tint: '#74c0fc', pattern: /\bfrozen(\s*ii?| 2)?\b/i },
+    { key: 'toy-story',    label: 'Toy Story',             emoji: '🤠',  band: 'younger', tint: '#3e9eff', pattern: /\btoy\s*story\b/i },
+    { key: 'cars',         label: 'Cars',                  emoji: '🏎',  band: 'younger', tint: '#ff3b30', pattern: /\bcars\b(?!\s*\d{4})/i },
+    { key: 'nemo-dory',    label: 'Finding Nemo & Dory',   emoji: '🐠',  band: 'younger', tint: '#ff7a00', pattern: /\bfinding\s*(nemo|dory)\b/i },
+    { key: 'shrek',        label: 'Shrek',                 emoji: '🟢',  band: 'younger', tint: '#5cb85c', pattern: /\bshrek\b/i },
+    { key: 'madagascar',   label: 'Madagascar',            emoji: '🦒',  band: 'younger', tint: '#fbb040', pattern: /\bmadagascar\b/i },
+    { key: 'ice-age',      label: 'Ice Age',               emoji: '🦣',  band: 'younger', tint: '#74c0fc', pattern: /\bice\s*age\b/i },
+    { key: 'tom-jerry',    label: 'Tom and Jerry',         emoji: '😼',  band: 'younger', tint: '#ffb300', pattern: /\btom\s*(and|&|\+)\s*jerry\b/i },
+    { key: 'looney',       label: 'Looney Tunes',          emoji: '🐰',  band: 'younger', tint: '#ff5722', pattern: /\blooney\s*tunes|bugs\s*bunny\b/i },
+    { key: 'scooby',       label: 'Scooby-Doo',            emoji: '🐾',  band: 'younger', tint: '#8bc34a', pattern: /\bscooby[-\s]*doo\b/i },
+
+    // Older kids (8-12)
+    { key: 'incredibles',  label: 'The Incredibles',       emoji: '🦸',  band: 'older',   tint: '#e63b3b', pattern: /\bincredibles\b/i },
+    { key: 'kung-fu',      label: 'Kung Fu Panda',         emoji: '🐼',  band: 'older',   tint: '#fbb040', pattern: /\bkung\s*fu\s*panda\b/i },
+    { key: 'dragon',       label: 'How to Train Your Dragon', emoji: '🐲', band: 'older', tint: '#5d6d7e', pattern: /\bhow\s*to\s*train\s*your\s*dragon\b/i },
+    { key: 'spider',       label: 'Spider-Man',            emoji: '🕷',  band: 'older',   tint: '#e63b3b', pattern: /\bspider[-\s]*man\b/i },
+    { key: 'star-wars',    label: 'Star Wars',             emoji: '⭐',  band: 'older',   tint: '#ffd60a', pattern: /\bstar\s*wars\b/i },
+    { key: 'marvel',       label: 'Marvel',                emoji: '🦸',  band: 'older',   tint: '#ed1d24', pattern: /\b(avengers|thor|iron\s*man|captain\s*america|hulk|black\s*panther|guardians\s*of\s*the\s*galaxy|x[-\s]*men)\b/i },
+    { key: 'batman',       label: 'Batman',                emoji: '🦇',  band: 'older',   tint: '#3a3a3a', pattern: /\bbatman\b/i },
+    { key: 'pokemon',      label: 'Pokémon',               emoji: '⚡',  band: 'older',   tint: '#f7d33a', pattern: /\bpok[eé]mon\b/i },
+    { key: 'lego',         label: 'LEGO',                  emoji: '🧱',  band: 'older',   tint: '#f7d33a', pattern: /\blego\b/i },
+    { key: 'power-rangers', label: 'Power Rangers',        emoji: '🤖',  band: 'older',   tint: '#9c27b0', pattern: /\bpower\s*rangers\b/i },
+  ];
+
+  // Mood shelves tuned for kids' actual interests.
+  static KIDS_MOODS = {
+    'animals':   { label: 'Animals',     emoji: '🐶', tint: '#8bc34a', pattern: /\b(cat|kitten|dog|puppy|bear|panda|fish|whale|shark|lion|tiger|elephant|monkey|horse|farm|safari|jungle|zoo|wild|nature|wildlife|pet|animal)\b/i },
+    'vehicles':  { label: 'Cars & Trucks', emoji: '🚒', tint: '#0aaeef', pattern: /\b(car|truck|train|plane|race|wheels|motor|tractor|fire\s*engine|excavator|digger|monster\s*truck|airplane|boat|ship|rocket)\b/i },
+    'sing':      { label: 'Sing-Along',  emoji: '🎵', tint: '#ff85b3', pattern: /\b(sing|song|musical|melody|music|nursery\s*rhyme|lullaby|dance)\b/i },
+    'funny':     { label: 'Funny',       emoji: '🎈', tint: '#ffd60a', pattern: /\b(funny|silly|laugh|comedy|prank|wacky)\b/i },
+    'bedtime':   { label: 'Bedtime',     emoji: '🌙', tint: '#7d3cf2', pattern: /\b(bedtime|sleep|lullaby|goodnight|good\s*night|calm|sleepy|moon|star|dream)\b/i },
+    'learning':  { label: 'Learning',    emoji: '📚', tint: '#34c759', pattern: /\b(educational|learn|abc|alphabet|count|counting|123|number|school|word|read|reading|science|math)\b/i },
+    'adventure': { label: 'Adventure',   emoji: '🏰', tint: '#ff7a3d', pattern: /\b(adventure|quest|explorer|discover|journey|treasure|pirate|knight|castle|jungle)\b/i },
+  };
+
+  // Order of preference for shelves when an item could fit multiple.
+  static AGE_BAND_ORDER = ['toddler', 'younger', 'older'];
+
+  // ─── Kids: classification + filters ───
+  isKidsItem(item) {
+    if (!item) return false;
+    const name = (item.name || '').toLowerCase();
+    const cat  = (item.category || '').toLowerCase();
+    const text = name + ' ' + cat;
+    if (IPTVService.KIDS_BLOCK.test(text)) return false;
+    if (this._matchFranchise(item)) return true;
+    return IPTVService.KIDS_KEYWORDS.test(text);
+  }
+
+  _matchFranchise(item) {
+    const name = item?.name || '';
+    return IPTVService.FRANCHISES.find(f => f.pattern.test(name)) || null;
+  }
+
+  // Bands: 'toddler' sees only toddler franchises + clearly toddler-coded
+  // unknown items. 'younger' adds younger franchises. 'older' adds everything.
+  // 'all' is the default — show everything classified as kids.
+  _itemAgeBand(item) {
+    const fr = this._matchFranchise(item);
+    if (fr) return fr.band;
+    const text = ((item.name || '') + ' ' + (item.category || '')).toLowerCase();
+    if (/\b(toddler|preschool|nursery|baby|infant)\b/.test(text)) return 'toddler';
+    if (/\b(disney\s*junior|nick\s*jr|pbs\s*kids|sprout|cbeebies|playhouse)\b/.test(text)) return 'younger';
+    return 'older';
+  }
+
+  _passesAgeBand(item, band) {
+    if (!band || band === 'all') return true;
+    const itemBand = this._itemAgeBand(item);
+    const order = IPTVService.AGE_BAND_ORDER;
+    return order.indexOf(itemBand) <= order.indexOf(band);
+  }
+
+  getAllKidsItems(band = 'all') {
+    const out = [];
+    for (const m of this.movies) if (this.isKidsItem(m) && this._passesAgeBand(m, band)) out.push({ item: m, type: 'movie' });
+    for (const s of this.series) if (this.isKidsItem(s) && this._passesAgeBand(s, band)) out.push({ item: s, type: 'series' });
+    return out;
+  }
+
+  getKidsByFranchise(franchiseKey, band = 'all', limit = 20) {
+    const fr = IPTVService.FRANCHISES.find(f => f.key === franchiseKey);
+    if (!fr) return [];
+    const out = [];
+    for (const m of this.movies) if (fr.pattern.test(m.name) && this._passesAgeBand(m, band)) out.push({ item: m, type: 'movie' });
+    for (const s of this.series) if (fr.pattern.test(s.name) && this._passesAgeBand(s, band)) out.push({ item: s, type: 'series' });
+    return out.slice(0, limit);
+  }
+
+  getKidsByMood(moodKey, band = 'all', limit = 20) {
+    const mood = IPTVService.KIDS_MOODS[moodKey];
+    if (!mood) return [];
+    const out = [];
+    const test = item => this.isKidsItem(item) && this._passesAgeBand(item, band) && (mood.pattern.test(item.name || '') || mood.pattern.test(item.category || ''));
+    for (const m of this.movies) if (test(m)) out.push({ item: m, type: 'movie' });
+    for (const s of this.series) if (test(s)) out.push({ item: s, type: 'series' });
+    return out.slice(0, limit);
+  }
+
+  getFranchiseList() {
+    return IPTVService.FRANCHISES.map(f => ({ key: f.key, label: f.label, emoji: f.emoji, band: f.band, tint: f.tint }));
+  }
+
+  getKidsMoodList() {
+    return Object.entries(IPTVService.KIDS_MOODS).map(([key, m]) => ({ key, label: m.label, emoji: m.emoji, tint: m.tint }));
+  }
+
   _sortByQuality(arr) {
     // Highly-rated items first; ties broken by recency.
     return [...arr].sort((a, b) => {

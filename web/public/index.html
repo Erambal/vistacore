@@ -261,14 +261,35 @@
 
     <!-- ─── VIEW: KIDS ─── -->
     <div class="view vod-view kids-view" id="view-kids" style="display:none">
-      <div class="vod-header">
-        <div class="vod-categories" id="kids-categories"></div>
-        <div class="vod-search">
+      <div class="kids-header">
+        <div class="kids-age-bands" id="kids-age-bands" role="tablist" aria-label="Age band">
+          <button class="kids-age-btn" data-band="toddler" type="button">
+            <span class="kids-age-emoji">🧸</span><span class="kids-age-label">Little Kids</span><span class="kids-age-sub">Under 5</span>
+          </button>
+          <button class="kids-age-btn" data-band="younger" type="button">
+            <span class="kids-age-emoji">🚒</span><span class="kids-age-label">Younger Kids</span><span class="kids-age-sub">5-7</span>
+          </button>
+          <button class="kids-age-btn" data-band="older" type="button">
+            <span class="kids-age-emoji">🦸</span><span class="kids-age-label">Older Kids</span><span class="kids-age-sub">8-12</span>
+          </button>
+          <button class="kids-age-btn active" data-band="all" type="button">
+            <span class="kids-age-emoji">⭐</span><span class="kids-age-label">All Ages</span><span class="kids-age-sub">Show everything</span>
+          </button>
+        </div>
+        <div class="vod-search kids-search-bar">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-          <input type="text" id="kids-search" placeholder="Search kids content...">
+          <input type="text" id="kids-search" placeholder="Find a show or movie...">
         </div>
       </div>
-      <div class="vod-grid" id="kids-grid"></div>
+
+      <!-- Discovery: stacked shelves, big tiles. Hidden when search is active. -->
+      <div class="kids-discover" id="kids-discover">
+        <div class="kids-discover-rows" id="kids-discover-rows"></div>
+      </div>
+
+      <!-- Kept for category drill-down + search results -->
+      <div class="vod-categories" id="kids-categories" style="display:none"></div>
+      <div class="vod-grid" id="kids-grid" style="display:none"></div>
       <div class="vod-empty" id="kids-empty" style="display:none">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-hint)" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         <p>No kids content found</p>

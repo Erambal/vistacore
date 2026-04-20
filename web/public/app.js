@@ -14,6 +14,8 @@ let liveTvPlayer = null;
 let detailPlayer = null;
 let currentView = 'home';
 let vodPageSize = 60;
+let _clockInterval = null;
+const scrollMemory = {};
 let moviesPage = 0;
 let tvshowsPage = 0;
 let moviesCategory = 'all';
@@ -144,6 +146,11 @@ function showScreen(name) {
 
 // ─── View Router ───
 function navigateTo(view, params = {}) {
+  // Remember scroll position of the view we're leaving, so Back can restore it.
+  if (currentView && currentView !== view) {
+    scrollMemory[currentView] = window.scrollY;
+  }
+
   // Tear down detail-page media (trailer iframe, autoplay timer) when leaving.
   if (currentView === 'detail' && view !== 'detail') stopDetailTrailer();
 
@@ -171,17 +178,25 @@ function navigateTo(view, params = {}) {
     viewTitle.textContent = titles[view] || '';
   }
 
-  // Initialize view-specific content
+  // Initialize view-specific content. On a "restore" navigation (e.g. Back
+  // from detail), skip the re-init so category/page/scroll state is preserved.
+  const restore = params.restore === true;
   switch (view) {
     case 'livetv': initLiveTv(); break;
-    case 'movies': initMovies(); break;
-    case 'tvshows': initTvShows(); break;
-    case 'kids': initKids(); break;
+    case 'movies': if (!restore) initMovies(); break;
+    case 'tvshows': if (!restore) initTvShows(); break;
+    case 'kids': if (!restore) initKids(); break;
     case 'detail': initDetail(params); break;
     case 'search': initSearchResults(params.query); break;
   }
 
-  window.scrollTo(0, 0);
+  if (restore && scrollMemory[view] != null) {
+    // Give the freshly-shown view a frame to lay out before restoring scroll.
+    const y = scrollMemory[view];
+    requestAnimationFrame(() => window.scrollTo(0, y));
+  } else {
+    window.scrollTo(0, 0);
+  }
 }
 
 // (Google Sign-In is initialized in initGoogleSignIn via showScreen('login'))
@@ -192,9 +207,9 @@ document.getElementById('btn-back').addEventListener('click', () => {
     detailPlayer.stop();
     document.getElementById('detail-player-wrap').style.display = 'none';
   }
-  // If we came from a sub-view, go back to it
-  if (currentView === 'detail' && currentDetailType === 'movie') navigateTo('movies');
-  else if (currentView === 'detail' && currentDetailType === 'series') navigateTo('tvshows');
+  // If we came from a sub-view, go back to it and restore prior scroll/state.
+  if (currentView === 'detail' && currentDetailType === 'movie') navigateTo('movies', { restore: true });
+  else if (currentView === 'detail' && currentDetailType === 'series') navigateTo('tvshows', { restore: true });
   else navigateTo('home');
 });
 document.getElementById('topbar-brand-link').addEventListener('click', () => {
@@ -221,9 +236,9 @@ const APP_ICONS = {
   movies: `<svg class="app-card-icon svg-icon" viewBox="0 0 64 64" fill="none"><rect x="10" y="8" width="44" height="48" rx="3" stroke="white" stroke-width="2.5"/><path d="M10 18h44M18 8v10M28 8v10M38 8v10M48 8v10" stroke="white" stroke-width="2"/><circle cx="32" cy="38" r="8" stroke="white" stroke-width="2"/><path d="M30 35l6 3-6 3z" fill="white"/></svg>`,
   tvshows: `<svg class="app-card-icon svg-icon" viewBox="0 0 64 64" fill="none"><rect x="4" y="16" width="56" height="36" rx="4" stroke="white" stroke-width="2.5"/><path d="M24 8l8 8 8-8" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="14" y1="24" x2="14" y2="44" stroke="white" stroke-width="2.5"/><rect x="22" y="24" width="28" height="20" rx="2" stroke="white" stroke-width="1.5"/></svg>`,
   kids: `<svg class="app-card-icon svg-icon" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="26" r="14" stroke="white" stroke-width="2.5"/><path d="M22 52c0-8 4.5-14 10-14s10 6 10 14" stroke="white" stroke-width="2.5" stroke-linecap="round"/><circle cx="27" cy="24" r="2" fill="white"/><circle cx="37" cy="24" r="2" fill="white"/><path d="M28 30c2 2 6 2 8 0" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>`,
-  espn: `<img class="app-card-icon" src="/assets/ic_espn.png" alt="ESPN" onerror="this.outerHTML='<span class=\\'app-card-icon svg-icon\\' style=\\'font-size:2rem;font-weight:800;font-family:var(--font-display)\\'>ESPN</span>'">`,
-  roku: `<img class="app-card-icon" src="/assets/ic_roku.png" alt="Roku" onerror="this.outerHTML='<span class=\\'app-card-icon svg-icon\\' style=\\'font-size:1.6rem;font-weight:700;font-family:var(--font-display)\\'>ROKU</span>'">`,
-  disney: `<img class="app-card-icon" src="/assets/ic_disney.webp" alt="Disney+" onerror="this.outerHTML='<span class=\\'app-card-icon svg-icon\\' style=\\'font-size:1.4rem;font-weight:700;font-family:var(--font-display)\\'>Disney+</span>'">`,
+  espn: `<img class="app-card-icon" src="/assets/ic_espn.png" alt="ESPN" data-fallback-label="ESPN" data-fallback-class="app-card-icon svg-icon app-card-text-fallback app-card-text-lg">`,
+  roku: `<img class="app-card-icon" src="/assets/ic_roku.png" alt="Roku" data-fallback-label="ROKU" data-fallback-class="app-card-icon svg-icon app-card-text-fallback app-card-text-md">`,
+  disney: `<img class="app-card-icon" src="/assets/ic_disney.webp" alt="Disney+" data-fallback-label="Disney+" data-fallback-class="app-card-icon svg-icon app-card-text-fallback app-card-text-md">`,
 };
 
 // ─── Wallpapers ───
@@ -267,9 +282,10 @@ async function initDashboard() {
   const wallpaper = WALLPAPERS[Math.floor(Math.random() * WALLPAPERS.length)];
   document.getElementById('hero-bg').style.backgroundImage = `url('${wallpaper}')`;
 
-  // Clock
+  // Clock — clear any prior interval so Save & Reload doesn't stack them.
   updateClock();
-  setInterval(updateClock, 10000);
+  if (_clockInterval) clearInterval(_clockInterval);
+  _clockInterval = setInterval(updateClock, 10000);
 
   // Build apps row
   buildAppsRow();
@@ -302,18 +318,23 @@ function updateClock() {
 function buildAppsRow() {
   const row = document.getElementById('apps-row');
   row.innerHTML = APPS.map(app => `
-    <div class="app-card" data-app="${app.id}" data-action="${app.id}">
+    <div class="app-card" data-app="${app.id}" data-action="${app.id}" tabindex="0">
       <div class="app-card-ring"></div>
       ${APP_ICONS[app.id]}
-      <span class="app-card-label">${app.label}</span>
+      <span class="app-card-label">${escHtml(app.label)}</span>
     </div>
   `).join('');
-  // Bind clicks
+  bindImgFallbacks(row);
+  // Bind clicks + keyboard
   row.querySelectorAll('.app-card').forEach(card => {
-    card.addEventListener('click', () => {
+    const activate = () => {
       const appId = card.dataset.action;
       const app = APPS.find(a => a.id === appId);
       if (app) app.action();
+    };
+    card.addEventListener('click', activate);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
     });
   });
 }
@@ -383,9 +404,9 @@ function buildContinueWatching() {
     const remaining = item.duration > 0 ? Math.ceil((item.duration - item.position) / 60) : 0;
     const bgColor = item.type === 'movie' ? '#E65100' : item.type === 'series' ? '#3949AB' : '#00897B';
     return `
-    <div class="content-card" data-id="${item.id}" data-type="${item.type}">
+    <div class="content-card" data-id="${item.id}" data-type="${item.type}" tabindex="0">
       <div class="content-card-thumb" style="background:linear-gradient(135deg, ${bgColor}, ${bgColor}88);display:flex;align-items:center;justify-content:center;">
-        ${item.poster ? `<img src="${item.poster}" style="width:100%;height:100%;object-fit:cover;" onerror="this.remove()">` : ''}
+        ${item.poster ? `<img src="${escAttr(item.poster)}" style="width:100%;height:100%;object-fit:cover;" data-fallback-remove>` : ''}
         <svg width="36" height="36" viewBox="0 0 24 24" fill="white" opacity="0.7" style="position:absolute"><polygon points="5,3 19,12 5,21"/></svg>
       </div>
       <div class="content-card-info">
@@ -396,8 +417,9 @@ function buildContinueWatching() {
     </div>`;
   }).join('');
 
+  bindImgFallbacks(row);
   row.querySelectorAll('.content-card').forEach(card => {
-    card.addEventListener('click', () => {
+    const activate = () => {
       const id = card.dataset.id;
       const type = card.dataset.type;
       if (type === 'channel') {
@@ -407,6 +429,10 @@ function buildContinueWatching() {
         const movie = iptv.movies.find(m => m.id === id);
         if (movie) navigateTo('detail', { item: movie, type: 'movie' });
       }
+    };
+    card.addEventListener('click', activate);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
     });
   });
 }
@@ -429,10 +455,12 @@ function buildLiveNow() {
   const row = document.getElementById('epg-row');
   row.innerHTML = displayChannels.map(ch => {
     const epg = iptv.getNowPlaying(ch.epgId, ch.name);
-    const logo = ch.logo ? `<img src="${ch.logo}" class="epg-card-logo" onerror="this.outerHTML='<div class=\\'epg-card-logo\\'>${ch.name.slice(0,2).toUpperCase()}</div>'">` :
-      `<div class="epg-card-logo" style="display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:0.7rem;color:var(--text-hint);">${ch.name.slice(0,2).toUpperCase()}</div>`;
+    const initials = (ch.name || '').slice(0, 2).toUpperCase();
+    const logo = ch.logo
+      ? `<img src="${escAttr(ch.logo)}" class="epg-card-logo" data-fallback-text="${escAttr(initials)}">`
+      : `<div class="epg-card-logo epg-card-logo-fallback">${escHtml(initials)}</div>`;
     return `
-    <div class="epg-card" data-channel-id="${ch.id}">
+    <div class="epg-card" data-channel-id="${ch.id}" tabindex="0">
       <div class="epg-card-channel">
         ${logo}
         <span class="epg-card-name">${escHtml(ch.name)}</span>
@@ -443,10 +471,15 @@ function buildLiveNow() {
     </div>`;
   }).join('');
 
+  bindImgFallbacks(row);
   row.querySelectorAll('.epg-card').forEach(card => {
-    card.addEventListener('click', () => {
+    const activate = () => {
       navigateTo('livetv');
       setTimeout(() => playChannel(card.dataset.channelId), 300);
+    };
+    card.addEventListener('click', activate);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
     });
   });
 }
@@ -462,18 +495,28 @@ function buildFavoriteChannels() {
   section.style.display = '';
 
   const row = document.getElementById('favorites-row');
-  row.innerHTML = favChannels.map(ch => `
-    <div class="channel-card" data-channel-id="${ch.id}">
-      <div class="channel-card-logo">${ch.logo ? `<img src="${ch.logo}" onerror="this.parentElement.textContent='${ch.name.slice(0,3).toUpperCase()}'">` : ch.name.slice(0,3).toUpperCase()}</div>
+  row.innerHTML = favChannels.map(ch => {
+    const initials = (ch.name || '').slice(0, 3).toUpperCase();
+    const inner = ch.logo
+      ? `<img src="${escAttr(ch.logo)}" data-fallback-text="${escAttr(initials)}">`
+      : escHtml(initials);
+    return `
+    <div class="channel-card" data-channel-id="${ch.id}" tabindex="0">
+      <div class="channel-card-logo">${inner}</div>
       <span class="channel-card-name">${escHtml(ch.name)}</span>
-      <span class="channel-card-num">CH ${ch.num}</span>
-    </div>
-  `).join('');
+      <span class="channel-card-num">CH ${escHtml(String(ch.num))}</span>
+    </div>`;
+  }).join('');
 
+  bindImgFallbacks(row);
   row.querySelectorAll('.channel-card').forEach(card => {
-    card.addEventListener('click', () => {
+    const activate = () => {
       navigateTo('livetv');
       setTimeout(() => playChannel(card.dataset.channelId), 300);
+    };
+    card.addEventListener('click', activate);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
     });
   });
 }
@@ -523,20 +566,59 @@ function filterLiveTvChannels(catId) {
   renderChannelList(liveTvFilteredChannels);
 }
 
+// Windowed renderer: large IPTV catalogs (3–5k channels) render too slowly
+// on weak TV hardware if we dump the whole list into innerHTML at once.
+// We render in chunks and append more as the user scrolls toward the bottom.
+const CHANNEL_CHUNK_SIZE = 200;
+
 function renderChannelList(channels) {
   const list = document.getElementById('livetv-channel-list');
   const count = document.getElementById('livetv-channel-count');
   count.textContent = `${channels.length} channels`;
 
-  list.innerHTML = channels.map(ch => {
+  if (list._channelIO) { list._channelIO.disconnect(); list._channelIO = null; }
+  list._allChannels = channels;
+  list._renderedCount = 0;
+  list.innerHTML = '';
+
+  appendChannelChunk(list);
+
+  if (channels.length > CHANNEL_CHUNK_SIZE) {
+    const sentinel = document.createElement('div');
+    sentinel.className = 'channel-list-sentinel';
+    list.appendChild(sentinel);
+    list._channelIO = new IntersectionObserver((entries) => {
+      if (!entries[0].isIntersecting) return;
+      appendChannelChunk(list);
+      if (list._renderedCount >= list._allChannels.length) {
+        list._channelIO.disconnect();
+        list._channelIO = null;
+        sentinel.remove();
+      } else {
+        list.appendChild(sentinel);
+      }
+    }, { root: list, rootMargin: '400px 0px' });
+    list._channelIO.observe(sentinel);
+  }
+}
+
+function appendChannelChunk(list) {
+  const channels = list._allChannels || [];
+  const start = list._renderedCount || 0;
+  const end = Math.min(start + CHANNEL_CHUNK_SIZE, channels.length);
+  if (end <= start) return;
+
+  const html = channels.slice(start, end).map(ch => {
     const isFav = favorites.has(ch.id);
     const isActive = ch.id === activeChannelId;
     const epg = iptv.getNowPlaying(ch.epgId, ch.name);
+    const numText = String(ch.num == null ? '' : ch.num);
+    const logo = ch.logo
+      ? `<img src="${escAttr(ch.logo)}" data-fallback-text="${escAttr(numText)}">`
+      : escHtml(numText);
     return `
-    <div class="channel-item ${isActive ? 'active' : ''}" data-id="${ch.id}">
-      <div class="channel-item-logo">
-        ${ch.logo ? `<img src="${ch.logo}" onerror="this.parentElement.textContent='${ch.num}'">` : ch.num}
-      </div>
+    <div class="channel-item ${isActive ? 'active' : ''}" data-id="${ch.id}" tabindex="0">
+      <div class="channel-item-logo">${logo}</div>
       <div class="channel-item-info">
         <div class="channel-item-name">${escHtml(ch.name)}</div>
         <div class="channel-item-epg">${epg ? escHtml(epg.title) : ''}</div>
@@ -549,25 +631,48 @@ function renderChannelList(channels) {
     </div>`;
   }).join('');
 
-  // Bind clicks
-  list.querySelectorAll('.channel-item').forEach(item => {
-    item.addEventListener('click', (e) => {
-      if (e.target.closest('.channel-item-fav')) return;
-      playChannel(item.dataset.id);
-    });
-  });
+  // Remove old sentinel before appending, it'll be re-added by the observer.
+  const oldSentinel = list.querySelector('.channel-list-sentinel');
+  if (oldSentinel) oldSentinel.remove();
 
-  // Bind favorites
-  list.querySelectorAll('.channel-item-fav').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      const isFav = favorites.toggle(id);
-      btn.classList.toggle('is-fav', isFav);
-      const svg = btn.querySelector('svg');
-      svg.setAttribute('fill', isFav ? 'var(--gold)' : 'none');
-      svg.setAttribute('stroke', isFav ? 'var(--gold)' : 'var(--text-hint)');
-    });
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const fragment = document.createDocumentFragment();
+  const addedRoots = [];
+  while (tmp.firstChild) {
+    const node = tmp.firstChild;
+    if (node.nodeType === 1) addedRoots.push(node);
+    fragment.appendChild(node);
+  }
+  list.appendChild(fragment);
+  list._renderedCount = end;
+
+  // Bind fallbacks + clicks only for newly-added rows.
+  addedRoots.forEach(root => {
+    bindImgFallbacks(root);
+    if (root.classList && root.classList.contains('channel-item')) {
+      const activate = () => playChannel(root.dataset.id);
+      root.addEventListener('click', (e) => {
+        if (e.target.closest('.channel-item-fav')) return;
+        activate();
+      });
+      root.addEventListener('keydown', (e) => {
+        if (e.target.closest('.channel-item-fav')) return;
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+      });
+      const favBtn = root.querySelector('.channel-item-fav');
+      if (favBtn) {
+        favBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = favBtn.dataset.id;
+          const isFav = favorites.toggle(id);
+          favBtn.classList.toggle('is-fav', isFav);
+          const svg = favBtn.querySelector('svg');
+          svg.setAttribute('fill', isFav ? 'var(--gold)' : 'none');
+          svg.setAttribute('stroke', isFav ? 'var(--gold)' : 'var(--text-hint)');
+        });
+      }
+    }
   });
 }
 
@@ -686,15 +791,15 @@ function renderShelfHtml(shelf) {
 
 function posterCardHtml(item, type) {
   return `
-    <div class="vod-card poster-card" data-id="${item.id}" data-type="${type}">
+    <div class="vod-card poster-card" data-id="${item.id}" data-type="${type}" tabindex="0">
       <div class="vod-card-poster">
-        ${item.poster ? `<img src="${item.poster}" loading="lazy" onerror="this.remove()">` : ''}
+        ${item.poster ? `<img src="${escAttr(item.poster)}" loading="lazy" data-fallback-remove>` : ''}
         <div class="vod-card-overlay">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="white" opacity="0.9"><polygon points="5,3 19,12 5,21"/></svg>
         </div>
       </div>
       <div class="vod-card-title">${escHtml(item.name)}</div>
-      ${item.rating ? `<div class="vod-card-rating">★ ${item.rating}</div>` : ''}
+      ${item.rating ? `<div class="vod-card-rating">★ ${escHtml(String(item.rating))}</div>` : ''}
     </div>`;
 }
 
@@ -788,53 +893,170 @@ function renderTvShows(searchQuery = '') {
 }
 
 // ═══════════════════════════════════════════
-// KIDS VIEW
+// KIDS VIEW — discovery-driven with age bands and franchise shelves
 // ═══════════════════════════════════════════
-const KIDS_KEYWORDS = ['kids', 'children', 'cartoon', 'animation', 'anime', 'disney', 'nickelodeon', 'nick', 'baby', 'junior', 'jr', 'family', 'toon', 'pbs'];
 
-function isKidsContent(item) {
-  const name = (item.name || '').toLowerCase();
-  const cat = (item.category || '').toLowerCase();
-  return KIDS_KEYWORDS.some(kw => name.includes(kw) || cat.includes(kw));
+// Age band selection persists across sessions so a kid's grandparent doesn't
+// need to reset it every visit.
+const KIDS_BAND_KEY = 'vc_kids_band';
+function getKidsBand() {
+  try { return localStorage.getItem(KIDS_BAND_KEY) || 'all'; } catch { return 'all'; }
+}
+function setKidsBand(band) {
+  try { localStorage.setItem(KIDS_BAND_KEY, band); } catch {}
 }
 
 function initKids() {
-  const allKids = [...iptv.movies.filter(isKidsContent), ...iptv.series.filter(isKidsContent)];
-  const cats = [...new Set(allKids.map(i => i.category))].map(name => ({
-    id: name, name, count: allKids.filter(i => i.category === name).length
-  }));
-
-  buildCategoryChips('kids-categories', cats, (catId) => {
-    kidsCategory = catId;
-    renderKids();
+  // Wire the age-band toggle and reflect persisted choice
+  const band = getKidsBand();
+  const bandWrap = document.getElementById('kids-age-bands');
+  bandWrap.querySelectorAll('.kids-age-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.band === band);
+    btn.onclick = () => {
+      bandWrap.querySelectorAll('.kids-age-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      setKidsBand(btn.dataset.band);
+      renderKidsDiscovery();
+    };
   });
-  kidsCategory = 'all';
-  renderKids();
 
   document.getElementById('kids-search').value = '';
   document.getElementById('kids-search').oninput = debounce((e) => {
-    renderKids(e.target.value.trim());
-  }, 300);
+    const q = e.target.value.trim();
+    if (q.length >= 2) renderKidsSearch(q);
+    else renderKidsDiscovery();
+  }, 250);
+
+  renderKidsDiscovery();
 }
 
-function renderKids(searchQuery = '') {
-  let items = [...iptv.movies.filter(isKidsContent), ...iptv.series.filter(isKidsContent)];
-  if (kidsCategory !== 'all') items = items.filter(i => i.categoryId === kidsCategory || i.category === kidsCategory);
-  if (searchQuery) {
-    const q = searchQuery.toLowerCase();
-    items = items.filter(i => i.name.toLowerCase().includes(q));
+function renderKidsDiscovery() {
+  document.getElementById('kids-discover').style.display = '';
+  document.getElementById('kids-grid').style.display = 'none';
+  document.getElementById('kids-empty').style.display = 'none';
+
+  const band = getKidsBand();
+  const rowsEl = document.getElementById('kids-discover-rows');
+  const shelves = [];
+
+  // 1. Continue Watching — only kids items the child has actually started.
+  // Top-of-page and oversized because rewatching is the dominant kid behavior.
+  const inProgressIds = new Set((watchHistory.getContinueWatching() || []).map(i => i.id));
+  const allowed = iptv.getAllKidsItems(band);
+  const allowedIds = new Set(allowed.map(({ item }) => item.id));
+  const cw = (watchHistory.getContinueWatching() || []).filter(i => allowedIds.has(i.id));
+  if (cw.length) {
+    shelves.push({
+      title: '▶  Pick Up Where You Left Off',
+      origin: 'kids-continue',
+      tint: 'var(--gold)',
+      hero: true, // oversized tiles
+      items: cw.map(i => {
+        const item = iptv.movies.find(m => m.id === i.id) || iptv.series.find(s => s.id === i.id);
+        const type = iptv.movies.find(m => m.id === i.id) ? 'movie' : 'series';
+        return item ? { item, type } : null;
+      }).filter(Boolean)
+    });
   }
 
+  // 2. Franchise shelves — kids navigate by character/show name.
+  for (const fr of iptv.getFranchiseList()) {
+    const items = iptv.getKidsByFranchise(fr.key, band, 12);
+    if (items.length === 0) continue;
+    shelves.push({
+      title: `${fr.emoji}  ${fr.label}`,
+      origin: `kids-franchise:${fr.key}`,
+      tint: fr.tint,
+      items
+    });
+  }
+
+  // 3. Mood shelves — animals, vehicles, sing-along, etc.
+  for (const mood of iptv.getKidsMoodList()) {
+    const items = iptv.getKidsByMood(mood.key, band, 12)
+      .filter(({ item }) => !inProgressIds.has(item.id));
+    if (items.length < 3) continue;
+    shelves.push({
+      title: `${mood.emoji}  ${mood.label}`,
+      origin: `kids-mood:${mood.key}`,
+      tint: mood.tint,
+      items
+    });
+  }
+
+  if (shelves.length === 0) {
+    rowsEl.innerHTML = '';
+    document.getElementById('kids-empty').style.display = '';
+    return;
+  }
+
+  rowsEl.innerHTML = shelves.map(renderKidsShelfHtml).join('');
+  rowsEl.querySelectorAll('.kids-row').forEach(row => bindKidsCards(row));
+}
+
+function renderKidsShelfHtml(shelf) {
+  const tintStyle = shelf.tint ? ` style="--shelf-tint:${shelf.tint}"` : '';
+  const heroClass = shelf.hero ? ' kids-shelf-hero' : '';
+  return `
+    <section class="kids-shelf${heroClass}"${tintStyle}>
+      <h3 class="kids-shelf-title">${escHtml(shelf.title)}</h3>
+      <div class="discover-row kids-row" data-origin="${escHtml(shelf.origin || '')}">
+        ${shelf.items.map(({ item, type }) => kidsTileHtml(item, type)).join('')}
+      </div>
+    </section>`;
+}
+
+function kidsTileHtml(item, type) {
+  const fallback = (item.name || '').slice(0, 14);
+  return `
+    <div class="vod-card kids-tile" data-id="${escHtml(item.id)}" data-type="${type}" tabindex="0">
+      <div class="vod-card-poster">
+        ${item.poster ? `<img src="${item.poster}" loading="lazy" onerror="this.parentElement.classList.add('no-art');this.parentElement.dataset.fallback='${escHtml(fallback)}';this.remove()">` : ''}
+        <div class="vod-card-overlay">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"/></svg>
+        </div>
+      </div>
+      <div class="vod-card-title">${escHtml(item.name)}</div>
+    </div>`;
+}
+
+// Kids tap-to-play: movies launch immediately, series go to detail (for episode pick).
+function bindKidsCards(container) {
+  const origin = container.dataset.origin || '';
+  container.querySelectorAll('.vod-card').forEach(card => {
+    const trigger = () => {
+      const id = card.dataset.id;
+      const type = card.dataset.type;
+      const item = type === 'movie'
+        ? iptv.movies.find(m => m.id === id)
+        : iptv.series.find(s => s.id === id);
+      if (!item) return;
+      navigateTo('detail', { item, type, title: item.name, origin, autoPlay: type === 'movie' });
+    };
+    card.addEventListener('click', trigger);
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); trigger(); }
+    });
+  });
+}
+
+function renderKidsSearch(q) {
+  document.getElementById('kids-discover').style.display = 'none';
   const grid = document.getElementById('kids-grid');
   const empty = document.getElementById('kids-empty');
-  if (items.length === 0) { grid.innerHTML = ''; empty.style.display = ''; return; }
+  grid.style.display = '';
+
+  const ql = q.toLowerCase();
+  const band = getKidsBand();
+  const allowed = iptv.getAllKidsItems(band);
+  const matches = allowed.filter(({ item }) => item.name.toLowerCase().includes(ql));
+
+  if (matches.length === 0) { grid.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
 
-  grid.innerHTML = items.slice(0, 80).map(i => {
-    const type = iptv.movies.includes(i) ? 'movie' : 'series';
-    return vodCard(i, type);
-  }).join('');
-  bindVodCards(grid, null); // type from data-attribute
+  grid.innerHTML = matches.slice(0, 60).map(({ item, type }) => kidsTileHtml(item, type)).join('');
+  // Reuse the same kids binder so search results also tap-to-play
+  bindKidsCards(grid);
 }
 
 // ═══════════════════════════════════════════
@@ -846,7 +1068,7 @@ let detailTrailerTimer = null;
 let detailOrigin = null;
 
 function initDetail(params) {
-  const { item, type, origin } = params;
+  const { item, type, origin, autoPlay } = params;
   currentDetailItem = item;
   currentDetailType = type;
   detailOrigin = origin || '';
@@ -927,6 +1149,12 @@ function initDetail(params) {
     iptv.getSeriesInfo(item.id)
       .then(data => data?.info && applyDetail(data.info, 'tv'))
       .catch(() => {});
+  }
+
+  // Kids tap-to-play: skip the detail interstitial — start the movie now.
+  // (Series still need the season picker, so we don't auto-play those.)
+  if (autoPlay && type === 'movie') {
+    requestAnimationFrame(() => playMovie(item));
   }
 }
 
@@ -1232,6 +1460,7 @@ function renderCastFromString(castStr) {
   const names = castStr.split(/\s*,\s*/).map(s => s.trim()).filter(Boolean).slice(0, 12);
   if (!names.length) return;
   row.innerHTML = names.map(name => castCardHtml(name, '', '')).join('');
+  bindImgFallbacks(row);
   section.style.display = '';
 }
 
@@ -1247,6 +1476,7 @@ async function resolveTmdbCast(info, tmdbType) {
     const section = document.getElementById('detail-cast-section');
     const row = document.getElementById('detail-cast-row');
     row.innerHTML = cast.map(c => castCardHtml(c.name, c.character, c.photo)).join('');
+    bindImgFallbacks(row);
     section.style.display = '';
   } catch {
     // TMDB not configured or unavailable — fallback cast string already rendered
@@ -1256,7 +1486,7 @@ async function resolveTmdbCast(info, tmdbType) {
 function castCardHtml(name, character, photo) {
   const initials = name.split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
   const avatar = photo
-    ? `<img class="cast-photo" src="${escAttr(photo)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;cast-photo cast-initials&quot;>${escHtml(initials)}</div>'">`
+    ? `<img class="cast-photo" src="${escAttr(photo)}" alt="" loading="lazy" data-fallback-initials="${escAttr(initials)}">`
     : `<div class="cast-photo cast-initials">${escHtml(initials)}</div>`;
   return `
     <div class="cast-card">
@@ -1381,17 +1611,27 @@ function initSearchResults(query) {
   if (results.channels.length > 0) {
     chSection.style.display = '';
     const row = document.getElementById('search-channels-row');
-    row.innerHTML = results.channels.slice(0, 20).map(ch => `
-      <div class="channel-card" data-channel-id="${ch.id}">
-        <div class="channel-card-logo">${ch.logo ? `<img src="${ch.logo}" onerror="this.parentElement.textContent='${ch.name.slice(0,3)}'">` : ch.name.slice(0,3).toUpperCase()}</div>
+    row.innerHTML = results.channels.slice(0, 20).map(ch => {
+      const initials = (ch.name || '').slice(0, 3).toUpperCase();
+      const inner = ch.logo
+        ? `<img src="${escAttr(ch.logo)}" data-fallback-text="${escAttr(initials)}">`
+        : escHtml(initials);
+      return `
+      <div class="channel-card" data-channel-id="${ch.id}" tabindex="0">
+        <div class="channel-card-logo">${inner}</div>
         <span class="channel-card-name">${escHtml(ch.name)}</span>
-        <span class="channel-card-num">CH ${ch.num}</span>
-      </div>
-    `).join('');
+        <span class="channel-card-num">CH ${escHtml(String(ch.num))}</span>
+      </div>`;
+    }).join('');
+    bindImgFallbacks(row);
     row.querySelectorAll('.channel-card').forEach(card => {
-      card.addEventListener('click', () => {
+      const activate = () => {
         navigateTo('livetv');
         setTimeout(() => playChannel(card.dataset.channelId), 300);
+      };
+      card.addEventListener('click', activate);
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
       });
     });
   } else { chSection.style.display = 'none'; }
@@ -1426,15 +1666,15 @@ function initSearchResults(query) {
 function vodCard(item, type) {
   const typeAttr = type || (iptv.movies.some(m => m.id === item.id) ? 'movie' : 'series');
   return `
-  <div class="vod-card" data-id="${item.id}" data-type="${typeAttr}">
+  <div class="vod-card" data-id="${item.id}" data-type="${typeAttr}" tabindex="0">
     <div class="vod-card-poster">
-      ${item.poster ? `<img src="${item.poster}" loading="lazy" onerror="this.remove()">` : ''}
+      ${item.poster ? `<img src="${escAttr(item.poster)}" loading="lazy" data-fallback-remove>` : ''}
       <div class="vod-card-overlay">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="white" opacity="0.9"><polygon points="5,3 19,12 5,21"/></svg>
       </div>
     </div>
     <div class="vod-card-title">${escHtml(item.name)}</div>
-    ${item.rating ? `<div class="vod-card-rating">★ ${item.rating}</div>` : ''}
+    ${item.rating ? `<div class="vod-card-rating">★ ${escHtml(String(item.rating))}</div>` : ''}
   </div>`;
 }
 
@@ -1442,8 +1682,9 @@ function bindVodCards(container, defaultType) {
   // Origin (e.g. "mood:western", "top-rated", "recs") lets the detail page
   // explain *why* a title was suggested and bumps mood-pref scores.
   const origin = container.dataset && container.dataset.origin || '';
+  bindImgFallbacks(container);
   container.querySelectorAll('.vod-card').forEach(card => {
-    card.addEventListener('click', () => {
+    const activate = () => {
       const id = card.dataset.id;
       const type = card.dataset.type || defaultType;
       let item;
@@ -1453,6 +1694,10 @@ function bindVodCards(container, defaultType) {
         if (origin && origin.startsWith('mood:')) moodPrefs.bump(origin.slice(5));
         navigateTo('detail', { item, type, title: item.name, origin });
       }
+    };
+    card.addEventListener('click', activate);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
     });
   });
 }
@@ -1494,6 +1739,40 @@ function formatTimeRange(start, stop) {
 // cursor is over a row. This avoids clipping hover transforms (vs. the
 // alternative `overflow-y: hidden`).
 const HORIZ_ROW_SELECTOR = '.apps-row, .content-row, .channels-row, .epg-row, .discover-row, .vod-categories, .livetv-categories, .detail-cast-row, .detail-season-tabs';
+
+// Bind fallback behavior for `<img data-fallback-*>` without using inline
+// onerror handlers (which interpolate raw provider strings into JS).
+// Supported attributes:
+//   data-fallback-text      — replace parent text with this value
+//   data-fallback-initials  — replace parent text with the first N chars
+//   data-fallback-remove    — remove the element on error
+function bindImgFallbacks(container) {
+  if (!container) return;
+  const sel = 'img[data-fallback-text], img[data-fallback-remove], img[data-fallback-initials], img[data-fallback-label]';
+  container.querySelectorAll(sel).forEach(img => {
+    if (img._fbBound) return;
+    img._fbBound = true;
+    img.addEventListener('error', () => {
+      if (img.hasAttribute('data-fallback-remove')) {
+        img.remove();
+      } else if (img.dataset.fallbackInitials != null) {
+        const div = document.createElement('div');
+        div.className = `${(img.className || '').trim()} cast-initials`.trim();
+        div.textContent = img.dataset.fallbackInitials;
+        img.replaceWith(div);
+      } else if (img.dataset.fallbackLabel != null) {
+        const span = document.createElement('span');
+        span.className = img.dataset.fallbackClass || img.className || '';
+        span.textContent = img.dataset.fallbackLabel;
+        img.replaceWith(span);
+      } else if (img.dataset.fallbackText != null) {
+        const parent = img.parentElement;
+        if (!parent) return;
+        parent.textContent = img.dataset.fallbackText;
+      }
+    });
+  });
+}
 
 function installHorizRowWheelFix() {
   if (window._horizWheelFixInstalled) return;
@@ -1647,7 +1926,10 @@ document.getElementById('btn-save-settings').addEventListener('click', () => {
   localStorage.setItem('vc_settings', JSON.stringify(settings));
   document.getElementById('settings-modal').hidden = true;
 
-  // Re-init with new settings
+  // Re-init with new settings — tear down existing players so their
+  // keydown listeners and DOM don't leak into the fresh instances.
+  if (liveTvPlayer) { liveTvPlayer.destroy(); liveTvPlayer = null; }
+  if (detailPlayer) { detailPlayer.destroy(); detailPlayer = null; }
   dashboardInitialized = false;
   liveTvInitialized = false;
   initDashboard();

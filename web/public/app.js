@@ -591,20 +591,117 @@ function initMovies() {
     moviesPage = 0;
     renderMovies();
   });
-  renderMovies();
 
   document.getElementById('movies-search').value = '';
   document.getElementById('movies-search').oninput = debounce((e) => {
     const q = e.target.value.trim();
     renderMovies(q);
   }, 300);
+
+  document.getElementById('surprise-btn').onclick = surpriseMeMovie;
+
+  renderMoviesDiscovery();
 }
 
+// Default Movies view: stacked rows of curated shelves. No paging, no wall of grid.
+function renderMoviesDiscovery() {
+  document.getElementById('movies-discover').style.display = '';
+  document.getElementById('movies-grid').style.display = 'none';
+  document.getElementById('movies-empty').style.display = 'none';
+  document.getElementById('movies-load-more').style.display = 'none';
+
+  const rowsEl = document.getElementById('movies-discover-rows');
+  const shelves = [];
+
+  // 1. Continue Watching (movies only) — most-likely next click.
+  const cw = (watchHistory.getContinueWatching() || []).filter(i => i.type === 'movie');
+  if (cw.length) shelves.push({ title: 'Continue Watching', items: cw, idAttr: i => i.id, type: 'movie' });
+
+  // 2. Recommendation rows. Order: top-rated, recent, then moods.
+  const top = iptv.getTopRatedMovies(20);
+  if (top.length) shelves.push({ title: 'Highly Rated', items: top, type: 'movie' });
+
+  const fresh = iptv.getRecentlyAddedMovies(20);
+  if (fresh.length) shelves.push({ title: 'Just Added', items: fresh, type: 'movie' });
+
+  for (const mood of iptv.getMoodList()) {
+    const items = iptv.getMoviesByMood(mood.key, 20);
+    if (items.length >= 4) {
+      shelves.push({ title: `${mood.icon}  ${mood.label}`, items, type: 'movie' });
+    }
+  }
+
+  // 3. Decade rows last — only if titles in the catalog have year suffixes.
+  for (const decade of [1980, 1970, 1960, 1990, 2000]) {
+    const items = iptv.getMoviesByDecade(decade, 20);
+    if (items.length >= 4) {
+      shelves.push({ title: `From the ${String(decade).slice(2)}s`, items, type: 'movie' });
+    }
+  }
+
+  if (shelves.length === 0) {
+    // Fall back to the flat grid if nothing matched the discovery heuristics.
+    renderMoviesGrid('');
+    return;
+  }
+
+  rowsEl.innerHTML = shelves.map(renderShelfHtml).join('');
+  rowsEl.querySelectorAll('.discover-row').forEach(row => bindVodCards(row, 'movie'));
+}
+
+function renderShelfHtml(shelf) {
+  return `
+    <section class="discover-shelf">
+      <h3 class="discover-shelf-title">${escHtml(shelf.title)}</h3>
+      <div class="discover-row">
+        ${shelf.items.map(item => posterCardHtml(item, shelf.type)).join('')}
+      </div>
+    </section>`;
+}
+
+function posterCardHtml(item, type) {
+  return `
+    <div class="vod-card poster-card" data-id="${item.id}" data-type="${type}">
+      <div class="vod-card-poster">
+        ${item.poster ? `<img src="${item.poster}" loading="lazy" onerror="this.remove()">` : ''}
+        <div class="vod-card-overlay">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="white" opacity="0.9"><polygon points="5,3 19,12 5,21"/></svg>
+        </div>
+      </div>
+      <div class="vod-card-title">${escHtml(item.name)}</div>
+      ${item.rating ? `<div class="vod-card-rating">★ ${item.rating}</div>` : ''}
+    </div>`;
+}
+
+function surpriseMeMovie() {
+  const seen = (watchHistory.getRecent(50) || []).filter(i => i.type === 'movie').map(i => i.id);
+  const preferIds = [...new Set((watchHistory.getRecent(20) || [])
+    .filter(i => i.type === 'movie')
+    .map(i => {
+      const m = iptv.movies.find(x => x.id === i.id);
+      return m && m.categoryId;
+    })
+    .filter(Boolean))];
+  const pick = iptv.getRandomMovie({ excludeIds: seen, preferCategoryIds: preferIds });
+  if (!pick) return;
+  navigateTo('detail', { item: pick, type: 'movie', title: pick.name });
+}
+
+// Drill-down view: triggered by category chip or search box.
 function renderMovies(searchQuery = '') {
-  let items = searchQuery ? iptv.searchMovies(searchQuery) : iptv.getMoviesByCategory(moviesCategory);
+  const filtered = !!searchQuery || (moviesCategory && moviesCategory !== 'all');
+  if (!filtered) { renderMoviesDiscovery(); return; }
+  renderMoviesGrid(searchQuery);
+}
+
+function renderMoviesGrid(searchQuery) {
+  document.getElementById('movies-discover').style.display = 'none';
   const grid = document.getElementById('movies-grid');
   const empty = document.getElementById('movies-empty');
   const loadMore = document.getElementById('movies-load-more');
+  grid.style.display = '';
+
+  let items = searchQuery ? iptv.searchMovies(searchQuery) : iptv.getMoviesByCategory(moviesCategory);
 
   if (items.length === 0) {
     grid.innerHTML = '';
@@ -617,7 +714,7 @@ function renderMovies(searchQuery = '') {
   const end = (moviesPage + 1) * vodPageSize;
   const visible = items.slice(0, end);
   loadMore.style.display = end < items.length ? '' : 'none';
-  loadMore.onclick = () => { moviesPage++; renderMovies(searchQuery); };
+  loadMore.onclick = () => { moviesPage++; renderMoviesGrid(searchQuery); };
 
   grid.innerHTML = visible.map(m => vodCard(m, 'movie')).join('');
   bindVodCards(grid, 'movie');

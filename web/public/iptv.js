@@ -632,6 +632,92 @@ class IPTVService {
     return this.series.filter(s => s.categoryId === categoryId);
   }
 
+  // ─── Discovery: mood / decade / rating shelves ───
+  // Mood keywords match against category name first (Xtream catalogs encode
+  // genre there, e.g. "EN | MOVIES | ACTION"), then fall back to title.
+  static MOODS = {
+    'feel-good':  { label: 'Feel-Good',   icon: '☀',  cat: /comed|family|musical|romance|feel.?good/i, title: /comedy|musical/i },
+    'funny':      { label: 'Funny',       icon: '😄', cat: /comed|sitcom|stand.?up/i },
+    'action':     { label: 'Action',      icon: '💥', cat: /action|advent/i },
+    'true-story': { label: 'True Story',  icon: '📖', cat: /document|biograph|true.?story|history/i },
+    'romance':    { label: 'Romance',     icon: '❤', cat: /roman/i },
+    'western':    { label: 'Western',     icon: '🤠', cat: /western|cowboy/i },
+    'thriller':   { label: 'Edge of Seat',icon: '🔥', cat: /thrill|mystery|crime/i },
+    'classic':    { label: 'Classics',    icon: '🎬', cat: /classic|old|vintage|golden.?age/i },
+  };
+
+  getMoodList() {
+    return Object.entries(IPTVService.MOODS).map(([key, m]) => ({ key, label: m.label, icon: m.icon }));
+  }
+
+  getMoviesByMood(moodKey, limit = 30) {
+    const mood = IPTVService.MOODS[moodKey];
+    if (!mood) return [];
+    const out = this.movies.filter(m => {
+      const cat = m.category || '';
+      if (mood.cat && mood.cat.test(cat)) return true;
+      if (mood.title && mood.title.test(m.name || '')) return true;
+      return false;
+    });
+    return this._sortByQuality(out).slice(0, limit);
+  }
+
+  getTopRatedMovies(limit = 20) {
+    return this.movies
+      .map(m => ({ m, r: parseFloat(m.rating) || 0 }))
+      .filter(x => x.r >= 7)
+      .sort((a, b) => b.r - a.r)
+      .slice(0, limit)
+      .map(x => x.m);
+  }
+
+  getRecentlyAddedMovies(limit = 20) {
+    return [...this.movies]
+      .filter(m => m.added)
+      .sort((a, b) => Number(b.added) - Number(a.added))
+      .slice(0, limit);
+  }
+
+  getMoviesByDecade(decade, limit = 30) {
+    // decade = 1960, 1970, 1980, ... — matches "(YYYY)" suffix in title
+    const lo = decade, hi = decade + 9;
+    const out = this.movies.filter(m => {
+      const y = this._extractYear(m.name);
+      return y && y >= lo && y <= hi;
+    });
+    return this._sortByQuality(out).slice(0, limit);
+  }
+
+  // Pick a single random highly-rated movie, preferring genres the user
+  // has watched recently. Optional `excludeIds` skips items already seen.
+  getRandomMovie(opts = {}) {
+    const { excludeIds = [], preferCategoryIds = [] } = opts;
+    const skip = new Set(excludeIds);
+    let pool = this.movies.filter(m => !skip.has(m.id) && (parseFloat(m.rating) || 0) >= 6.5);
+    if (pool.length === 0) pool = this.movies.filter(m => !skip.has(m.id));
+    if (preferCategoryIds.length) {
+      const preferred = pool.filter(m => preferCategoryIds.includes(m.categoryId));
+      if (preferred.length >= 5) pool = preferred;
+    }
+    if (pool.length === 0) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  _extractYear(name) {
+    const m = (name || '').match(/\((19|20)\d{2}\)/);
+    return m ? parseInt(m[0].slice(1, 5), 10) : null;
+  }
+
+  _sortByQuality(arr) {
+    // Highly-rated items first; ties broken by recency.
+    return [...arr].sort((a, b) => {
+      const ra = parseFloat(a.rating) || 0;
+      const rb = parseFloat(b.rating) || 0;
+      if (rb !== ra) return rb - ra;
+      return Number(b.added || 0) - Number(a.added || 0);
+    });
+  }
+
   // ─── EPG ───
   async loadEPG(url) {
     if (!url) return;

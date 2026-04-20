@@ -458,6 +458,24 @@ class IPTVService {
     }
   }
 
+  // ─── TMDB: "more like this" recommendations ───
+  async getTmdbRecommendations(tmdbId, type = 'movie') {
+    if (!tmdbId) return [];
+    try {
+      const resp = await fetch(`/api/tmdb?path=${encodeURIComponent(type + '/' + tmdbId + '/recommendations')}`);
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return (data.results || []).map(r => ({
+        tmdbId: r.id,
+        title: r.title || r.name || '',
+        year: (r.release_date || r.first_air_date || '').slice(0, 4),
+        poster: r.poster_path ? `https://image.tmdb.org/t/p/w500${r.poster_path}` : ''
+      })).filter(r => r.title);
+    } catch {
+      return [];
+    }
+  }
+
   // ─── TMDB: search by title when tmdb_id is unknown ───
   async searchTmdb(title, year, type = 'movie') {
     if (!title) return null;
@@ -650,10 +668,12 @@ class IPTVService {
     return Object.entries(IPTVService.MOODS).map(([key, m]) => ({ key, label: m.label, icon: m.icon }));
   }
 
-  getMoviesByMood(moodKey, limit = 30) {
+  getMoviesByMood(moodKey, limit = 30, excludeIds = []) {
     const mood = IPTVService.MOODS[moodKey];
     if (!mood) return [];
+    const skip = excludeIds && excludeIds.length ? new Set(excludeIds) : null;
     const out = this.movies.filter(m => {
+      if (skip && skip.has(m.id)) return false;
       const cat = m.category || '';
       if (mood.cat && mood.cat.test(cat)) return true;
       if (mood.title && mood.title.test(m.name || '')) return true;
@@ -662,8 +682,10 @@ class IPTVService {
     return this._sortByQuality(out).slice(0, limit);
   }
 
-  getTopRatedMovies(limit = 20) {
+  getTopRatedMovies(limit = 20, excludeIds = []) {
+    const skip = excludeIds && excludeIds.length ? new Set(excludeIds) : null;
     return this.movies
+      .filter(m => !skip || !skip.has(m.id))
       .map(m => ({ m, r: parseFloat(m.rating) || 0 }))
       .filter(x => x.r >= 7)
       .sort((a, b) => b.r - a.r)
@@ -671,17 +693,20 @@ class IPTVService {
       .map(x => x.m);
   }
 
-  getRecentlyAddedMovies(limit = 20) {
+  getRecentlyAddedMovies(limit = 20, excludeIds = []) {
+    const skip = excludeIds && excludeIds.length ? new Set(excludeIds) : null;
     return [...this.movies]
-      .filter(m => m.added)
+      .filter(m => m.added && (!skip || !skip.has(m.id)))
       .sort((a, b) => Number(b.added) - Number(a.added))
       .slice(0, limit);
   }
 
-  getMoviesByDecade(decade, limit = 30) {
+  getMoviesByDecade(decade, limit = 30, excludeIds = []) {
     // decade = 1960, 1970, 1980, ... — matches "(YYYY)" suffix in title
     const lo = decade, hi = decade + 9;
+    const skip = excludeIds && excludeIds.length ? new Set(excludeIds) : null;
     const out = this.movies.filter(m => {
+      if (skip && skip.has(m.id)) return false;
       const y = this._extractYear(m.name);
       return y && y >= lo && y <= hi;
     });
@@ -839,6 +864,13 @@ class WatchHistoryManager {
   getContinueWatching() {
     return this.items.filter(i => i.position > 0 && i.duration > 0 && (i.position / i.duration) < 0.95);
   }
+  // IDs of items the user has either started or finished — used to hide
+  // already-seen titles from discovery shelves.
+  getSeenIds(type = null) {
+    return this.items
+      .filter(i => !type || i.type === type)
+      .map(i => i.id);
+  }
   getPosition(id, type) {
     const item = this.items.find(i => i.id === id && i.type === type);
     return item ? item.position : 0;
@@ -846,6 +878,29 @@ class WatchHistoryManager {
   clear() {
     this.items = [];
     this._save();
+  }
+}
+
+// ─── Mood Preference Manager ───
+// Tracks how often the user clicks into each mood shelf so we can promote
+// their favorites toward the top of the Movies discovery view.
+class MoodPrefsManager {
+  constructor(key = 'vc_mood_prefs') {
+    this.key = key;
+    try { this.counts = JSON.parse(localStorage.getItem(key) || '{}'); }
+    catch { this.counts = {}; }
+  }
+  bump(moodKey) {
+    if (!moodKey) return;
+    this.counts[moodKey] = (this.counts[moodKey] || 0) + 1;
+    try { localStorage.setItem(this.key, JSON.stringify(this.counts)); } catch {}
+  }
+  scoreOf(moodKey) {
+    return this.counts[moodKey] || 0;
+  }
+  // Returns the moods array sorted by descending click count (ties keep input order).
+  sort(moods) {
+    return [...moods].sort((a, b) => this.scoreOf(b.key) - this.scoreOf(a.key));
   }
 }
 

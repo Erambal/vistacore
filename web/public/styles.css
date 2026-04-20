@@ -1568,6 +1568,109 @@ img { max-width: 100%; display: block; }
 }
 .btn-fav:hover { background: rgba(255,255,255,0.05); color: var(--gold); border-color: var(--gold); }
 
+/* ─── Detail page enhancements (trailer autoplay, why-line, plain meta, big CTA) ─── */
+
+/* Trailer iframe overlays the backdrop. Sibling of .detail-backdrop so the
+   backdrop's brightness/saturate filter doesn't bleed into the video. */
+.detail-trailer-frame {
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 480px;
+  background: #000;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+.detail-trailer-frame.is-playing { opacity: 1; }
+.detail-trailer-frame iframe {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 177.78vh; height: 56.25vw;
+  min-width: 100%; min-height: 100%;
+  transform: translate(-50%, -50%);
+  border: 0;
+}
+/* Match the backdrop's bottom-fade so the trailer dissolves into the page bg */
+.detail-trailer-frame::after {
+  content: ''; position: absolute; inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom,
+    rgba(13,17,23,0.15) 0%,
+    rgba(13,17,23,0.55) 60%,
+    var(--bg-dark) 100%);
+}
+
+.detail-why {
+  margin: 0 0 0.55rem;
+  font-family: var(--font-display);
+  font-size: 0.85rem; font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--gold);
+}
+
+.detail-plain {
+  margin: 0.6rem 0 0.4rem;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Big WATCH NOW: dominant primary action, much larger than the old btn-play. */
+.btn-watch-now {
+  display: inline-flex; align-items: center; gap: 0.7rem;
+  padding: 1.1rem 2.2rem;
+  min-width: 220px;
+  background: var(--gold);
+  color: #1a1100;
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-display);
+  font-size: 1.25rem; font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 8px 28px rgba(255, 179, 0, 0.38);
+  transition: transform 0.2s, box-shadow 0.2s;
+  justify-content: center;
+}
+.btn-watch-now:hover,
+.btn-watch-now:focus {
+  outline: none;
+  transform: scale(1.04);
+  box-shadow: 0 12px 36px rgba(255, 179, 0, 0.55);
+}
+.btn-watch-now:active { transform: scale(0.98); }
+
+.btn-surprise-again {
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  padding: 1rem 1.5rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  font-family: var(--font-display);
+  font-size: 1rem; font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+.btn-surprise-again:hover,
+.btn-surprise-again:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--gold);
+  transform: scale(1.03);
+}
+
+/* "You might also like" shelf — reuses the discover-row poster styling */
+.detail-recs-section {
+  margin-top: 2rem; padding-top: 1.5rem;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.detail-recs-section .discover-row { padding-top: 0.5rem; }
+
 .detail-seasons {
   margin-top: 1.5rem; padding-top: 1.5rem;
   border-top: 1px solid rgba(255,255,255,0.05);

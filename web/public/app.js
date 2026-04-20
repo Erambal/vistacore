@@ -7,6 +7,7 @@ const iptv = new IPTVService();
 const favorites = new FavoritesManager();
 const watchHistory = new WatchHistoryManager();
 const recentChannels = new RecentChannelsManager();
+const moodPrefs = new MoodPrefsManager();
 window.watchHistory = watchHistory; // expose for player.js
 
 let liveTvPlayer = null;
@@ -143,6 +144,9 @@ function showScreen(name) {
 
 // ─── View Router ───
 function navigateTo(view, params = {}) {
+  // Tear down detail-page media (trailer iframe, autoplay timer) when leaving.
+  if (currentView === 'detail' && view !== 'detail') stopDetailTrailer();
+
   // Hide all views
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
 
@@ -254,6 +258,11 @@ async function initDashboard() {
   }
   dashboardInitialized = true;
 
+  // Fix vertical scroll being trapped by horizontal rows.
+  // CSS spec: when overflow-x is `auto`, overflow-y (visible) computes to `auto`,
+  // so horizontal rows silently capture vertical wheel/trackpad events.
+  installHorizRowWheelFix();
+
   // Hero background
   const wallpaper = WALLPAPERS[Math.floor(Math.random() * WALLPAPERS.length)];
   document.getElementById('hero-bg').style.backgroundImage = `url('${wallpaper}')`;
@@ -321,10 +330,11 @@ async function loadIPTVData() {
 
   document.getElementById('setup-prompt').style.display = 'none';
   document.getElementById('loading-section').style.display = '';
+  startBootLoader();
 
   iptv.on('loading', (data) => {
     const el = document.getElementById('loading-text');
-    if (el) el.textContent = data.phase;
+    if (el) el.textContent = friendlyPhase(data.phase);
   });
 
   iptv.on('refreshed', () => {
@@ -337,6 +347,7 @@ async function loadIPTVData() {
     await iptv.loadAll();
     const elapsed = Math.round(performance.now() - start);
     document.getElementById('loading-section').style.display = 'none';
+    stopBootLoader();
     const counts = `${iptv.channels.length} channels, ${iptv.movies.length} movies, ${iptv.series.length} series`;
     toast(elapsed < 500 ? `Loaded ${counts} from cache` : `Loaded ${counts}`);
 
@@ -346,6 +357,7 @@ async function loadIPTVData() {
     }
   } catch (err) {
     document.getElementById('loading-section').style.display = 'none';
+    stopBootLoader();
     document.getElementById('setup-prompt').style.display = '';
     toast('Failed to load IPTV data: ' + err.message, true);
     console.error('IPTV load error:', err);
@@ -613,29 +625,42 @@ function renderMoviesDiscovery() {
   const rowsEl = document.getElementById('movies-discover-rows');
   const shelves = [];
 
+  // Anything the user has already started or finished gets hidden from the
+  // discovery shelves — Continue Watching is the only place those should appear.
+  const seenIds = watchHistory.getSeenIds('movie');
+
   // 1. Continue Watching (movies only) — most-likely next click.
   const cw = (watchHistory.getContinueWatching() || []).filter(i => i.type === 'movie');
-  if (cw.length) shelves.push({ title: 'Continue Watching', items: cw, idAttr: i => i.id, type: 'movie' });
+  if (cw.length) shelves.push({ title: 'Continue Watching', origin: 'continue', items: cw, type: 'movie' });
 
-  // 2. Recommendation rows. Order: top-rated, recent, then moods.
-  const top = iptv.getTopRatedMovies(20);
-  if (top.length) shelves.push({ title: 'Highly Rated', items: top, type: 'movie' });
+  // 2. Recommendation rows. Order: top-rated, recent, then moods (sorted by user preference).
+  const top = iptv.getTopRatedMovies(20, seenIds);
+  if (top.length) shelves.push({ title: 'Highly Rated', origin: 'top-rated', items: top, type: 'movie' });
 
-  const fresh = iptv.getRecentlyAddedMovies(20);
-  if (fresh.length) shelves.push({ title: 'Just Added', items: fresh, type: 'movie' });
+  const fresh = iptv.getRecentlyAddedMovies(20, seenIds);
+  if (fresh.length) shelves.push({ title: 'Just Added', origin: 'just-added', items: fresh, type: 'movie' });
 
-  for (const mood of iptv.getMoodList()) {
-    const items = iptv.getMoviesByMood(mood.key, 20);
+  const sortedMoods = moodPrefs.sort(iptv.getMoodList());
+  for (const mood of sortedMoods) {
+    const items = iptv.getMoviesByMood(mood.key, 20, seenIds);
     if (items.length >= 4) {
-      shelves.push({ title: `${mood.icon}  ${mood.label}`, items, type: 'movie' });
+      shelves.push({
+        title: `${mood.icon}  ${mood.label}`,
+        origin: `mood:${mood.key}`,
+        items, type: 'movie'
+      });
     }
   }
 
   // 3. Decade rows last — only if titles in the catalog have year suffixes.
   for (const decade of [1980, 1970, 1960, 1990, 2000]) {
-    const items = iptv.getMoviesByDecade(decade, 20);
+    const items = iptv.getMoviesByDecade(decade, 20, seenIds);
     if (items.length >= 4) {
-      shelves.push({ title: `From the ${String(decade).slice(2)}s`, items, type: 'movie' });
+      shelves.push({
+        title: `From the ${String(decade).slice(2)}s`,
+        origin: `decade:${decade}`,
+        items, type: 'movie'
+      });
     }
   }
 
@@ -653,7 +678,7 @@ function renderShelfHtml(shelf) {
   return `
     <section class="discover-shelf">
       <h3 class="discover-shelf-title">${escHtml(shelf.title)}</h3>
-      <div class="discover-row">
+      <div class="discover-row" data-origin="${escHtml(shelf.origin || '')}">
         ${shelf.items.map(item => posterCardHtml(item, shelf.type)).join('')}
       </div>
     </section>`;
@@ -674,7 +699,7 @@ function posterCardHtml(item, type) {
 }
 
 function surpriseMeMovie() {
-  const seen = (watchHistory.getRecent(50) || []).filter(i => i.type === 'movie').map(i => i.id);
+  const seen = watchHistory.getSeenIds('movie');
   const preferIds = [...new Set((watchHistory.getRecent(20) || [])
     .filter(i => i.type === 'movie')
     .map(i => {
@@ -684,7 +709,7 @@ function surpriseMeMovie() {
     .filter(Boolean))];
   const pick = iptv.getRandomMovie({ excludeIds: seen, preferCategoryIds: preferIds });
   if (!pick) return;
-  navigateTo('detail', { item: pick, type: 'movie', title: pick.name });
+  navigateTo('detail', { item: pick, type: 'movie', title: pick.name, origin: 'surprise' });
 }
 
 // Drill-down view: triggered by category chip or search box.
@@ -815,15 +840,22 @@ function renderKids(searchQuery = '') {
 // ═══════════════════════════════════════════
 // DETAIL VIEW
 // ═══════════════════════════════════════════
+// Detail-page lifecycle state. Trailers autoplay 1s after entry; we cache the
+// timer + iframe so they can be torn down when the user navigates away.
+let detailTrailerTimer = null;
+let detailOrigin = null;
+
 function initDetail(params) {
-  const { item, type } = params;
+  const { item, type, origin } = params;
   currentDetailItem = item;
   currentDetailType = type;
+  detailOrigin = origin || '';
 
-  // Hide player
+  // Hide player; clear any leftover trailer from the previous detail visit
   document.getElementById('detail-player-wrap').style.display = 'none';
+  stopDetailTrailer();
 
-  // Backdrop
+  // Backdrop (poster/backdrop image — trailer iframe overlays this after 1s)
   const backdrop = document.getElementById('detail-backdrop');
   backdrop.style.backgroundImage = item.backdrop ? `url('${item.backdrop}')` : item.poster ? `url('${item.poster}')` : 'none';
 
@@ -833,17 +865,23 @@ function initDetail(params) {
   poster.onerror = () => { poster.style.display = 'none'; };
   poster.style.display = item.poster ? '' : 'none';
 
+  // "Why this was suggested" — built from the origin tag we threaded through navigateTo
+  renderWhyLine(item, type, detailOrigin);
+
   // Title + baseline info from catalog entry
   document.getElementById('detail-title').textContent = item.name;
   document.getElementById('detail-tagline').style.display = 'none';
   document.getElementById('detail-tagline').textContent = '';
   renderDetailBadges({ rating: item.rating, mpaa: '', duration: '', year: item.year });
+  renderPlainMeta({ rating: item.rating, mpaa: '', duration: '', year: item.year });
   renderDetailMeta({ year: item.year, genre: item.category, country: '', director: '' });
   document.getElementById('detail-plot').textContent = item.plot || 'Loading details…';
   document.getElementById('detail-facts').innerHTML = '';
   document.getElementById('detail-cast-section').style.display = 'none';
   document.getElementById('detail-cast-row').innerHTML = '';
   document.getElementById('detail-trailer').style.display = 'none';
+  document.getElementById('detail-recs-section').style.display = 'none';
+  document.getElementById('detail-recs-row').innerHTML = '';
 
   // Favorite
   const favBtn = document.getElementById('detail-fav');
@@ -854,10 +892,20 @@ function initDetail(params) {
     favBtn.querySelector('svg').setAttribute('fill', nowFav ? 'var(--gold)' : 'none');
   };
 
-  // Play button
+  // Watch Now button
   document.getElementById('detail-play').onclick = () => {
     if (type === 'movie') playMovie(item);
   };
+
+  // Surprise Me Again — only when this detail page came from the Surprise button
+  const skipBtn = document.getElementById('detail-surprise-again');
+  if (detailOrigin === 'surprise' && type === 'movie') {
+    skipBtn.style.display = '';
+    skipBtn.onclick = surpriseMeMovie;
+  } else {
+    skipBtn.style.display = 'none';
+    skipBtn.onclick = null;
+  }
 
   // Seasons (for series)
   const seasonsEl = document.getElementById('detail-seasons');
@@ -908,22 +956,28 @@ function applyDetail(info, tmdbType) {
   if (info.plot) document.getElementById('detail-plot').textContent = info.plot;
   else if (!currentDetailItem.plot) document.getElementById('detail-plot').textContent = '';
 
-  // Badges + meta line + facts grid
+  // Badges + plain-language meta + meta line + facts grid
   renderDetailBadges(info);
+  renderPlainMeta(info);
   renderDetailMeta(info);
   renderDetailFacts(info);
 
-  // Trailer
+  // Trailer: button is the manual fallback (opens YouTube in a new tab),
+  // but we also autoplay it muted in the backdrop after a 1s pause for previewing.
   const trailerBtn = document.getElementById('detail-trailer');
   const trailerUrl = extractTrailerUrl(info.trailer);
   if (trailerUrl) {
     trailerBtn.style.display = '';
     trailerBtn.onclick = () => window.open(trailerUrl, '_blank', 'noopener');
+    scheduleTrailerAutoplay(trailerUrl);
   }
 
   // Cast: try TMDB credits first (photos), else parse Xtream's cast string
   renderCastFromString(info.cast);
   resolveTmdbCast(info, tmdbType);
+
+  // "You might also like" — TMDB-suggested titles, mapped to the local catalog
+  loadRecommendationsShelf(info, tmdbType);
 }
 
 function renderDetailBadges(info) {
@@ -983,6 +1037,192 @@ function extractTrailerUrl(raw) {
   if (/^https?:\/\//i.test(raw)) return raw;
   // Bare YouTube IDs are common in Xtream responses
   return `https://www.youtube.com/watch?v=${encodeURIComponent(raw)}`;
+}
+
+// ─── Detail-page enhancements (autoplay trailer, why-line, plain language, recs) ───
+
+function extractYoutubeId(url) {
+  if (!url) return '';
+  const m = url.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/v\/)([A-Za-z0-9_-]{6,})/);
+  return m ? m[1] : '';
+}
+
+// Trailer autoplay: starts a 1s timer, then injects a muted YouTube iframe
+// over the backdrop. Multiple guards so it never plays after navigation.
+function scheduleTrailerAutoplay(trailerUrl) {
+  stopDetailTrailer();
+  const id = extractYoutubeId(trailerUrl);
+  if (!id) return;
+  const itemAtSchedule = currentDetailItem;
+  detailTrailerTimer = setTimeout(() => {
+    detailTrailerTimer = null;
+    // Bail if user navigated away or onto a different title during the 1s pause
+    if (currentView !== 'detail' || currentDetailItem !== itemAtSchedule) return;
+    const frame = document.getElementById('detail-trailer-frame');
+    if (!frame) return;
+    const src = `https://www.youtube.com/embed/${encodeURIComponent(id)}` +
+      `?autoplay=1&mute=1&controls=0&loop=1&playlist=${encodeURIComponent(id)}` +
+      `&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&playsinline=1`;
+    frame.innerHTML = `<iframe src="${src}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+    frame.style.display = '';
+    requestAnimationFrame(() => frame.classList.add('is-playing'));
+  }, 1000);
+}
+
+function stopDetailTrailer() {
+  if (detailTrailerTimer) { clearTimeout(detailTrailerTimer); detailTrailerTimer = null; }
+  const frame = document.getElementById('detail-trailer-frame');
+  if (frame) {
+    frame.classList.remove('is-playing');
+    frame.innerHTML = '';
+    frame.style.display = 'none';
+  }
+}
+
+function renderWhyLine(item, type, origin) {
+  const el = document.getElementById('detail-why');
+  const text = whyText(item, type, origin);
+  if (!text) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.textContent = text;
+  el.style.display = '';
+}
+
+function whyText(item, type, origin) {
+  if (!origin) return '';
+  if (origin === 'surprise') return 'Hand-picked just for you';
+  if (origin === 'continue') return 'Pick up where you left off';
+  if (origin === 'top-rated') return 'A highly-rated favorite';
+  if (origin === 'just-added') return 'New in your library';
+  if (origin === 'recs') return 'You might also like this';
+  if (origin.startsWith('recs:')) {
+    const sourceTitle = origin.slice(5).trim();
+    return sourceTitle ? `Because you watched ${sourceTitle}` : 'You might also like this';
+  }
+  if (origin.startsWith('mood:')) {
+    const moodKey = origin.slice(5);
+    const mood = (iptv.getMoodList() || []).find(m => m.key === moodKey);
+    return mood ? `From your ${mood.label} picks` : '';
+  }
+  if (origin.startsWith('decade:')) {
+    const decade = origin.slice(7);
+    return `A favorite from the ${String(decade).slice(2)}s`;
+  }
+  return '';
+}
+
+// Senior-friendly meta line: "1 hour 45 minutes · Rated PG · Family-friendly"
+function renderPlainMeta(info) {
+  const el = document.getElementById('detail-plain');
+  const parts = [];
+  const runtime = humanRuntime(info);
+  if (runtime) parts.push(runtime);
+  const rating = humanRating(info.mpaa);
+  if (rating) parts.push(rating);
+  const tone = audienceTone(info.mpaa);
+  if (tone) parts.push(tone);
+  if (parts.length === 0) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.textContent = parts.join(' · ');
+  el.style.display = '';
+}
+
+function humanRuntime(info) {
+  let totalMin = 0;
+  if (info.duration && /^\d+:\d+/.test(info.duration)) {
+    const [h, m] = info.duration.split(':').map(Number);
+    totalMin = (h || 0) * 60 + (m || 0);
+  } else if (info.durationSecs && Number(info.durationSecs) > 0) {
+    totalMin = Math.round(Number(info.durationSecs) / 60);
+  } else if (info.episodeRunTime) {
+    totalMin = parseInt(info.episodeRunTime, 10) || 0;
+  }
+  if (!totalMin) return '';
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h && m) return `${h} hour${h === 1 ? '' : 's'} ${m} minute${m === 1 ? '' : 's'}`;
+  if (h) return `${h} hour${h === 1 ? '' : 's'}`;
+  return `${m} minute${m === 1 ? '' : 's'}`;
+}
+
+function humanRating(mpaa) {
+  if (!mpaa) return '';
+  const clean = String(mpaa).trim().replace(/^TV-/i, 'TV-');
+  if (/^(NR|UR|Not\s*Rated|Unrated)$/i.test(clean)) return 'Not Rated';
+  return `Rated ${clean}`;
+}
+
+// One-word audience hint so seniors know at a glance whether it's family-safe.
+function audienceTone(mpaa) {
+  if (!mpaa) return '';
+  const v = String(mpaa).toUpperCase();
+  if (v === 'G' || v === 'TV-G' || v === 'TV-Y') return 'For everyone';
+  if (v === 'PG' || v === 'TV-PG' || v === 'TV-Y7') return 'Family-friendly';
+  if (v === 'PG-13' || v === 'TV-14') return 'Older kids and up';
+  if (v === 'R' || v === 'TV-MA' || v === 'NC-17') return 'For adults';
+  return '';
+}
+
+// "You might also like" — pull TMDB recommendations and only show titles that
+// actually exist in the user's local catalog (otherwise the click would 404).
+async function loadRecommendationsShelf(info, tmdbType) {
+  const itemAtCall = currentDetailItem;
+  try {
+    let tmdbId = info.tmdbId || info.tmdb || info.tmdb_id;
+    if (!tmdbId) {
+      tmdbId = await iptv.searchTmdb(itemAtCall?.name, info.year, tmdbType);
+    }
+    if (!tmdbId) return;
+    if (currentDetailItem !== itemAtCall) return; // user navigated away
+
+    const recs = await iptv.getTmdbRecommendations(tmdbId, tmdbType);
+    if (!recs || !recs.length) return;
+    if (currentDetailItem !== itemAtCall) return;
+
+    const pool = tmdbType === 'tv' ? iptv.series : iptv.movies;
+    const localType = tmdbType === 'tv' ? 'series' : 'movie';
+    const seen = watchHistory.getSeenIds(localType);
+    const skip = new Set(seen);
+    if (itemAtCall) skip.add(itemAtCall.id);
+
+    // Match TMDB titles to local catalog entries by normalized name (year tolerated).
+    const normalize = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const localByName = new Map();
+    for (const m of pool) {
+      const k = normalize(m.name.replace(/\(\d{4}\)/g, ''));
+      if (!localByName.has(k)) localByName.set(k, m);
+    }
+
+    const matches = [];
+    const usedIds = new Set();
+    for (const rec of recs) {
+      const k = normalize(rec.title);
+      const local = localByName.get(k);
+      if (local && !usedIds.has(local.id) && !skip.has(local.id)) {
+        matches.push(local);
+        usedIds.add(local.id);
+        if (matches.length >= 12) break;
+      }
+    }
+
+    if (!matches.length) return;
+
+    const row = document.getElementById('detail-recs-row');
+    // Encode source title in origin so the next detail page can say
+    // "Because you watched X" pointing at the correct title.
+    row.dataset.origin = 'recs:' + (itemAtCall?.name || '');
+    row.innerHTML = matches.map(m => posterCardHtml(m, localType)).join('');
+    bindVodCards(row, localType);
+    document.getElementById('detail-recs-section').style.display = '';
+  } catch {
+    // Network/TMDB unavailable — silently skip the shelf
+  }
 }
 
 function renderCastFromString(castStr) {
@@ -1199,6 +1439,9 @@ function vodCard(item, type) {
 }
 
 function bindVodCards(container, defaultType) {
+  // Origin (e.g. "mood:western", "top-rated", "recs") lets the detail page
+  // explain *why* a title was suggested and bumps mood-pref scores.
+  const origin = container.dataset && container.dataset.origin || '';
   container.querySelectorAll('.vod-card').forEach(card => {
     card.addEventListener('click', () => {
       const id = card.dataset.id;
@@ -1206,7 +1449,10 @@ function bindVodCards(container, defaultType) {
       let item;
       if (type === 'movie') item = iptv.movies.find(m => m.id === id);
       else item = iptv.series.find(s => s.id === id);
-      if (item) navigateTo('detail', { item, type, title: item.name });
+      if (item) {
+        if (origin && origin.startsWith('mood:')) moodPrefs.bump(origin.slice(5));
+        navigateTo('detail', { item, type, title: item.name, origin });
+      }
     });
   });
 }
@@ -1237,6 +1483,108 @@ function formatTimeRange(start, stop) {
     return `${h}:${m} ${ampm}`;
   };
   return `${fmt(start)} - ${fmt(stop)}`;
+}
+
+// ═══════════════════════════════════════════
+// Horizontal-row scroll fix
+// ═══════════════════════════════════════════
+// Document-level wheel delegator. When a wheel event fires inside a
+// horizontally-scrolling row, redirect predominantly-vertical motion to
+// the window so the user can still scroll the page up/down while the
+// cursor is over a row. This avoids clipping hover transforms (vs. the
+// alternative `overflow-y: hidden`).
+const HORIZ_ROW_SELECTOR = '.apps-row, .content-row, .channels-row, .epg-row, .discover-row, .vod-categories, .livetv-categories, .detail-cast-row, .detail-season-tabs';
+
+function installHorizRowWheelFix() {
+  if (window._horizWheelFixInstalled) return;
+  window._horizWheelFixInstalled = true;
+
+  document.addEventListener('wheel', (e) => {
+    const row = e.target.closest && e.target.closest(HORIZ_ROW_SELECTOR);
+    if (!row) return;
+    // User's intent is vertical — send it to the page.
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+      window.scrollBy({ top: e.deltaY, left: 0, behavior: 'auto' });
+    }
+  }, { passive: false });
+}
+
+// ═══════════════════════════════════════════
+// BOOT LOADER — rotating playful copy
+// ═══════════════════════════════════════════
+const BOOT_PHASES = [
+  'Rolling the opening credits…',
+  'Warming up the projector…',
+  'Dimming the theater lights…',
+  'Polishing the remote…',
+  'Unspooling the film reel…',
+  'Lining up tonight\'s features…',
+  'Tuning in the antenna…',
+  'Popping fresh popcorn…',
+];
+
+const BOOT_TIPS = [
+  'Tip: Hit the ★ on any movie or show to pin it to your favorites.',
+  'Tip: Type in the search bar to find anything across channels, movies, and shows.',
+  'Did you know? VistaCore caches your catalog so it opens instantly next time.',
+  'Tip: Press the back arrow in the top-left to return home from any screen.',
+  'Did you know? The average remote has 43 buttons no one ever presses.',
+  'Tip: Continue Watching remembers where you left off across sessions.',
+  'Fun fact: The first TV remote, "Lazy Bones," was wired — you\'d trip over it.',
+  'Did you know? "Binge-watching" was named Collins Dictionary\'s Word of the Year in 2015.',
+  'Tip: Open Settings any time to refresh your catalog manually.',
+  'Fun fact: A typical feature film uses about 2 miles of actual film stock.',
+];
+
+let _bootPhaseTimer = null;
+let _bootTipTimer = null;
+let _bootPhaseUserSet = false;
+
+function friendlyPhase(raw) {
+  // iptv.js emits strings like "Loaded N channels, M movies, K series".
+  // Keep data-bearing ones; let the rotator handle generic "Starting..." etc.
+  if (!raw) return '';
+  _bootPhaseUserSet = true;
+  return raw;
+}
+
+function startBootLoader() {
+  _bootPhaseUserSet = false;
+  const phaseEl = document.getElementById('loading-text');
+  const tipEl = document.getElementById('loading-tip');
+  if (!phaseEl || !tipEl) return;
+
+  // Start phase rotator — stops as soon as iptv emits real phase text
+  let pIdx = Math.floor(Math.random() * BOOT_PHASES.length);
+  phaseEl.textContent = BOOT_PHASES[pIdx];
+  clearInterval(_bootPhaseTimer);
+  _bootPhaseTimer = setInterval(() => {
+    if (_bootPhaseUserSet) return; // real phase took over
+    pIdx = (pIdx + 1) % BOOT_PHASES.length;
+    phaseEl.textContent = BOOT_PHASES[pIdx];
+  }, 1800);
+
+  // Start tip rotator with fade
+  let tIdx = Math.floor(Math.random() * BOOT_TIPS.length);
+  tipEl.textContent = BOOT_TIPS[tIdx];
+  tipEl.classList.add('fade-in');
+  clearInterval(_bootTipTimer);
+  _bootTipTimer = setInterval(() => {
+    tIdx = (tIdx + 1) % BOOT_TIPS.length;
+    tipEl.classList.remove('fade-in');
+    tipEl.classList.add('fade-out');
+    setTimeout(() => {
+      tipEl.textContent = BOOT_TIPS[tIdx];
+      tipEl.classList.remove('fade-out');
+      tipEl.classList.add('fade-in');
+    }, 350);
+  }, 4200);
+}
+
+function stopBootLoader() {
+  clearInterval(_bootPhaseTimer); _bootPhaseTimer = null;
+  clearInterval(_bootTipTimer);   _bootTipTimer = null;
 }
 
 function escHtml(str) {

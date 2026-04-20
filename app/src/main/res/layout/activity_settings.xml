@@ -429,7 +429,7 @@
                 <!-- TMDB — powers cast photos, trailer lookup, and banner autoplay. -->
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginBottom="24dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TMDB (The Movie Database)" style="@style/SettingsTitle" android:layout_marginBottom="4dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Free v3 API key. Unlocks cast photos, backdrops, and trailer autoplay. Get one at themoviedb.org/settings/api" style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="A default key is already bundled, so cast photos and trailers work out of the box. Enter your own free v3 key here if you prefer to use it instead. Get one at themoviedb.org/settings/api" style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
                 <EditText android:id="@+id/input_tmdb_key" android:layout_width="match_parent" android:layout_height="52dp" android:hint="TMDB v3 API key" android:textSize="16sp" android:textColor="@color/text_primary" android:textColorHint="@color/text_hint" android:background="@drawable/edit_text_background" android:fontFamily="monospace" android:inputType="text" android:singleLine="true" android:padding="12dp" />
 
             </LinearLayout>

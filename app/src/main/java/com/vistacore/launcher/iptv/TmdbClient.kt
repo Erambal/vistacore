@@ -35,7 +35,12 @@ class TmdbClient(context: Context? = null) {
         .build()
     private val gson = Gson()
 
+    // Resolution order: user's own key in Settings → baked-in default from
+    // BuildConfig → Worker proxy (if TMDB_PROXY_BASE is reachable). The
+    // default key lets every install light up cast photos + trailers out
+    // of the box without any user setup.
     private val userKey: String = context?.let { PrefsManager(it).tmdbApiKey }.orEmpty()
+        .ifBlank { BuildConfig.TMDB_DEFAULT_KEY }
     private val proxyBase: String = BuildConfig.TMDB_PROXY_BASE
 
     suspend fun searchId(title: String, year: String, type: TmdbType): Int? =

@@ -25,8 +25,8 @@ android {
         applicationId = "com.vistacore.launcher"
         minSdk = 21
         targetSdk = 34
-        versionCode = 36
-        versionName = "1.5.1"
+        versionCode = 37
+        versionName = "1.5.2"
 
         // TMDB proxy base — same Worker that serves the web app. The Worker's
         // `/api/tmdb` endpoint attaches TMDB_KEY server-side so the APK ships
@@ -35,6 +35,16 @@ android {
             .orElse("https://vistacore.app")
             .get()
         buildConfigField("String", "TMDB_PROXY_BASE", "\"$tmdbBase\"")
+
+        // Baked-in TMDB v3 API key used when the user hasn't entered their
+        // own under Settings. Lets every install show cast photos + trailers
+        // without any setup. The key is non-commercial — if you fork this
+        // and ship commercially, replace it with your own via local.properties
+        // (tmdbDefaultKey=YOUR_KEY) and ensure you have a commercial licence.
+        val tmdbDefault = providers.gradleProperty("tmdbDefaultKey")
+            .orElse("2633ed29d0537f11c70b81cb493462d0")
+            .get()
+        buildConfigField("String", "TMDB_DEFAULT_KEY", "\"$tmdbDefault\"")
     }
 
     flavorDimensions += "device"

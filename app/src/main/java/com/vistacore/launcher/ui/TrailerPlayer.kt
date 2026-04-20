@@ -33,7 +33,12 @@ object TrailerPlayer {
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Chrome/121.0.0.0 Safari/537.36"
 
-    private const val YT_ORIGIN = "https://www.youtube.com"
+    // youtube-nocookie.com is YouTube's privacy-enhanced embed domain.
+    // It skips the personalized-ads pipeline, which in WebView contexts
+    // (Fire TV / Android TV) otherwise fails with "Error 152-4" because
+    // the ad request can't resolve from the WebView's network stack.
+    // Still a valid origin as far as the player is concerned.
+    private const val YT_EMBED_ORIGIN = "https://www.youtube-nocookie.com"
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun baseSetup(web: WebView) {
@@ -93,9 +98,9 @@ object TrailerPlayer {
             add("iv_load_policy=3")
             add("playsinline=1")
             add("enablejsapi=1")
-            add("origin=$YT_ORIGIN")
+            add("origin=$YT_EMBED_ORIGIN")
         }.joinToString("&")
-        val embedUrl = "$YT_ORIGIN/embed/$ytId?$params"
+        val embedUrl = "$YT_EMBED_ORIGIN/embed/$ytId?$params"
         val html = """
             <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
             <style>html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;}
@@ -104,7 +109,7 @@ object TrailerPlayer {
             allow="autoplay; encrypted-media; picture-in-picture"
             allowfullscreen></iframe></body></html>
         """.trimIndent()
-        web.loadDataWithBaseURL(YT_ORIGIN, html, "text/html", "utf-8", null)
+        web.loadDataWithBaseURL(YT_EMBED_ORIGIN, html, "text/html", "utf-8", null)
     }
 
     /** Accept a YouTube id, a youtu.be link, a watch URL, or an embed URL. */

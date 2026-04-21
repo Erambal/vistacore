@@ -91,6 +91,15 @@ class WatchHistoryManager(context: Context) {
         prefs.edit().remove(KEY_HISTORY).apply()
     }
 
+    /**
+     * Most-recently-watched entries, finished or not, capped at [limit].
+     * Used by the Top Picks hero to rank the user's preferred categories.
+     */
+    fun getRecent(limit: Int = MAX_ENTRIES): List<WatchEntry> =
+        getAllEntries()
+            .sortedByDescending { it.timestamp }
+            .take(limit)
+
     private fun getAllEntries(): List<WatchEntry> {
         val json = prefs.getString(KEY_HISTORY, null) ?: return emptyList()
         return try {

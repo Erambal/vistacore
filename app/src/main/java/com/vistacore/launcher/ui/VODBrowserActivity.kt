@@ -11,6 +11,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -330,11 +331,12 @@ class VODBrowserActivity : BaseActivity() {
             ))
         }
 
-        // "Surprise Me" hero — only for movies (series detail page is a
-        // commitment, but movies tap-to-play immediately so a random pick
-        // is a one-button "just play something" experience).
+        // Top 3 personalized picks hero — only for movies. Pulls from the
+        // user's most-watched categories; cold-start falls back to recent
+        // titles so the hero still looks populated.
         if (contentType == TYPE_MOVIES) {
-            rows.add(NetflixRow.SurpriseMe())
+            val picks = Discovery.topPicks(displayItems, watchHistory, limit = 3)
+            rows.add(NetflixRow.TopPicks(picks = picks))
         }
 
         // Just Added — filter to items with parsable years, sort newest first
@@ -393,14 +395,6 @@ class VODBrowserActivity : BaseActivity() {
         }
 
         return rows
-    }
-
-    /** Pick a random unwatched movie and play it immediately. Wired to the SurpriseMe row. */
-    fun onSurpriseMeClicked() {
-        val watchHistory = com.vistacore.launcher.data.WatchHistoryManager(this)
-        val seen = Discovery.seenStreamUrls(watchHistory)
-        val pick = Discovery.surpriseMovie(allItems, exclude = seen) ?: allItems.firstOrNull()
-        if (pick != null) onItemClicked(pick)
     }
 
     /** Returns keywords for boosting categories that match the app language. */
@@ -670,8 +664,12 @@ sealed class NetflixRow {
         val hero: Boolean = false,
         val origin: String = ""
     ) : NetflixRow()
-    /** Single hero tile inviting the user to be served a random pick. */
-    data class SurpriseMe(val title: String = "Don't know what to watch?") : NetflixRow()
+    /** Hero tile with three personalized picks based on viewing history. */
+    data class TopPicks(
+        val title: String = "Don't know what to watch?",
+        val subtitle: String = "Top picks based on your viewing history",
+        val picks: List<Channel> = emptyList()
+    ) : NetflixRow()
 }
 
 // --- Netflix Main Adapter (banner + category rows) ---
@@ -694,7 +692,7 @@ class NetflixAdapter(
     override fun getItemViewType(position: Int) = when (rows[position]) {
         is NetflixRow.Banner -> TYPE_BANNER
         is NetflixRow.CategoryRow -> TYPE_ROW
-        is NetflixRow.SurpriseMe -> TYPE_SURPRISE
+        is NetflixRow.TopPicks -> TYPE_SURPRISE
     }
 
     override fun getItemCount() = visibleCount
@@ -716,7 +714,7 @@ class NetflixAdapter(
             }
             TYPE_SURPRISE -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_surprise_hero, parent, false)
-                SurpriseVH(view)
+                TopPicksVH(view)
             }
             else -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_netflix_row, parent, false)
@@ -729,18 +727,43 @@ class NetflixAdapter(
         when (val row = rows[position]) {
             is NetflixRow.Banner -> (holder as BannerVH).bind(currentBanner ?: row.item)
             is NetflixRow.CategoryRow -> (holder as RowVH).bind(row)
-            is NetflixRow.SurpriseMe -> (holder as SurpriseVH).bind(row)
+            is NetflixRow.TopPicks -> (holder as TopPicksVH).bind(row)
         }
     }
 
-    inner class SurpriseVH(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    inner class TopPicksVH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val title: TextView = itemView.findViewById(R.id.surprise_title)
-        private val button: Button = itemView.findViewById(R.id.surprise_button)
+        private val subtitle: TextView = itemView.findViewById(R.id.surprise_subtitle)
+        private val picksRow: LinearLayout = itemView.findViewById(R.id.surprise_picks_row)
 
-        fun bind(row: NetflixRow.SurpriseMe) {
+        fun bind(row: NetflixRow.TopPicks) {
             title.text = row.title
-            button.setOnClickListener { activity.onSurpriseMeClicked() }
-            button.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+            subtitle.text = row.subtitle
+
+            picksRow.removeAllViews()
+            if (row.picks.isEmpty()) {
+                // No viewing history AND no unwatched items — hide the
+                // whole hero rather than show an empty space.
+                itemView.visibility = View.GONE
+                itemView.layoutParams = itemView.layoutParams.apply { height = 0 }
+                return
+            }
+            itemView.visibility = View.VISIBLE
+
+            val inflater = LayoutInflater.from(itemView.context)
+            for (pick in row.picks) {
+                val card = inflater.inflate(R.layout.item_surprise_pick, picksRow, false)
+                val poster = card.findViewById<ImageView>(R.id.pick_poster)
+                val label = card.findViewById<TextView>(R.id.pick_title)
+
+                label.text = activity.getDisplayName(pick)
+                if (pick.logoUrl.isNotBlank()) {
+                    Glide.with(card.context).load(pick.logoUrl).into(poster)
+                }
+                card.setOnClickListener { activity.onItemClicked(pick) }
+                card.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+                picksRow.addView(card)
+            }
         }
     }
 

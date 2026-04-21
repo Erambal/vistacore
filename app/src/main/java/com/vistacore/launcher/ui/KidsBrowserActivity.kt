@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -77,6 +78,12 @@ class KidsBrowserActivity : BaseActivity() {
         currentBand = bandPrefs.get()
 
         contentList.layoutManager = LinearLayoutManager(this)
+        // Holding the D-pad down fires rapid fling scrolls on the outer
+        // rows list. With default item animations enabled, RecyclerView's
+        // internal state can fall out of sync with the adapter (the user
+        // saw a crash). Disabling item animations keeps the scroll path
+        // deterministic.
+        contentList.itemAnimator = null
         setupSearch()
 
         fun setupTab(tab: LinearLayout, band: KidsDiscovery.AgeBand) {
@@ -92,6 +99,89 @@ class KidsBrowserActivity : BaseActivity() {
         setupTab(tabAll, KidsDiscovery.AgeBand.ALL)
 
         loadContent()
+    }
+
+    /**
+     * D-pad navigation. Holding RIGHT while focused on a poster should step
+     * one tile to the right; UP/DOWN should jump to the next row. Default
+     * Android focus search picks the nearest focusable, which with tinted
+     * row backgrounds and laggy poster layout sometimes lands on the
+     * wrong item (especially: RIGHT from a sidebar tab not entering the
+     * row at all). Pre-scroll + explicit requestFocus keeps it smooth.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_DOWN -> if (kidsJumpRow(true)) return true
+                KeyEvent.KEYCODE_DPAD_UP -> if (kidsJumpRow(false)) return true
+                KeyEvent.KEYCODE_DPAD_RIGHT -> if (kidsStepPoster(true)) return true
+                KeyEvent.KEYCODE_DPAD_LEFT -> if (kidsStepPoster(false)) return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun kidsStepPoster(right: Boolean): Boolean {
+        val focused = currentFocus ?: return false
+        var parent: android.view.ViewParent? = focused.parent
+        var innerRv: RecyclerView? = null
+        while (parent != null) {
+            if (parent is RecyclerView && parent.id != R.id.kids_content_list) {
+                innerRv = parent
+                break
+            }
+            parent = parent.parent
+        }
+        val rv = innerRv ?: return false
+        val adapter = rv.adapter as? KidsPosterAdapter ?: return false
+        val posterView = rv.findContainingItemView(focused) ?: return false
+        val pos = rv.getChildAdapterPosition(posterView)
+        if (pos == RecyclerView.NO_POSITION) return false
+
+        val target = if (right) pos + 1 else pos - 1
+        if (target < 0) return true
+        while (right && target >= adapter.itemCount && adapter.itemCount < adapter.totalItems()) {
+            adapter.loadMore()
+        }
+        if (target >= adapter.itemCount) return true
+
+        rv.smoothScrollToPosition(target)
+        fun tryFocus(): Boolean =
+            rv.findViewHolderForAdapterPosition(target)?.itemView?.requestFocus() == true
+        rv.post { if (!tryFocus()) rv.postDelayed({ tryFocus() }, 140) }
+        return true
+    }
+
+    private fun kidsJumpRow(down: Boolean): Boolean {
+        val focused = currentFocus ?: return false
+        val list = contentList
+        val rowView = list.findContainingItemView(focused) ?: return false
+        val currentRow = list.getChildAdapterPosition(rowView)
+        if (currentRow == RecyclerView.NO_POSITION) return false
+
+        val adapter = list.adapter ?: return false
+        val targetRow = if (down) currentRow + 1 else currentRow - 1
+        if (targetRow < 0 || targetRow >= adapter.itemCount) return false
+
+        val horizPos = rowView.findViewById<RecyclerView>(R.id.row_recycler)?.let { innerRv ->
+            innerRv.findContainingItemView(focused)
+                ?.let { innerRv.getChildAdapterPosition(it) }
+                ?.coerceAtLeast(0)
+        } ?: 0
+
+        list.smoothScrollToPosition(targetRow)
+        fun tryFocus(): Boolean {
+            val vh = list.findViewHolderForAdapterPosition(targetRow) ?: return false
+            val innerRv = vh.itemView.findViewById<RecyclerView>(R.id.row_recycler) ?: return false
+            val innerCount = innerRv.adapter?.itemCount ?: 0
+            if (innerCount == 0) return false
+            val target = horizPos.coerceIn(0, innerCount - 1)
+            val itemView = innerRv.findViewHolderForAdapterPosition(target)?.itemView
+                ?: innerRv.findViewHolderForAdapterPosition(0)?.itemView
+            return itemView?.requestFocus() == true
+        }
+        list.post { if (!tryFocus()) list.postDelayed({ tryFocus() }, 160) }
+        return true
     }
 
     private fun loadContent() {
@@ -440,6 +530,9 @@ class KidsPosterAdapter(
         visibleCount = minOf(visibleCount + 20, items.size)
         notifyItemRangeInserted(prev, visibleCount - prev)
     }
+
+    /** Full underlying list size, regardless of how many rows are currently bound. */
+    fun totalItems(): Int = items.size
 
     inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val image: ImageView = itemView.findViewById(R.id.poster_image)

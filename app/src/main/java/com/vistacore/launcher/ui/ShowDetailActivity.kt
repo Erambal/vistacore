@@ -202,10 +202,12 @@ class ShowDetailActivity : BaseActivity() {
         binding.showTrailerBtn.visibility = View.VISIBLE
         binding.showTrailerBtn.setOnClickListener { showFullscreenTrailer() }
         if (PrefsManager(this).bannerAutoplayTrailer) {
-            binding.detailBackdropTrailer.visibility = View.VISIBLE
-            TrailerPlayer.configureBackdropPreview(binding.detailBackdropTrailer, youtubeId)
-            binding.detailBackdropTrailer.animate()
-                .alpha(1f).setDuration(600).setStartDelay(1500).start()
+            val trailer = binding.detailBackdropTrailer
+            trailer.alpha = 0f
+            trailer.visibility = View.VISIBLE
+            TrailerPlayer.configureBackdropPreview(trailer, youtubeId) {
+                trailer.animate().alpha(1f).setDuration(600).start()
+            }
         }
     }
 

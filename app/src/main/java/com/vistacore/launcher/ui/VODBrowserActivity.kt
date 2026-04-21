@@ -869,9 +869,15 @@ class NetflixAdapter(
                 // data:-scheme HTML page creates a null-origin context
                 // that YouTube blocks (black screen). loadUrl keeps the
                 // proper youtube.com origin and the player starts cleanly.
-                TrailerPlayer.configureBackdropPreview(trailer, ytId)
+                trailer.alpha = 0f
                 trailer.visibility = View.VISIBLE
-                trailer.animate().alpha(1f).setDuration(500).setStartDelay(1500).start()
+                TrailerPlayer.configureBackdropPreview(trailer, ytId) {
+                    // Only fade in once YouTube reports PLAYING so the
+                    // user never sees the embed title text or spinner.
+                    if (boundItemId == item.id) {
+                        trailer.animate().alpha(1f).setDuration(500).start()
+                    }
+                }
             }
         }
 

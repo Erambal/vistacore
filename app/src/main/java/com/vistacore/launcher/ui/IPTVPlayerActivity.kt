@@ -174,7 +174,38 @@ class IPTVPlayerActivity : BaseActivity() {
         } else {
             setupPlayerControls()
         }
+        setupTouchHandling()
         showChannelOverlay()
+    }
+
+    private fun setupTouchHandling() {
+        val gestureDetector = android.view.GestureDetector(this,
+            object : android.view.GestureDetector.SimpleOnGestureListener() {
+                override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                    if (isVodMode) toggleScrubBar() else toggleControls()
+                    return true
+                }
+
+                override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                    player?.let { if (it.isPlaying) it.pause() else it.play() }
+                    if (isVodMode && scrubVisible) {
+                        binding.scrubPlayPause.setImageResource(
+                            if (player?.isPlaying == true) R.drawable.ic_pause else R.drawable.ic_play_arrow
+                        )
+                    } else if (!isVodMode && controlsVisible) {
+                        binding.btnPlayPause.setImageResource(
+                            if (player?.isPlaying == true) R.drawable.ic_pause else R.drawable.ic_play_arrow
+                        )
+                    }
+                    return true
+                }
+            })
+
+        binding.playerView.setOnTouchListener { v, event ->
+            gestureDetector.onTouchEvent(event)
+            v.performClick()
+            true
+        }
     }
 
     private var controlsVisible = false

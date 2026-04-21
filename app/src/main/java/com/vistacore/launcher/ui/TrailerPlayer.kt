@@ -1,7 +1,10 @@
 package com.vistacore.launcher.ui
 
 import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
 import android.view.View
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 
@@ -54,20 +57,60 @@ object TrailerPlayer {
         web.isHorizontalScrollBarEnabled = false
     }
 
-    /** Muted, looping, controls off — ambient preview. */
-    fun configureBackdropPreview(web: WebView, youtubeId: String) {
+    /**
+     * Muted, looping, controls off — ambient preview.
+     *
+     * [onReady] fires on the UI thread the first time the YouTube player
+     * reports the PLAYING state — i.e. once the actual video frames are on
+     * screen and the "Watch on YouTube" title / loading spinner are gone.
+     * Callers should keep the WebView at alpha 0 and fade it in from the
+     * callback so none of the YouTube chrome ever leaks through.
+     *
+     * A fallback timer fires the callback after [readyTimeoutMs] in case
+     * the IFrame API never dispatches a state change (network stall, ad
+     * pre-roll, etc.) — better a slightly-early fade than no trailer.
+     */
+    fun configureBackdropPreview(
+        web: WebView,
+        youtubeId: String,
+        onReady: (() -> Unit)? = null,
+        readyTimeoutMs: Long = 6000L,
+    ) {
         baseSetup(web)
+        attachReadyBridge(web, onReady, readyTimeoutMs)
         loadEmbed(web, youtubeId, muted = true, controls = false, loop = true)
     }
 
     /** Full-screen, unmuted, with controls — on-demand playback. */
-    fun configureFullscreen(web: WebView, youtubeId: String) {
+    fun configureFullscreen(
+        web: WebView,
+        youtubeId: String,
+        onReady: (() -> Unit)? = null,
+        readyTimeoutMs: Long = 8000L,
+    ) {
         baseSetup(web)
         // Focusable in touch mode so the WebView can take D-pad focus and
         // forward media keys (play/pause) into the YouTube player.
         web.isFocusable = true
         web.isFocusableInTouchMode = true
+        attachReadyBridge(web, onReady, readyTimeoutMs)
         loadEmbed(web, youtubeId, muted = false, controls = true, loop = false)
+    }
+
+    private const val BRIDGE_NAME = "VistaCoreTrailer"
+
+    private fun attachReadyBridge(web: WebView, onReady: (() -> Unit)?, timeoutMs: Long) {
+        if (onReady == null) return
+        val main = Handler(Looper.getMainLooper())
+        val fired = java.util.concurrent.atomic.AtomicBoolean(false)
+        val deliver = Runnable {
+            if (fired.compareAndSet(false, true)) onReady()
+        }
+        web.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun onPlaying() { main.post(deliver) }
+        }, BRIDGE_NAME)
+        main.postDelayed(deliver, timeoutMs)
     }
 
     /** Clear the player and drop any resources it holds. */
@@ -101,13 +144,38 @@ object TrailerPlayer {
             add("origin=$YT_EMBED_ORIGIN")
         }.joinToString("&")
         val embedUrl = "$YT_EMBED_ORIGIN/embed/$ytId?$params"
+        // IFrame API lets us listen for the PLAYING state so the host can
+        // delay fading the WebView in until real video frames are on screen
+        // — no YouTube title text or spinner ever becomes visible.
         val html = """
             <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
             <style>html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;}
-            iframe{width:100%;height:100%;border:0;display:block;}</style>
-            </head><body><iframe src="$embedUrl"
-            allow="autoplay; encrypted-media; picture-in-picture"
-            allowfullscreen></iframe></body></html>
+            #player{width:100%;height:100%;border:0;display:block;}</style>
+            </head><body>
+            <iframe id="player" src="$embedUrl"
+              allow="autoplay; encrypted-media; picture-in-picture"
+              allowfullscreen></iframe>
+            <script>
+              var notified = false;
+              function notifyPlaying(){
+                if (notified) return;
+                notified = true;
+                try { if (window.$BRIDGE_NAME && window.$BRIDGE_NAME.onPlaying) window.$BRIDGE_NAME.onPlaying(); } catch(e){}
+              }
+              function onYouTubeIframeAPIReady(){
+                try {
+                  new YT.Player('player', {
+                    events: {
+                      onStateChange: function(e){
+                        if (e.data === YT.PlayerState.PLAYING) notifyPlaying();
+                      }
+                    }
+                  });
+                } catch(e){}
+              }
+            </script>
+            <script src="https://www.youtube.com/iframe_api"></script>
+            </body></html>
         """.trimIndent()
         web.loadDataWithBaseURL(YT_EMBED_ORIGIN, html, "text/html", "utf-8", null)
     }

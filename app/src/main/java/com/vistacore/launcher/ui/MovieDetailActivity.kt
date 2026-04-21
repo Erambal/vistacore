@@ -214,10 +214,12 @@ class MovieDetailActivity : BaseActivity() {
         // existing "Banner trailer autoplay" pref so they can turn it off
         // everywhere in one place.
         if (PrefsManager(this).bannerAutoplayTrailer) {
-            binding.detailBackdropTrailer.visibility = View.VISIBLE
-            TrailerPlayer.configureBackdropPreview(binding.detailBackdropTrailer, youtubeId)
-            binding.detailBackdropTrailer.animate()
-                .alpha(1f).setDuration(600).setStartDelay(1500).start()
+            val trailer = binding.detailBackdropTrailer
+            trailer.alpha = 0f
+            trailer.visibility = View.VISIBLE
+            TrailerPlayer.configureBackdropPreview(trailer, youtubeId) {
+                trailer.animate().alpha(1f).setDuration(600).start()
+            }
         }
     }
 

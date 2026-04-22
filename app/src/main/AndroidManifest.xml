@@ -74,7 +74,7 @@
         <activity
             android:name=".ui.SplashActivity"
             android:exported="true"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.VistaCore.Player">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -88,41 +88,41 @@
         <activity
             android:name=".ui.LockScreenActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.VistaCore.Player" />
 
         <!-- Setup Wizard (first run) -->
         <activity
             android:name=".ui.SetupActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.VistaCore" />
 
         <!-- Main Launcher Activity -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:configChanges="keyboard|keyboardHidden|navigation" />
 
         <!-- Settings -->
         <activity
             android:name=".ui.SettingsActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.VistaCore.Settings" />
 
         <!-- IPTV Channel Browser (legacy) -->
         <activity
             android:name=".ui.IPTVBrowserActivity"
             android:exported="false"
-            android:screenOrientation="landscape" />
+            android:screenOrientation="sensorLandscape" />
 
         <!-- Live TV router — forwards to the chosen variant -->
         <activity
             android:name=".ui.LiveTVActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:theme="@android:style/Theme.NoDisplay" />
 
         <!-- Live TV variants — keep soft keyboard hidden on entry even if the
@@ -130,39 +130,39 @@
         <activity
             android:name=".ui.LiveTVClassicActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:windowSoftInputMode="stateAlwaysHidden|adjustPan" />
         <activity
             android:name=".ui.LiveTVGridActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:windowSoftInputMode="stateAlwaysHidden|adjustPan" />
         <activity
             android:name=".ui.LiveTVEpgActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:windowSoftInputMode="stateAlwaysHidden|adjustPan" />
         <activity
             android:name=".ui.LiveTVImmersiveActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:windowSoftInputMode="stateAlwaysHidden|adjustPan" />
         <activity
             android:name=".ui.LiveTVCarouselActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:windowSoftInputMode="stateAlwaysHidden|adjustPan" />
         <activity
             android:name=".ui.LiveTVSplitHeroActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:windowSoftInputMode="stateAlwaysHidden|adjustPan" />
 
         <!-- IPTV Player (with PiP support) -->
         <activity
             android:name=".ui.IPTVPlayerActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.VistaCore.Player"
             android:supportsPictureInPicture="true"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation" />
@@ -171,31 +171,31 @@
         <activity
             android:name=".ui.VODBrowserActivity"
             android:exported="false"
-            android:screenOrientation="landscape" />
+            android:screenOrientation="sensorLandscape" />
 
         <!-- Show Detail (seasons & episodes) -->
         <activity
             android:name=".ui.ShowDetailActivity"
             android:exported="false"
-            android:screenOrientation="landscape" />
+            android:screenOrientation="sensorLandscape" />
 
         <!-- Movie Detail (plot, cast, trailer, play) -->
         <activity
             android:name=".ui.MovieDetailActivity"
             android:exported="false"
-            android:screenOrientation="landscape" />
+            android:screenOrientation="sensorLandscape" />
 
         <!-- Kids Browser -->
         <activity
             android:name=".ui.KidsBrowserActivity"
             android:exported="false"
-            android:screenOrientation="landscape" />
+            android:screenOrientation="sensorLandscape" />
 
         <!-- EPG TV Guide -->
         <activity
             android:name=".ui.EpgGuideActivity"
             android:exported="false"
-            android:screenOrientation="landscape" />
+            android:screenOrientation="sensorLandscape" />
 
         <!-- Voice Search Results.
              Exported + intent filters so the system can route search / assist /
@@ -206,7 +206,7 @@
             android:name=".ui.VoiceSearchActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:screenOrientation="landscape">
+            android:screenOrientation="sensorLandscape">
             <intent-filter>
                 <action android:name="android.intent.action.SEARCH" />
                 <action android:name="android.intent.action.ASSIST" />
@@ -220,21 +220,21 @@
         <activity
             android:name=".ui.WallpaperPickerActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.VistaCore.Settings" />
 
         <!-- Screen Saver -->
         <activity
             android:name=".ui.ScreenSaverActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.VistaCore.Player" />
 
         <!-- Remote Help -->
         <activity
             android:name=".ui.RemoteHelpActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.VistaCore.Settings" />
 
         <!-- FileProvider for sharing downloaded APK updates -->

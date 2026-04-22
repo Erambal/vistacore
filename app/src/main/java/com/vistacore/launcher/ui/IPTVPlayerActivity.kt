@@ -181,6 +181,8 @@ class IPTVPlayerActivity : BaseActivity() {
     private fun setupTouchHandling() {
         val gestureDetector = android.view.GestureDetector(this,
             object : android.view.GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: android.view.MotionEvent): Boolean = true
+
                 override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
                     if (isVodMode) toggleScrubBar() else toggleControls()
                     return true
@@ -201,9 +203,17 @@ class IPTVPlayerActivity : BaseActivity() {
                 }
             })
 
-        binding.playerView.setOnTouchListener { v, event ->
+        // Attach to the root FrameLayout so taps anywhere over the video
+        // reach us. Child views (control buttons when visible) consume
+        // their own touches first via the normal dispatch chain, so this
+        // listener only fires for the empty video area.
+        val root = binding.root
+        root.isClickable = true
+        root.setOnTouchListener { v, event ->
             gestureDetector.onTouchEvent(event)
-            v.performClick()
+            if (event.actionMasked == android.view.MotionEvent.ACTION_UP) {
+                v.performClick()
+            }
             true
         }
     }

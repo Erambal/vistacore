@@ -73,8 +73,8 @@ object TrailerPlayer {
     fun configureBackdropPreview(
         web: WebView,
         youtubeId: String,
-        onReady: (() -> Unit)? = null,
         readyTimeoutMs: Long = 6000L,
+        onReady: (() -> Unit)? = null,
     ) {
         baseSetup(web)
         attachReadyBridge(web, onReady, readyTimeoutMs)
@@ -85,8 +85,8 @@ object TrailerPlayer {
     fun configureFullscreen(
         web: WebView,
         youtubeId: String,
-        onReady: (() -> Unit)? = null,
         readyTimeoutMs: Long = 8000L,
+        onReady: (() -> Unit)? = null,
     ) {
         baseSetup(web)
         // Focusable in touch mode so the WebView can take D-pad focus and

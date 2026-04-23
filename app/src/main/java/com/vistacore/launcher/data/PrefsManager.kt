@@ -21,6 +21,10 @@ class PrefsManager(context: Context) {
         private const val KEY_CATCHUP_TYPE = "catchup_type"
         private const val KEY_SPORTS_TYPES = "sports_types"
         private const val KEY_ENABLED_APPS = "enabled_apps"
+        // Set of DEFAULT_APPS IDs the user has been shown at least once;
+        // lets us auto-add genuinely new apps after an update without
+        // re-adding apps the user has explicitly disabled.
+        private const val KEY_KNOWN_APPS = "known_apps"
         private const val KEY_AUTO_LAUNCH = "auto_launch_on_boot"
         private const val KEY_KIDS_ENABLED = "kids_section_enabled"
         private const val KEY_SHOW_EPG_IN_LIST = "show_epg_in_channel_list"
@@ -171,13 +175,35 @@ class PrefsManager(context: Context) {
     var enabledApps: List<String>
         get() {
             val raw = prefs.getString(KEY_ENABLED_APPS, null)
-            if (raw.isNullOrBlank()) return DEFAULT_APPS
+            if (raw.isNullOrBlank()) {
+                // First run — mark every default as "known" and return them all.
+                prefs.edit().putStringSet(KEY_KNOWN_APPS, DEFAULT_APPS.toSet()).apply()
+                return DEFAULT_APPS
+            }
             val saved = raw.split(",").filter { it.isNotBlank() }
-            // Auto-add any new app IDs that were added after the user last saved
-            val missing = DEFAULT_APPS.filter { it !in saved }
-            return if (missing.isEmpty()) saved else saved + missing
+            // Only auto-add apps the user has never seen before (introduced
+            // in a version newer than the one they last used). Apps they
+            // saw and explicitly removed stay removed.
+            val known = prefs.getStringSet(KEY_KNOWN_APPS, emptySet()) ?: emptySet()
+            val genuinelyNew = DEFAULT_APPS.filter { it !in known && it !in saved }
+            if (genuinelyNew.isNotEmpty()) {
+                // Remember these so we don't re-add them again next launch
+                // if the user disables them.
+                prefs.edit()
+                    .putStringSet(KEY_KNOWN_APPS, (known + genuinelyNew).toSet())
+                    .apply()
+            }
+            return if (genuinelyNew.isEmpty()) saved else saved + genuinelyNew
         }
-        set(value) = prefs.edit().putString(KEY_ENABLED_APPS, value.joinToString(",")).apply()
+        set(value) {
+            // When the user saves an explicit list, every default app ID is
+            // now considered "known" — present-or-deliberately-absent — so
+            // a reboot can't silently resurrect one they removed.
+            prefs.edit()
+                .putString(KEY_ENABLED_APPS, value.joinToString(","))
+                .putStringSet(KEY_KNOWN_APPS, DEFAULT_APPS.toSet())
+                .apply()
+        }
 
     /** Selected sport types for the upcoming games section. Defaults to all. */
     var sportsTypes: Set<String>

@@ -47,6 +47,11 @@ class MainActivity : BaseActivity() {
     private var cachedEpgData: EpgData? = null
     private var epgLastLoadTime: Long = 0
     private val EPG_CACHE_DURATION = 30 * 60 * 1000L // 30 minutes
+    // Fingerprint of the IPTV config the currently-loaded channels came
+    // from. When it changes (user altered settings) we invalidate the
+    // in-memory channel list and reload from disk; otherwise we keep it
+    // across resumes so every back-to-home doesn't re-parse the cache.
+    private var loadedConfigFingerprint: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,11 +87,48 @@ class MainActivity : BaseActivity() {
         wallpaperManager.applyWallpaper(binding.root)
         // Refresh app cards (may have changed in settings)
         setupAppCards()
-        // Force refresh channels every time we resume (fixes stale data after settings change)
-        allChannels = emptyList()
-        loadChannelsAndRefreshUI()
+        // Only reload the channel list from disk when the IPTV config
+        // has actually changed since we last loaded. Previously we wiped
+        // `allChannels` on every resume so Settings tweaks would propagate,
+        // but that also meant every back-from-player re-parsed the cache
+        // and rebuilt every row on the home screen. Fingerprinting the
+        // relevant prefs lets us keep the fast path when nothing changed.
+        val currentFingerprint = iptvConfigFingerprint()
+        if (allChannels.isEmpty() || currentFingerprint != loadedConfigFingerprint) {
+            allChannels = emptyList()
+            loadedConfigFingerprint = currentFingerprint
+            loadChannelsAndRefreshUI()
+        } else {
+            // Config unchanged — just refresh the sections that reflect
+            // transient state (watch history, favorites, EPG cursor).
+            refreshHomeSections()
+        }
         loadUpcomingGames()
         resetScreenSaverTimer()
+    }
+
+    /**
+     * Stable fingerprint of IPTV-related prefs. If any of these change we
+     * must reload channels; otherwise the cached in-memory list is valid.
+     */
+    private fun iptvConfigFingerprint(): String = buildString {
+        append(prefs.sourceType).append('|')
+        append(prefs.m3uUrl).append('|')
+        append(prefs.xtreamServer).append('|')
+        append(prefs.xtreamUsername).append('|')
+        // Password intentionally omitted — same server+user = same channels.
+    }
+
+    /** Refresh the home-screen sections that depend on user state, not channel data. */
+    private fun refreshHomeSections() {
+        if (allChannels.isEmpty()) return
+        scope.launch {
+            loadContinueWatching()
+            loadRecentChannels()
+            loadFavoriteChannels()
+            loadNowPlaying()
+            loadInlineGuide()
+        }
     }
 
     private fun buildFullCacheIfNeeded() {

@@ -530,11 +530,14 @@ class IPTVPlayerActivity : BaseActivity() {
 
         // Larger buffer to absorb network hiccups from single-bitrate streams.
         // Defaults are 15s min / 50s max — we bump to 60s min / 180s max.
+        // bufferForPlaybackMs at 2.5s (down from 5s) halves the perceived
+        // spinner time at stream start without hurting steady-state buffering
+        // since the min/max window stays generous.
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 /* minBufferMs */ 60_000,
                 /* maxBufferMs */ 180_000,
-                /* bufferForPlaybackMs */ 5_000,
+                /* bufferForPlaybackMs */ 2_500,
                 /* bufferForPlaybackAfterRebufferMs */ 10_000
             )
             .build()
@@ -545,10 +548,16 @@ class IPTVPlayerActivity : BaseActivity() {
         // lets ExoPlayer drop to the platform's software decoder when that
         // happens, which can turn an outright-failing stream into a playable
         // one. setEnableDecoderFallback(true) applies to both audio and video.
+        //
+        // EXTENSION_RENDERER_MODE_OFF because we don't bundle the media3
+        // extension modules (ffmpeg / libvpx / libopus) — setting PREFER
+        // makes the factory reflectively probe for those classes at startup
+        // on every player init, adding visible latency on budget TV boxes
+        // without providing any benefit when the extensions aren't present.
         val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(this)
             .setEnableDecoderFallback(true)
             .setExtensionRendererMode(
-                androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
             )
 
         player = ExoPlayer.Builder(this, renderersFactory)

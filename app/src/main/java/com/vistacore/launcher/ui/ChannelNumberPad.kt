@@ -35,7 +35,11 @@ class ChannelNumberPad(
     private var overlayView: View? = null
     private var numberDisplay: TextView? = null
     private var channelPreview: TextView? = null
+    private var hintView: TextView? = null
     private var autoTuneRunnable: Runnable? = null
+
+    /** True when the pad is currently shown and expecting input. */
+    fun isVisible(): Boolean = overlayView != null
 
     /**
      * Handle a key event. Returns true if consumed (was a number key).
@@ -60,6 +64,26 @@ class ChannelNumberPad(
         }
         handler.postDelayed(autoTuneRunnable!!, AUTO_TUNE_DELAY_MS)
 
+        return true
+    }
+
+    /**
+     * Tune immediately to whatever the user has typed. Called when the user
+     * hits OK / Enter on the remote rather than waiting for the auto-tune
+     * delay to expire. No-op when the pad isn't visible.
+     */
+    fun confirm(): Boolean {
+        if (!isVisible()) return false
+        autoTuneRunnable?.let { handler.removeCallbacks(it) }
+        tuneToChannel()
+        return true
+    }
+
+    /** Dismiss the pad without tuning. Called for Back / Escape. */
+    fun cancel(): Boolean {
+        if (!isVisible()) return false
+        autoTuneRunnable?.let { handler.removeCallbacks(it) }
+        hideOverlay()
         return true
     }
 
@@ -103,6 +127,24 @@ class ChannelNumberPad(
         }
         container.addView(channelPreview)
 
+        // OK / Enter affordance — styled as a pill so it's obvious the user
+        // can press OK on the remote to tune immediately without waiting.
+        hintView = TextView(context).apply {
+            text = "▶  Press OK to tune"
+            textSize = 14f
+            setTextColor(context.getColor(R.color.accent_gold))
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            setBackgroundResource(R.drawable.card_default)
+            setPadding(24, 12, 24, 12)
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = 20
+            layoutParams = lp
+        }
+        container.addView(hintView)
+
         overlayView = container
         parentLayout.addView(container)
     }
@@ -133,6 +175,7 @@ class ChannelNumberPad(
         overlayView = null
         numberDisplay = null
         channelPreview = null
+        hintView = null
     }
 
     private fun keyCodeToDigit(keyCode: Int): Char? {

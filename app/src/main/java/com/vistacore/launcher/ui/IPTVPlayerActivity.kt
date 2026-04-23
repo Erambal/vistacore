@@ -1334,8 +1334,21 @@ class IPTVPlayerActivity : BaseActivity() {
     // --- Key Handling ---
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (!isVodMode && numberPad?.handleKeyEvent(keyCode) == true) {
-            return true
+        // Channel-number pad owns input while it's open (live TV only). OK
+        // tunes immediately, Back cancels, digits keep appending.
+        if (!isVodMode) {
+            val pad = numberPad
+            if (pad != null && pad.isVisible()) {
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER,
+                    KeyEvent.KEYCODE_ENTER,
+                    KeyEvent.KEYCODE_NUMPAD_ENTER -> { pad.confirm(); return true }
+                    KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> { pad.cancel(); return true }
+                }
+            }
+            if (pad?.handleKeyEvent(keyCode) == true) {
+                return true
+            }
         }
 
         // Audio/subtitle shortcuts — work in both modes

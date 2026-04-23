@@ -67,7 +67,13 @@ class IPTVPlayerActivity : BaseActivity() {
         private const val SCRUB_HIDE_DELAY_MS = 15000L
         private const val SEEK_INCREMENT_MS = 10000L
         private const val TAG = "IPTVPlayer"
+        // Auto-retry backoff for 413/429 responses from Xtream-style IPTV
+        // backends (typically "too many concurrent streams" or rate limit).
+        private const val RATE_LIMIT_RETRY_DELAY_MS = 3500L
+        private const val MAX_RATE_LIMIT_RETRIES = 2
     }
+
+    private var rateLimitRetries = 0
 
     private lateinit var binding: ActivityIptvPlayerBinding
     private var player: ExoPlayer? = null
@@ -480,6 +486,7 @@ class IPTVPlayerActivity : BaseActivity() {
 
     private fun retryPlayback() {
         currentStrategyIndex = 0
+        rateLimitRetries = 0
         binding.playerError.visibility = View.GONE
         player?.release()
         player = null
@@ -547,6 +554,7 @@ class IPTVPlayerActivity : BaseActivity() {
                     when (state) {
                         Player.STATE_READY -> {
                             showLoading(false)
+                            rateLimitRetries = 0
                             // Resume from saved position (only once)
                             if (!hasResumed) {
                                 hasResumed = true
@@ -575,8 +583,24 @@ class IPTVPlayerActivity : BaseActivity() {
 
                 override fun onPlayerError(error: PlaybackException) {
                     Log.e(TAG, "Playback error for $streamUrl (strategy=${sourceStrategies.getOrNull(currentStrategyIndex)}): ${error.message}", error)
-                    showLoading(false)
                     lastError = error
+                    // 413 / 429 from IPTV providers usually means "too many
+                    // concurrent streams" or rate limiting — retrying after
+                    // a short delay often succeeds because the previous
+                    // connection has timed out server-side by then.
+                    val msg = (error.cause?.message ?: error.message ?: "").lowercase()
+                    val throttled = msg.contains("413") || msg.contains("429") ||
+                        msg.contains("too many") || msg.contains("payload too large")
+                    if (throttled && rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
+                        rateLimitRetries++
+                        Log.w(TAG, "Throttled by server, retry #$rateLimitRetries in ${RATE_LIMIT_RETRY_DELAY_MS}ms")
+                        handler.postDelayed({
+                            currentStrategyIndex = 0
+                            playStream(exo, streamUrl)
+                        }, RATE_LIMIT_RETRY_DELAY_MS)
+                        return
+                    }
+                    showLoading(false)
                     tryNextStrategy(exo)
                 }
             })
@@ -686,6 +710,10 @@ class IPTVPlayerActivity : BaseActivity() {
                     "Access denied. Your subscription may have expired."
                 msg.contains("404") || msg.contains("not found") ->
                     "This stream is no longer available."
+                msg.contains("413") || msg.contains("payload too large") || msg.contains("request entity too large") ->
+                    "Too many streams open. Close this and wait a few seconds, then try again."
+                msg.contains("429") || msg.contains("too many requests") ->
+                    "The server is rate-limiting requests. Wait a moment and try again."
                 msg.contains("timeout") || msg.contains("timed out") ->
                     "The stream is too slow or not responding."
                 msg.contains("unable to connect") || msg.contains("failed to connect") ->
@@ -1353,6 +1381,7 @@ class IPTVPlayerActivity : BaseActivity() {
         streamUrl = url
         channelName = name
         channelId = id
+        rateLimitRetries = 0
 
         if (id.isNotBlank()) recentChannels.addRecent(id)
 

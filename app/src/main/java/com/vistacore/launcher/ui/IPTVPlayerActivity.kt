@@ -74,6 +74,7 @@ class IPTVPlayerActivity : BaseActivity() {
     }
 
     private var rateLimitRetries = 0
+    private var contentIncompatible = false
 
     private lateinit var binding: ActivityIptvPlayerBinding
     private var player: ExoPlayer? = null
@@ -172,6 +173,7 @@ class IPTVPlayerActivity : BaseActivity() {
 
         binding.btnRetry.setOnClickListener { retryPlayback() }
         binding.btnRetry.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+        binding.btnOpenExternal.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
 
         loadChannelList()
         setupPlayer()
@@ -487,6 +489,7 @@ class IPTVPlayerActivity : BaseActivity() {
     private fun retryPlayback() {
         currentStrategyIndex = 0
         rateLimitRetries = 0
+        contentIncompatible = false
         binding.playerError.visibility = View.GONE
         player?.release()
         player = null
@@ -584,11 +587,32 @@ class IPTVPlayerActivity : BaseActivity() {
                 override fun onPlayerError(error: PlaybackException) {
                     Log.e(TAG, "Playback error for $streamUrl (strategy=${sourceStrategies.getOrNull(currentStrategyIndex)}): ${error.message}", error)
                     lastError = error
+                    val msg = (error.cause?.message ?: error.message ?: "").lowercase()
+                    val fullMsg = error.toString().lowercase()
+
+                    // Parser / decoder errors mean the *content* is the problem —
+                    // trying HLS/DASH variants of a plain MP4 URL won't help and
+                    // just thrashes the upstream proxy. Fail fast to the error
+                    // screen with an "Open externally" option instead.
+                    val isContentMalformed = msg.contains("malformed") ||
+                        fullMsg.contains("contentismalformed=true") ||
+                        error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
+                    if (isContentMalformed) {
+                        showLoading(false)
+                        contentIncompatible = true
+                        showError()
+                        return
+                    }
+
                     // 413 / 429 from IPTV providers usually means "too many
                     // concurrent streams" or rate limiting — retrying after
                     // a short delay often succeeds because the previous
                     // connection has timed out server-side by then.
-                    val msg = (error.cause?.message ?: error.message ?: "").lowercase()
                     val throttled = msg.contains("413") || msg.contains("429") ||
                         msg.contains("too many") || msg.contains("payload too large")
                     if (throttled && rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
@@ -703,32 +727,67 @@ class IPTVPlayerActivity : BaseActivity() {
         binding.playerError.visibility = View.VISIBLE
 
         val err = lastError
-        val friendly = if (err != null) {
-            val msg = (err.cause?.message ?: err.message ?: "").lowercase()
-            when {
-                msg.contains("403") || msg.contains("forbidden") ->
-                    "Access denied. Your subscription may have expired."
-                msg.contains("404") || msg.contains("not found") ->
-                    "This stream is no longer available."
-                msg.contains("413") || msg.contains("payload too large") || msg.contains("request entity too large") ->
-                    "Too many streams open. Close this and wait a few seconds, then try again."
-                msg.contains("429") || msg.contains("too many requests") ->
-                    "The server is rate-limiting requests. Wait a moment and try again."
-                msg.contains("timeout") || msg.contains("timed out") ->
-                    "The stream is too slow or not responding."
-                msg.contains("unable to connect") || msg.contains("failed to connect") ->
-                    "Could not connect to the server. Check your internet."
-                msg.contains("source error") || msg.contains("no valid") ->
-                    "This stream format is not supported."
-                else -> err.cause?.message ?: err.message ?: "The stream could not be loaded."
+        val friendly = when {
+            contentIncompatible ->
+                "The built-in player can't play this file's format. Try opening it in VLC or another video player."
+            err != null -> {
+                val msg = (err.cause?.message ?: err.message ?: "").lowercase()
+                when {
+                    msg.contains("403") || msg.contains("forbidden") ->
+                        "Access denied. Your subscription may have expired."
+                    msg.contains("404") || msg.contains("not found") ->
+                        "This stream is no longer available."
+                    msg.contains("413") || msg.contains("payload too large") || msg.contains("request entity too large") ->
+                        "Too many streams open. Close this and wait a few seconds, then try again."
+                    msg.contains("429") || msg.contains("too many requests") ->
+                        "The server is rate-limiting requests. Wait a moment and try again."
+                    msg.contains("timeout") || msg.contains("timed out") ->
+                        "The stream is too slow or not responding."
+                    msg.contains("unable to connect") || msg.contains("failed to connect") ->
+                        "Could not connect to the server. Check your internet."
+                    msg.contains("source error") || msg.contains("no valid") ->
+                        "This stream format is not supported."
+                    else -> err.cause?.message ?: err.message ?: "The stream could not be loaded."
+                }
             }
-        } else {
-            "The stream could not be loaded."
+            else -> "The stream could not be loaded."
         }
         binding.errorDetails.text = friendly
         binding.errorUrl.text = streamUrl
 
-        binding.btnRetry.requestFocus()
+        // Surface the external-player option when we know the built-in
+        // player can't handle this file. The button is declared in the
+        // layout but kept gone otherwise so the default UI stays simple.
+        val canOpenExternally = contentIncompatible && streamUrl.isNotBlank() &&
+            hasExternalPlayer(streamUrl)
+        binding.btnOpenExternal.visibility = if (canOpenExternally) View.VISIBLE else View.GONE
+        if (canOpenExternally) {
+            binding.btnOpenExternal.setOnClickListener { openInExternalPlayer() }
+            binding.btnOpenExternal.requestFocus()
+        } else {
+            binding.btnRetry.requestFocus()
+        }
+    }
+
+    private fun hasExternalPlayer(url: String): Boolean {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(Uri.parse(url), "video/*")
+        }
+        return intent.resolveActivity(packageManager) != null
+    }
+
+    private fun openInExternalPlayer() {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(Uri.parse(streamUrl), "video/*")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(Intent.createChooser(intent, "Open with"))
+            finish()
+        } catch (e: Exception) {
+            Log.w(TAG, "No external player available: ${e.message}")
+            Toast.makeText(this, "No compatible video player found.", Toast.LENGTH_LONG).show()
+        }
     }
 
     // --- Picture-in-Picture ---
@@ -1382,6 +1441,7 @@ class IPTVPlayerActivity : BaseActivity() {
         channelName = name
         channelId = id
         rateLimitRetries = 0
+        contentIncompatible = false
 
         if (id.isNotBlank()) recentChannels.addRecent(id)
 

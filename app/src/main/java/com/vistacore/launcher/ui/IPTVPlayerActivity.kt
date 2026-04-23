@@ -617,6 +617,11 @@ class IPTVPlayerActivity : BaseActivity() {
                     if (isContentMalformed) {
                         showLoading(false)
                         contentIncompatible = true
+                        // Remember the current position so VLC picks up where
+                        // we left off — helps if this is a resume attempt that
+                        // failed a few seconds into playback.
+                        val resumeAt = exo.currentPosition.takeIf { it > 0 } ?: 0L
+                        if (handoffToExternalPlayer(resumeAt)) return
                         showError()
                         return
                     }
@@ -782,22 +787,73 @@ class IPTVPlayerActivity : BaseActivity() {
     }
 
     private fun hasExternalPlayer(url: String): Boolean {
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(Uri.parse(url), "video/*")
-        }
-        return intent.resolveActivity(packageManager) != null
+        return buildExternalPlayerIntent(url, 0L) != null
     }
 
-    private fun openInExternalPlayer() {
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(Uri.parse(streamUrl), "video/*")
+    /**
+     * Build a video ACTION_VIEW intent targeted at an installed external
+     * player. VLC / MX Player are preferred (they accept resume-position
+     * extras and don't prompt with a chooser), otherwise any app that
+     * resolves the video mime wins. Returns null if nothing is installed.
+     */
+    private fun buildExternalPlayerIntent(url: String, resumeMs: Long): Intent? {
+        val uri = Uri.parse(url)
+        val pm = packageManager
+        val preferredPackages = listOf(
+            "org.videolan.vlc",        // VLC phone/tablet
+            "org.videolan.vlc.debug",  // VLC debug builds
+            "com.mxtech.videoplayer.ad",
+            "com.mxtech.videoplayer.pro",
+        )
+        for (pkg in preferredPackages) {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "video/*")
+                setPackage(pkg)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (resumeMs > 0) {
+                    // VLC honours "position" (seconds, float) and MX honours
+                    // "position" (ms, int). Sending both is harmless.
+                    putExtra("position", resumeMs.toInt())
+                    putExtra("from_start", false)
+                    putExtra("title", channelName)
+                }
+            }
+            if (intent.resolveActivity(pm) != null) return intent
+        }
+        // No known preferred player — try a generic chooser.
+        val generic = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "video/*")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        try {
-            startActivity(Intent.createChooser(intent, "Open with"))
+        return if (generic.resolveActivity(pm) != null) generic else null
+    }
+
+    /**
+     * Attempt a seamless handoff to an installed external player. Returns
+     * true when we successfully launched one (and the activity should
+     * finish), false when no external player is available and the caller
+     * should fall back to the error screen.
+     */
+    private fun handoffToExternalPlayer(resumeMs: Long = 0L): Boolean {
+        if (streamUrl.isBlank()) return false
+        val intent = buildExternalPlayerIntent(streamUrl, resumeMs) ?: return false
+        return try {
+            // Save current position so VistaCore's watch-history stays in
+            // sync even though VLC takes over playback from here.
+            saveCurrentPosition()
+            Toast.makeText(this, "Opening in external player…", Toast.LENGTH_SHORT).show()
+            startActivity(intent)
             finish()
+            true
         } catch (e: Exception) {
-            Log.w(TAG, "No external player available: ${e.message}")
+            Log.w(TAG, "External player launch failed: ${e.message}")
+            false
+        }
+    }
+
+    // Kept for the manual "Open in another player" button on the error screen.
+    private fun openInExternalPlayer() {
+        if (!handoffToExternalPlayer()) {
             Toast.makeText(this, "No compatible video player found.", Toast.LENGTH_LONG).show()
         }
     }

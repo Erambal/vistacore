@@ -127,7 +127,17 @@ abstract class BaseLiveTVActivity : BaseActivity() {
 
             if (loadedChannels.isNotEmpty()) {
                 allChannels = loadedChannels.sortedBy { it.number }
-                categoryChannels = allChannels
+                // Default to the Recent category when the user has any
+                // watch history so the channels they actually use are the
+                // first thing on screen. Falls back to All on first launch.
+                val startInRecents = recents.hasRecents() &&
+                    recents.getRecentChannels(allChannels).isNotEmpty()
+                selectedCategory = if (startInRecents) CATEGORY_RECENT else CATEGORY_ALL
+                categoryChannels = if (startInRecents) {
+                    recents.getRecentChannels(allChannels)
+                } else {
+                    allChannels
+                }
                 // Apply any live search the user has already typed while we
                 // were loading, plus any pending query from the launcher.
                 val pending = intent.getStringExtra(EXTRA_SEARCH_QUERY)?.trim() ?: ""
@@ -140,7 +150,7 @@ abstract class BaseLiveTVActivity : BaseActivity() {
                 if (pending.isNotBlank() && displayedChannels.isNotEmpty()) {
                     tuneToChannel(displayedChannels.first())
                 } else if (query.isBlank()) {
-                    tuneToChannel(allChannels.first())
+                    tuneToChannel(categoryChannels.firstOrNull() ?: allChannels.first())
                 }
 
                 loadEpg()
@@ -244,9 +254,14 @@ abstract class BaseLiveTVActivity : BaseActivity() {
     protected open fun currentSearchQuery(): String = ""
 
     protected fun buildCategories(): List<String> {
-        val cats = mutableListOf(CATEGORY_ALL)
+        // Order: Recent first (when the user has history), then Favorites,
+        // then All, then provider categories. Recent leads so the channels
+        // the user actually watches are the default landing spot in the
+        // category picker.
+        val cats = mutableListOf<String>()
         if (recents.hasRecents()) cats.add(CATEGORY_RECENT)
         if (favoritesManager.getFavoriteChannelIds().isNotEmpty()) cats.add(CATEGORY_FAVORITES)
+        cats.add(CATEGORY_ALL)
         allChannels.map { it.category }.distinct().sorted().forEach { cats.add(it) }
         return cats
     }

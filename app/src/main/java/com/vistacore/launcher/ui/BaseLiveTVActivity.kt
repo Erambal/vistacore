@@ -76,17 +76,28 @@ abstract class BaseLiveTVActivity : BaseActivity() {
      * to the given PlayerView.
      */
     protected fun setupPlayer(playerView: PlayerView) {
+        // Match IPTVPlayerActivity's player config so the preview and the
+        // full-screen player behave identically: same buffer timings, same
+        // decoder fallback for flaky hardware HEVC, same extension-renderer
+        // mode (OFF — we don't bundle any extension renderers).
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(60_000, 180_000, 5_000, 10_000)
+            .setBufferDurationsMs(60_000, 180_000, 2_500, 10_000)
             .build()
-        player = ExoPlayer.Builder(this).setLoadControl(loadControl).build().also { exo ->
-            playerView.player = exo
-            exo.addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    Log.e(TAG, "Player error: ${error.message}")
-                }
-            })
-        }
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+            .setExtensionRendererMode(
+                androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+            )
+        player = ExoPlayer.Builder(this, renderersFactory)
+            .setLoadControl(loadControl)
+            .build().also { exo ->
+                playerView.player = exo
+                exo.addListener(object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        Log.e(TAG, "Player error: ${error.message}")
+                    }
+                })
+            }
     }
 
     /** Load channels (cache first, then network). Triggers onChannelsLoaded and loadEpg. */

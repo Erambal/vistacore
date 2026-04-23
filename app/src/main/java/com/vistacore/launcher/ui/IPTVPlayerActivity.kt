@@ -539,7 +539,19 @@ class IPTVPlayerActivity : BaseActivity() {
             )
             .build()
 
-        player = ExoPlayer.Builder(this)
+        // On some Google TV / Fire TV boxes the hardware HEVC decoder claims
+        // support for a profile it then fails to actually decode — the
+        // stream parses as "malformed" mid-frame. Enabling decoder fallback
+        // lets ExoPlayer drop to the platform's software decoder when that
+        // happens, which can turn an outright-failing stream into a playable
+        // one. setEnableDecoderFallback(true) applies to both audio and video.
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+            .setExtensionRendererMode(
+                androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+            )
+
+        player = ExoPlayer.Builder(this, renderersFactory)
             .setLoadControl(loadControl)
             .setTrackSelector(selector)
             .setSeekBackIncrementMs(SEEK_INCREMENT_MS)

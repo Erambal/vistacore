@@ -76,21 +76,27 @@ class DeviceActivationManager(private val context: Context) {
             withContext(Dispatchers.IO) {
                 val url = URL("$serverUrl/api/device/register")
                 val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.connectTimeout = CONNECT_TIMEOUT
-                conn.readTimeout = READ_TIMEOUT
-                conn.doOutput = true
+                try {
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.connectTimeout = CONNECT_TIMEOUT
+                    conn.readTimeout = READ_TIMEOUT
+                    conn.doOutput = true
 
-                val body = JSONObject().apply {
-                    put("device_id", getDeviceId())
-                    put("device_name", android.os.Build.MODEL)
-                    put("app_version", getAppVersion())
+                    val body = JSONObject().apply {
+                        put("device_id", getDeviceId())
+                        put("device_name", android.os.Build.MODEL)
+                        put("app_version", getAppVersion())
+                    }
+                    conn.outputStream.bufferedWriter().use { it.write(body.toString()) }
+
+                    conn.responseCode // trigger the request
+                } finally {
+                    // Always disconnect — even when responseCode throws.
+                    // Without this an unreachable activation server leaks
+                    // an FD per registerDevice() call.
+                    try { conn.disconnect() } catch (_: Exception) {}
                 }
-                conn.outputStream.bufferedWriter().use { it.write(body.toString()) }
-
-                conn.responseCode // trigger the request
-                conn.disconnect()
             }
         } catch (_: Exception) {
             // Silent fail — registration is best-effort
@@ -107,11 +113,11 @@ class DeviceActivationManager(private val context: Context) {
         try {
             if (conn.responseCode != 200) return true // server error → fail open
 
-            val response = conn.inputStream.bufferedReader().readText()
+            val response = conn.inputStream.bufferedReader().use { it.readText() }
             val json = JSONObject(response)
             return json.optBoolean("active", true)
         } finally {
-            conn.disconnect()
+            try { conn.disconnect() } catch (_: Exception) {}
         }
     }
 

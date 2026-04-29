@@ -23,17 +23,36 @@ class FilterServerClient(
     private val gson = Gson()
     private val baseUrl get() = serverUrl.trimEnd('/')
 
+    /**
+     * Run a connection through a try/finally that always disconnects, even
+     * on exception or non-2xx responses. The previous methods only called
+     * `disconnect()` inside the success branch — when `responseCode` threw
+     * (or any other exception leaked out of the try) the connection was
+     * left open and its FD held until GC, which on IPTVPlayerActivity's
+     * 240-iteration poll loop chewed through the per-process FD limit and
+     * surfaced as "Too many open streams" on a subsequent movie open.
+     */
+    private inline fun <T> withConnection(path: String, block: (HttpURLConnection) -> T): T {
+        val conn = URL("$baseUrl$path").openConnection() as HttpURLConnection
+        conn.connectTimeout = TIMEOUT_MS
+        conn.readTimeout = TIMEOUT_MS
+        addAuth(conn)
+        try {
+            return block(conn)
+        } finally {
+            try { conn.disconnect() } catch (_: Exception) {}
+        }
+    }
+
     /** Check if the server is configured and reachable. */
     suspend fun isAvailable(): Boolean = withContext(Dispatchers.IO) {
         if (serverUrl.isBlank()) return@withContext false
         try {
-            val conn = url("/api/health").openConnection() as HttpURLConnection
-            conn.connectTimeout = 5000
-            conn.readTimeout = 5000
-            addAuth(conn)
-            val code = conn.responseCode
-            conn.disconnect()
-            code == 200
+            withConnection("/api/health") { conn ->
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                conn.responseCode == 200
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Server not reachable: ${e.message}")
             false
@@ -45,18 +64,11 @@ class FilterServerClient(
         try {
             val encoded = java.net.URLEncoder.encode(title, "UTF-8")
             val yearParam = if (year.isNotBlank()) "?year=$year" else ""
-            val conn = url("/api/filter/$encoded$yearParam").openConnection() as HttpURLConnection
-            conn.connectTimeout = TIMEOUT_MS
-            conn.readTimeout = TIMEOUT_MS
-            addAuth(conn)
-
-            if (conn.responseCode == 200) {
-                val json = conn.inputStream.bufferedReader().readText()
-                conn.disconnect()
-                gson.fromJson(json, ContentFilterFile::class.java)
-            } else {
-                conn.disconnect()
-                null
+            withConnection("/api/filter/$encoded$yearParam") { conn ->
+                if (conn.responseCode == 200) {
+                    val json = conn.inputStream.bufferedReader().use { it.readText() }
+                    gson.fromJson(json, ContentFilterFile::class.java)
+                } else null
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to get filter: ${e.message}")
@@ -67,28 +79,22 @@ class FilterServerClient(
     /** Request filter generation for a title. Returns the job ID. */
     suspend fun requestFilter(title: String, year: String, streamUrl: String): FilterJobResponse? = withContext(Dispatchers.IO) {
         try {
-            val conn = url("/api/filter/request").openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.connectTimeout = TIMEOUT_MS
-            conn.readTimeout = TIMEOUT_MS
-            conn.doOutput = true
-            conn.setRequestProperty("Content-Type", "application/json")
-            addAuth(conn)
+            withConnection("/api/filter/request") { conn ->
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
 
-            val body = gson.toJson(mapOf(
-                "title" to title,
-                "year" to year,
-                "stream_url" to streamUrl
-            ))
-            conn.outputStream.bufferedWriter().use { it.write(body) }
+                val body = gson.toJson(mapOf(
+                    "title" to title,
+                    "year" to year,
+                    "stream_url" to streamUrl
+                ))
+                conn.outputStream.bufferedWriter().use { it.write(body) }
 
-            if (conn.responseCode in 200..299) {
-                val json = conn.inputStream.bufferedReader().readText()
-                conn.disconnect()
-                gson.fromJson(json, FilterJobResponse::class.java)
-            } else {
-                conn.disconnect()
-                null
+                if (conn.responseCode in 200..299) {
+                    val json = conn.inputStream.bufferedReader().use { it.readText() }
+                    gson.fromJson(json, FilterJobResponse::class.java)
+                } else null
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to request filter: ${e.message}")
@@ -99,26 +105,17 @@ class FilterServerClient(
     /** Check the status of a processing job. */
     suspend fun getJobStatus(jobId: String): FilterJobResponse? = withContext(Dispatchers.IO) {
         try {
-            val conn = url("/api/filter/status/$jobId").openConnection() as HttpURLConnection
-            conn.connectTimeout = TIMEOUT_MS
-            conn.readTimeout = TIMEOUT_MS
-            addAuth(conn)
-
-            if (conn.responseCode == 200) {
-                val json = conn.inputStream.bufferedReader().readText()
-                conn.disconnect()
-                gson.fromJson(json, FilterJobResponse::class.java)
-            } else {
-                conn.disconnect()
-                null
+            withConnection("/api/filter/status/$jobId") { conn ->
+                if (conn.responseCode == 200) {
+                    val json = conn.inputStream.bufferedReader().use { it.readText() }
+                    gson.fromJson(json, FilterJobResponse::class.java)
+                } else null
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to check job status: ${e.message}")
             null
         }
     }
-
-    private fun url(path: String) = URL("$baseUrl$path")
 
     private fun addAuth(conn: HttpURLConnection) {
         if (apiKey.isNotBlank()) {

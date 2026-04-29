@@ -148,15 +148,31 @@
             android:focusableInTouchMode="true" />
 
         <!-- Channel ribbon -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/imm_channel_ribbon"
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="160dp"
-            android:orientation="horizontal"
-            android:paddingStart="48dp"
-            android:paddingEnd="48dp"
-            android:paddingTop="8dp"
-            android:clipToPadding="false" />
+            android:layout_height="160dp">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/imm_channel_ribbon"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:paddingStart="48dp"
+                android:paddingEnd="48dp"
+                android:paddingTop="8dp"
+                android:clipToPadding="false" />
+
+            <TextView
+                android:id="@+id/imm_no_results_text"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="No channels found"
+                android:textSize="18sp"
+                android:textColor="@color/text_hint"
+                android:fontFamily="sans-serif-light"
+                android:visibility="gone" />
+        </FrameLayout>
     </LinearLayout>
 
     <!-- Hint -->

@@ -61,8 +61,17 @@ object Discovery {
     )
 
     fun isRestrictedByName(item: Channel): Boolean =
-        RESTRICTED_NAME_RE.containsMatchIn(item.name) ||
-            RESTRICTED_NAME_RE.containsMatchIn(item.category)
+        isRestrictedByName(item.name, item.category)
+
+    /**
+     * Name+category overload for callers that don't have a Channel object
+     * (e.g. Home Continue Watching, where WatchEntry stores name only and
+     * the underlying catalog item may not resolve when the entry is from
+     * an Xtream/Jellyfin series episode that isn't itself in the cache).
+     */
+    fun isRestrictedByName(name: String, category: String = ""): Boolean =
+        RESTRICTED_NAME_RE.containsMatchIn(name) ||
+            (category.isNotEmpty() && RESTRICTED_NAME_RE.containsMatchIn(category))
 
     /** Filter a list to hide restricted/adult titles when [enabled] is true. */
     fun applyRestrictedFilter(items: List<Channel>, enabled: Boolean): List<Channel> =

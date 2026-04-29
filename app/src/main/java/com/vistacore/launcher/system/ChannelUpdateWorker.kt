@@ -36,6 +36,11 @@ class ChannelUpdateWorker(
     companion object {
         private const val TAG = "ChannelUpdate"
         private const val WORK_NAME = "channel_auto_update"
+        // Unique-work name for one-time refreshes triggered from Splash /
+        // MainActivity / Settings. Used so that two bootstrap callers
+        // racing to enqueue (e.g. Splash timeout + MainActivity onResume)
+        // collapse to a single download instead of stacking duplicates.
+        private const val ONE_TIME_WORK_NAME = "channel_one_time_refresh"
         private const val CACHE_PREFS = "vistacore_channel_cache"
         private const val KEY_LAST_UPDATE = "last_update_time"
         private const val CACHE_FILE = "channels_cache.json"
@@ -67,16 +72,142 @@ class ChannelUpdateWorker(
             WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
         }
 
+        /**
+         * Enqueue a one-time refresh. Multiple bootstrap callers can hit
+         * this in quick succession (Splash 45s timeout, MainActivity
+         * onCreate noticing missing cache, Settings post-save) — KEEP
+         * collapses them to a single in-flight download instead of
+         * scheduling duplicates. Settings' cache-wipe path uses [enqueueOneTime]
+         * directly with REPLACE so a pending refresh with stale prefs
+         * doesn't preempt the new one.
+         */
         fun refreshNow(context: Context) {
+            enqueueOneTime(context, ExistingWorkPolicy.KEEP)
+        }
+
+        private fun enqueueOneTime(context: Context, policy: ExistingWorkPolicy) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
-
             val request = OneTimeWorkRequestBuilder<ChannelUpdateWorker>()
                 .setConstraints(constraints)
                 .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                ONE_TIME_WORK_NAME,
+                policy,
+                request
+            )
+        }
 
-            WorkManager.getInstance(context).enqueue(request)
+        /**
+         * Fetch and merge channels from every configured source — exactly the
+         * same path the periodic worker uses, exposed as a suspend helper so
+         * Splash's cold-start fetch can produce an identical catalog. Without
+         * this shared path, Splash's first-run cache differs from what the
+         * worker would have built (no Jellyfin merge, no Dispatcharr fallback).
+         */
+        suspend fun fetchAllSources(context: Context): List<Channel> {
+            val prefs = PrefsManager(context)
+            if (!prefs.hasIptvConfig() && !prefs.hasJellyfinConfig()) return emptyList()
+
+            val iptvChannels: List<Channel> = if (prefs.hasIptvConfig()) {
+                when (prefs.sourceType) {
+                    PrefsManager.SOURCE_M3U -> try { M3UParser().parse(prefs.m3uUrl) } catch (_: Exception) { emptyList() }
+                    PrefsManager.SOURCE_XTREAM -> {
+                        val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
+                        val xc = XtreamClient(auth)
+                        val live = try { xc.getChannels() } catch (_: Exception) { emptyList() }
+                        val dispatcharrKey = prefs.dispatcharrApiKey
+                        val (movies, series) = if (dispatcharrKey.isNotBlank()) {
+                            val dc = DispatcharrVodClient(prefs.xtreamServer, dispatcharrKey)
+                            val dcMovies = try { dc.getMovies() } catch (e: Exception) {
+                                Log.w(TAG, "Dispatcharr movies failed, falling back to Xtream: ${e.message}")
+                                try { xc.getMovies() } catch (_: Exception) { emptyList() }
+                            }
+                            val dcSeries = try { dc.getSeries() } catch (e: Exception) {
+                                Log.w(TAG, "Dispatcharr series failed, falling back to Xtream: ${e.message}")
+                                try { xc.getSeries() } catch (_: Exception) { emptyList() }
+                            }
+                            dcMovies to dcSeries
+                        } else {
+                            val xMovies = try { xc.getMovies() } catch (_: Exception) { emptyList() }
+                            val xSeries = try { xc.getSeries() } catch (_: Exception) { emptyList() }
+                            xMovies to xSeries
+                        }
+                        live + movies + series
+                    }
+                    else -> emptyList()
+                }
+            } else emptyList()
+
+            val jellyfinChannels: List<Channel> = if (prefs.hasJellyfinConfig()) {
+                try {
+                    val jf = JellyfinClient(
+                        JellyfinAuth(prefs.jellyfinServer, prefs.jellyfinUsername, prefs.jellyfinPassword)
+                    )
+                    jf.authenticate()
+                    val movies = try { jf.getMovies() } catch (e: Exception) {
+                        Log.e(TAG, "Jellyfin movies failed: ${e.message}"); emptyList()
+                    }
+                    val series = try { jf.getSeries() } catch (e: Exception) {
+                        Log.e(TAG, "Jellyfin series failed: ${e.message}"); emptyList()
+                    }
+                    movies + series
+                } catch (e: Exception) {
+                    Log.e(TAG, "Jellyfin fetch failed: ${e.message}")
+                    emptyList()
+                }
+            } else emptyList()
+
+            return mergeWithJellyfinPreference(iptvChannels, jellyfinChannels)
+        }
+
+        /**
+         * Merge IPTV and Jellyfin channels. On duplicate match (same normalized
+         * title+year for movies, same normalized name for series), the Jellyfin
+         * entry wins. Live TV from IPTV is always kept untouched since Jellyfin
+         * has no live equivalent.
+         */
+        private fun mergeWithJellyfinPreference(
+            iptv: List<Channel>,
+            jellyfin: List<Channel>,
+        ): List<Channel> {
+            if (jellyfin.isEmpty()) return iptv
+            val jellyfinKeys = jellyfin
+                .filter { it.contentType == ContentType.MOVIE || it.contentType == ContentType.SERIES }
+                .map { dedupKey(it) }
+                .toHashSet()
+            val filteredIptv = iptv.filter { ch ->
+                if (ch.contentType == ContentType.LIVE) return@filter true
+                dedupKey(ch) !in jellyfinKeys
+            }
+            return jellyfin + filteredIptv
+        }
+
+        private fun dedupKey(ch: Channel): String {
+            val normalized = normalizeTitle(ch.name)
+            return if (ch.contentType == ContentType.SERIES) {
+                "series|$normalized"
+            } else {
+                val year = if (ch.year > 0) ch.year.toString() else extractYear(ch.name)?.toString() ?: ""
+                "movie|$normalized|$year"
+            }
+        }
+
+        private fun normalizeTitle(raw: String): String {
+            var s = raw.lowercase()
+            s = s.replace(Regex("\\(\\d{4}\\)"), " ")
+            s = s.replace(Regex("\\b(19|20)\\d{2}\\b"), " ")
+            s = s.replace(Regex("\\b(4k|uhd|hdr|hdr10|dolby|dv|1080p|720p|480p|2160p|x265|x264|hevc|web[- ]?dl|bluray|bdrip|remux)\\b"), " ")
+            s = s.replace(Regex("^the\\s+"), "")
+            s = s.replace(Regex("[^a-z0-9]+"), " ").trim()
+            s = s.replace(Regex("\\s+"), " ")
+            return s
+        }
+
+        private fun extractYear(name: String): Int? {
+            val m = Regex("(19|20)\\d{2}").find(name) ?: return null
+            return m.value.toIntOrNull()
         }
 
         /** Wipe all IPTV content caches and schedule an immediate re-fetch. */
@@ -88,8 +219,19 @@ class ChannelUpdateWorker(
                 "show_names.bin"
             )
             names.forEach { File(context.filesDir, it).delete() }
+            // Drop the success sentinel too — the warm-path gate uses
+            // KEY_LAST_UPDATE to decide whether bootstrap is needed, so
+            // wiping caches without clearing this would leave the next
+            // launch thinking the cache was fine.
+            context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE)
+                .edit().remove(KEY_LAST_UPDATE).apply()
             com.vistacore.launcher.data.ContentCache.clear()
-            refreshNow(context)
+            // REPLACE rather than KEEP — if a refresh is already pending
+            // with the previous provider's prefs, we want to cancel it so
+            // the next run uses the new config. Otherwise the user can
+            // change provider, hit Save, and watch the old provider's
+            // refresh land in the just-wiped caches.
+            enqueueOneTime(context, ExistingWorkPolicy.REPLACE)
         }
 
         fun getLastUpdateTime(context: Context): Long {
@@ -203,8 +345,20 @@ class ChannelUpdateWorker(
             tempFile.renameTo(file)
         }
 
-        /** Save channels to file cache — also splits into movies/series caches. */
+        /**
+         * Save channels to file cache — also splits into movies/series caches.
+         * Empty fetches are refused: a transient provider outage can return
+         * `[]` for every source, and writing that out would satisfy the
+         * warm-path gate forever (cache files exist) while leaving the user
+         * with a blank catalog. Returning early without touching disk leaves
+         * the previous cache intact — or, on first run, leaves the system
+         * in a "no cache yet" state that the bootstrap path retries.
+         */
         fun cacheChannels(context: Context, channels: List<Channel>) {
+            if (channels.isEmpty()) {
+                Log.w(TAG, "Refusing to cache empty channel list — likely a transient outage")
+                return
+            }
             try {
                 // Write main cache (live channels only — keeps file small)
                 val liveChannels = channels.filter { it.contentType == com.vistacore.launcher.iptv.ContentType.LIVE }
@@ -221,6 +375,21 @@ class ChannelUpdateWorker(
                     .edit()
                     .putLong(KEY_LAST_UPDATE, System.currentTimeMillis())
                     .apply()
+                // Drop preload-derived rows so the next splash rebuilds them
+                // from the freshly-written disk cache. Without this, a
+                // background worker tick that updates the on-disk catalog
+                // is silently masked by stale Movies/Shows/Kids rows held
+                // in ContentCache from the previous splash pass. EPG is
+                // left intact — channel data updating doesn't invalidate
+                // the EPG.
+                com.vistacore.launcher.data.ContentCache.invalidatePreload()
+                // Also invalidate the persisted show-name map. It's keyed
+                // by channel id, so a same-sized refresh whose underlying
+                // titles changed (provider remapped IDs, episode renames,
+                // etc.) would otherwise produce wrong show grouping in
+                // the next splash. Cheap to recompute from the new series
+                // cache on next launch.
+                com.vistacore.launcher.data.ContentCache.deleteShowNameMap(context)
                 Log.d(TAG, "Cached ${liveChannels.size} live, ${movies.size} movies, ${series.size} series")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to write channel cache", e)
@@ -230,107 +399,22 @@ class ChannelUpdateWorker(
 
     override suspend fun doWork(): Result {
         val prefs = PrefsManager(applicationContext)
-
-        if (!prefs.hasIptvConfig() && !prefs.hasJellyfinConfig()) {
+        // Jellyfin is hybrid-only: it integrates alongside an IPTV provider
+        // and is never the sole catalog source. Skip the worker entirely
+        // when IPTV isn't configured (even if Jellyfin is) so we don't
+        // produce a Jellyfin-only cache that the rest of the app isn't
+        // designed to render.
+        if (!prefs.hasIptvConfig()) {
             return Result.success()
         }
-
         return try {
-            val iptvChannels: List<Channel> = if (prefs.hasIptvConfig()) {
-                when (prefs.sourceType) {
-                    PrefsManager.SOURCE_M3U -> try { M3UParser().parse(prefs.m3uUrl) } catch (_: Exception) { emptyList() }
-                    PrefsManager.SOURCE_XTREAM -> {
-                        val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
-                        val xc = XtreamClient(auth)
-                        val live = try { xc.getChannels() } catch (_: Exception) { emptyList() }
-                        val movies = try { xc.getMovies() } catch (_: Exception) { emptyList() }
-                        val series = try { xc.getSeries() } catch (_: Exception) { emptyList() }
-                        live + movies + series
-                    }
-                    else -> emptyList()
-                }
-            } else emptyList()
-
-            val jellyfinChannels: List<Channel> = if (prefs.hasJellyfinConfig()) {
-                try {
-                    val jf = JellyfinClient(
-                        JellyfinAuth(prefs.jellyfinServer, prefs.jellyfinUsername, prefs.jellyfinPassword)
-                    )
-                    jf.authenticate()
-                    val movies = try { jf.getMovies() } catch (e: Exception) {
-                        Log.e(TAG, "Jellyfin movies failed: ${e.message}"); emptyList()
-                    }
-                    val series = try { jf.getSeries() } catch (e: Exception) {
-                        Log.e(TAG, "Jellyfin series failed: ${e.message}"); emptyList()
-                    }
-                    movies + series
-                } catch (e: Exception) {
-                    Log.e(TAG, "Jellyfin fetch failed: ${e.message}")
-                    emptyList()
-                }
-            } else emptyList()
-
-            val merged = mergeWithJellyfinPreference(iptvChannels, jellyfinChannels)
-
+            val merged = fetchAllSources(applicationContext)
             cacheChannels(applicationContext, merged)
-            Log.d(TAG, "Channel update complete: ${merged.size} channels cached (iptv=${iptvChannels.size}, jellyfin=${jellyfinChannels.size})")
+            Log.d(TAG, "Channel update complete: ${merged.size} channels cached")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Channel update failed: ${e.message}")
             Result.retry()
         }
-    }
-
-    /**
-     * Merge IPTV and Jellyfin channels. On duplicate match (same normalized title+year
-     * for movies, same normalized name for series), the Jellyfin entry wins. Live TV
-     * from IPTV is always kept untouched since Jellyfin has no live equivalent.
-     */
-    private fun mergeWithJellyfinPreference(
-        iptv: List<Channel>,
-        jellyfin: List<Channel>
-    ): List<Channel> {
-        if (jellyfin.isEmpty()) return iptv
-
-        val jellyfinKeys = jellyfin
-            .filter { it.contentType == ContentType.MOVIE || it.contentType == ContentType.SERIES }
-            .map { dedupKey(it) }
-            .toHashSet()
-
-        val filteredIptv = iptv.filter { ch ->
-            if (ch.contentType == ContentType.LIVE) return@filter true
-            dedupKey(ch) !in jellyfinKeys
-        }
-        return jellyfin + filteredIptv
-    }
-
-    private fun dedupKey(ch: Channel): String {
-        val normalized = normalizeTitle(ch.name)
-        return if (ch.contentType == ContentType.SERIES) {
-            "series|$normalized"
-        } else {
-            val year = if (ch.year > 0) ch.year.toString() else extractYear(ch.name)?.toString() ?: ""
-            "movie|$normalized|$year"
-        }
-    }
-
-    private fun normalizeTitle(raw: String): String {
-        var s = raw.lowercase()
-        // Strip year in parentheses or trailing
-        s = s.replace(Regex("\\(\\d{4}\\)"), " ")
-        s = s.replace(Regex("\\b(19|20)\\d{2}\\b"), " ")
-        // Strip common quality / source tags
-        s = s.replace(Regex("\\b(4k|uhd|hdr|hdr10|dolby|dv|1080p|720p|480p|2160p|x265|x264|hevc|web[- ]?dl|bluray|bdrip|remux)\\b"), " ")
-        // Strip leading "the "
-        s = s.replace(Regex("^the\\s+"), "")
-        // Remove punctuation
-        s = s.replace(Regex("[^a-z0-9]+"), " ").trim()
-        s = s.replace(Regex("\\s+"), " ")
-        return s
-    }
-
-    private fun extractYear(name: String): Int? {
-        val m = Regex("(19|20)\\d{2}").find(name) ?: return null
-        return m.value.toIntOrNull()
     }
 }

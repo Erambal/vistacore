@@ -149,6 +149,17 @@
                 android:paddingBottom="32dp"
                 android:clipToPadding="false" />
 
+            <TextView
+                android:id="@+id/car_no_results_text"
+                android:layout_width="match_parent"
+                android:layout_height="180dp"
+                android:gravity="center"
+                android:text="No channels found"
+                android:textSize="18sp"
+                android:textColor="@color/text_hint"
+                android:fontFamily="sans-serif-light"
+                android:visibility="gone" />
+
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 

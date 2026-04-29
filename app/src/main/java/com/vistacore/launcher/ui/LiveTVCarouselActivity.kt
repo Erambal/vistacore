@@ -27,6 +27,7 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
     private lateinit var channelSearch: EditText
     private lateinit var rowsList: RecyclerView
     private lateinit var loadingView: View
+    private lateinit var noResultsText: TextView
 
     private var rowsAdapter: CarouselRowsAdapter? = null
     private data class Row(val title: String, val channels: List<Channel>)
@@ -42,6 +43,7 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
         channelSearch = findViewById(R.id.car_channel_search)
         rowsList = findViewById(R.id.car_rows)
         loadingView = findViewById(R.id.car_loading)
+        noResultsText = findViewById(R.id.car_no_results_text)
 
         rowsList.layoutManager = LinearLayoutManager(this)
 
@@ -58,9 +60,27 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
         }
         findViewById<Button>(R.id.car_btn_number_pad).setOnClickListener { showNumberPadOverlay() }
 
+        intent.getStringExtra(EXTRA_SEARCH_QUERY)?.let { query ->
+            if (query.isNotBlank()) {
+                channelSearch.setText(query)
+                channelSearch.clearFocus()
+                rowsList.requestFocus()
+                window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
+            }
+        }
+
         setupPlayer(heroPlayer)
         loadChannels()
     }
+
+    override fun currentSearchQuery(): String =
+        channelSearch.text?.toString()?.trim().orEmpty()
+
+    // The carousel groups channels into rows by category (Favorites / Recent /
+    // genre) and has no category picker, so the base "default to Recent" logic
+    // would silently hide most of the lineup behind an invisible filter. Pin
+    // it to All — the carousel rows surface Recents and Favorites on their own.
+    override fun initialCategory(): String = CATEGORY_ALL
 
     override fun onChannelsLoaded() {
         rebuildRows()
@@ -77,6 +97,9 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
     override fun onSelectedChannelChanged(previous: Channel?, current: Channel) {
         heroTitle.text = current.name
         updateHeroSubtitle(current)
+        // Row adapters were built with the previous currentChannel captured by
+        // value, so the gold highlight stays on the old card without a rebuild.
+        rebuildRows()
     }
 
     override fun onEpgLoaded() {
@@ -114,16 +137,34 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
         }
 
         rows = r
-        rowsAdapter = CarouselRowsAdapter(rows.map { it.title to it.channels }, currentChannel) { ch ->
-            if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
-        }
+        rowsAdapter = CarouselRowsAdapter(
+            rows.map { it.title to it.channels },
+            currentChannel,
+            favoritesManager,
+            onFavoriteToggle = { id -> toggleChannelFavorite(id) },
+            onClick = { ch ->
+                if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
+            }
+        )
         rowsList.adapter = rowsAdapter
+
+        val q = channelSearch.text?.toString()?.trim().orEmpty()
+        if (displayedChannels.isEmpty() && q.isNotEmpty()) {
+            noResultsText.text = "No channels matching \"$q\""
+            noResultsText.visibility = View.VISIBLE
+            rowsList.visibility = View.GONE
+        } else {
+            noResultsText.visibility = View.GONE
+            rowsList.visibility = View.VISIBLE
+        }
     }
 }
 
 class CarouselRowsAdapter(
     private val rows: List<Pair<String, List<Channel>>>,
     private val currentChannel: Channel?,
+    private val favoritesManager: com.vistacore.launcher.data.FavoritesManager,
+    private val onFavoriteToggle: (String) -> Boolean,
     private val onClick: (Channel) -> Unit
 ) : RecyclerView.Adapter<CarouselRowsAdapter.VH>() {
 
@@ -142,7 +183,9 @@ class CarouselRowsAdapter(
         val (title, channels) = rows[position]
         holder.title.text = title
         holder.list.layoutManager = LinearLayoutManager(holder.itemView.context, LinearLayoutManager.HORIZONTAL, false)
-        holder.list.adapter = ChannelRibbonAdapter(channels, currentChannel, onClick)
+        holder.list.adapter = ChannelRibbonAdapter(
+            channels, currentChannel, favoritesManager, onFavoriteToggle, onClick
+        )
     }
 
     override fun getItemCount() = rows.size

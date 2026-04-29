@@ -74,6 +74,22 @@ class PrefsManager(context: Context) {
         const val SOURCE_M3U = 0
         const val SOURCE_XTREAM = 1
 
+        // SHA-256 of a Dispatcharr API key an earlier build shipped as a
+        // hardcoded default. Existing installs may still have that value
+        // saved in shared prefs from a Save click while it was the default
+        // — the getter hashes the saved value and shadows it with empty
+        // when the hashes match. Storing only the hash here avoids
+        // re-embedding the credential in source / the APK; SHA-256 is
+        // one-way so the hash can't be turned back into the live token.
+        private const val LEGACY_LEAKED_DISPATCHARR_KEY_SHA256 =
+            "5456315e93c014e6d37d4ed91ce089807e11500e687550466c75a133c724fb4c"
+
+        private fun sha256Hex(input: String): String {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            val bytes = digest.digest(input.toByteArray(Charsets.UTF_8))
+            return bytes.joinToString("") { "%02x".format(it) }
+        }
+
         val ALL_SPORTS = setOf("basketball", "football", "baseball", "hockey", "soccer")
 
         /** Default ordered list of app IDs shown on the home screen */
@@ -102,8 +118,24 @@ class PrefsManager(context: Context) {
         get() = prefs.getString(KEY_XTREAM_PASSWORD, "") ?: ""
         set(value) = prefs.edit().putString(KEY_XTREAM_PASSWORD, value).apply()
 
+    /**
+     * Dispatcharr API key. Default is empty — the app must work without one
+     * (the worker falls back to Xtream's own VOD endpoints when blank). An
+     * earlier build shipped a hardcoded token here so fresh installs would
+     * silently use someone's account; that's both an exposure risk (the
+     * token is in the binary) and an operational risk (revoke = breakage).
+     * If the leaked token is still saved in an existing install's prefs
+     * (because that user hit Save while it was the default), shadow it
+     * with empty so the rest of the app behaves like a fresh install.
+     */
     var dispatcharrApiKey: String
-        get() = prefs.getString(KEY_DISPATCHARR_API_KEY, "25h_7mBeuBnxOdGYlLIKxLaoU9UMsMbQ0AhT0524XbgFMG0nXjUeGg") ?: "25h_7mBeuBnxOdGYlLIKxLaoU9UMsMbQ0AhT0524XbgFMG0nXjUeGg"
+        get() {
+            val saved = prefs.getString(KEY_DISPATCHARR_API_KEY, "") ?: ""
+            if (saved.isBlank()) return ""
+            // Compare hashes rather than literals so the credential itself
+            // never appears in source / the APK strings table.
+            return if (sha256Hex(saved) == LEGACY_LEAKED_DISPATCHARR_KEY_SHA256) "" else saved
+        }
         set(value) = prefs.edit().putString(KEY_DISPATCHARR_API_KEY, value).apply()
 
     var lastChannel: String
@@ -373,6 +405,29 @@ class PrefsManager(context: Context) {
 
     fun hasJellyfinConfig(): Boolean =
         jellyfinServer.isNotBlank() && jellyfinUsername.isNotBlank()
+
+    /**
+     * Stable identity string covering every field that determines what
+     * content the app fetches and serves. When this changes, the disk
+     * cache holds content from a different provider and any in-memory
+     * channel list is stale. Used by Settings (to decide whether Save /
+     * onPause should wipe caches) and by MainActivity (to decide whether
+     * to reload allChannels on resume). Keep both in sync — a narrower
+     * fingerprint at one of those callers means changes silently fail to
+     * propagate (e.g. a Jellyfin-only credential update can't refresh
+     * the home screen if Home only fingerprints sourceType + Xtream).
+     */
+    fun sourceIdentity(): String = buildString {
+        append(sourceType).append('|')
+        append(m3uUrl).append('|')
+        append(xtreamServer).append('|')
+        append(xtreamUsername).append('|')
+        append(xtreamPassword).append('|')
+        append(dispatcharrApiKey).append('|')
+        append(jellyfinServer).append('|')
+        append(jellyfinUsername).append('|')
+        append(jellyfinPassword)
+    }
 
     // ====================== Device Activation ======================
 

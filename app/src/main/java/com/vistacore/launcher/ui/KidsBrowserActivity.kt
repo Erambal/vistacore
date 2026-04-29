@@ -59,6 +59,15 @@ class KidsBrowserActivity : BaseActivity() {
 
     private var allKidsContent: List<Channel> = emptyList()
     private var kidsShowIndex: Map<String, List<Channel>>? = null
+    // In-flight search-or-shelf-rebuild job. Cancelled before launching a
+    // new one so a slow earlier query (or band change) can't paint over a
+    // newer one.
+    private var searchJob: Job? = null
+    // True once the list is actually bound to a search-results / no-match
+    // state. Used so a sub-2-char keystroke (including backspacing from
+    // "bluey" → "b") triggers a shelf rebuild only when we *were* showing
+    // search results — not on every stray character while shelves are up.
+    private var showingSearchResults: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -132,7 +141,16 @@ class KidsBrowserActivity : BaseActivity() {
             }
             parent = parent.parent
         }
-        val rv = innerRv ?: return false
+        if (innerRv == null) {
+            // Focus is outside the rows — handle the case the comment above
+            // claims is fixed: RIGHT from a sidebar age-band tab should land
+            // on the first poster of the first row. Default focus search
+            // misses with tinted hero rows whose inner RV hasn't laid out
+            // yet, so we explicitly jump.
+            if (right && focused.isOnSidebarTab()) return jumpToFirstPosterInVisibleRow()
+            return false
+        }
+        val rv = innerRv
         val adapter = rv.adapter as? KidsPosterAdapter ?: return false
         val posterView = rv.findContainingItemView(focused) ?: return false
         val pos = rv.getChildAdapterPosition(posterView)
@@ -149,6 +167,27 @@ class KidsBrowserActivity : BaseActivity() {
         fun tryFocus(): Boolean =
             rv.findViewHolderForAdapterPosition(target)?.itemView?.requestFocus() == true
         rv.post { if (!tryFocus()) rv.postDelayed({ tryFocus() }, 140) }
+        return true
+    }
+
+    private fun View.isOnSidebarTab(): Boolean =
+        this == tabToddler || this == tabYounger || this == tabOlder || this == tabAll
+
+    private fun jumpToFirstPosterInVisibleRow(): Boolean {
+        val list = contentList
+        val lm = list.layoutManager as? LinearLayoutManager ?: return false
+        val firstVisible = lm.findFirstVisibleItemPosition().coerceAtLeast(0)
+        fun tryFocus(): Boolean {
+            val rowVH = list.findViewHolderForAdapterPosition(firstVisible) ?: return false
+            val innerRv = rowVH.itemView.findViewById<RecyclerView>(R.id.row_recycler)
+                ?: return false
+            return innerRv.findViewHolderForAdapterPosition(0)
+                ?.itemView?.requestFocus() == true
+        }
+        if (tryFocus()) return true
+        // The inner row adapter may not have laid out yet on first paint;
+        // post + delayed retry mirrors the same pattern as kidsJumpRow.
+        list.post { if (!tryFocus()) list.postDelayed({ tryFocus() }, 160) }
         return true
     }
 
@@ -187,8 +226,12 @@ class KidsBrowserActivity : BaseActivity() {
     private fun loadContent() {
         // Try the preloaded ContentCache first for instant display.
         if (ContentCache.kidsItems != null && ContentCache.kidsItems!!.isNotEmpty()) {
-            allKidsContent = filterToKids(ContentCache.kidsItems!!)
+            val filtered = filterToKids(ContentCache.kidsItems!!)
             kidsShowIndex = ContentCache.kidsShowIndex
+                ?: filtered
+                    .filter { it.contentType == ContentType.SERIES }
+                    .groupBy { extractShowName(it.name) }
+            allKidsContent = dedupShowEpisodes(filtered)
             applyCurrentBand()
             return
         }
@@ -205,10 +248,10 @@ class KidsBrowserActivity : BaseActivity() {
                 }
                 showLoading(false)
                 if (combined.isEmpty()) { showEmpty(); return@launch }
-                allKidsContent = combined
                 kidsShowIndex = combined
                     .filter { it.contentType == ContentType.SERIES }
                     .groupBy { extractShowName(it.name) }
+                allKidsContent = dedupShowEpisodes(combined)
                 applyCurrentBand()
             } catch (e: Exception) {
                 showLoading(false)
@@ -218,22 +261,68 @@ class KidsBrowserActivity : BaseActivity() {
         }
     }
 
-    private fun filterToKids(items: List<Channel>): List<Channel> =
-        items.filter { KidsDiscovery.isKidsItem(it) }
+    private fun filterToKids(items: List<Channel>): List<Channel> {
+        // The kids classifier blocks adult tokens (BLOCK_RE) but not rating
+        // tokens like "(R)" or "TV-MA", and franchise matches like Toy
+        // Story or Madagascar are explicitly allowed regardless of name.
+        // Honour the global Hide-Restricted-Ratings pref here so a
+        // restricted-by-name title never reaches the Kids catalog when
+        // the user has the toggle on, matching the Movies/Shows browser.
+        val kids = items.filter { KidsDiscovery.isKidsItem(it) }
+        val hideRestricted = PrefsManager(this).hideRestrictedRatings
+        return Discovery.applyRestrictedFilter(kids, hideRestricted)
+    }
+
+    /**
+     * Collapse multi-episode M3U shows down to one representative entry per
+     * show name. Without this, raw episode lists (very common from M3U
+     * providers) flood shelves and search with many cards for the same show
+     * — e.g. 24 "Bluey - S01E04" entries on the Bluey franchise shelf.
+     * Non-series items pass through untouched. The full episode list is
+     * still preserved in kidsShowIndex for click-to-detail resolution.
+     *
+     * The representative also has its name rewritten to the cleaned show
+     * name so poster titles read "Bluey" instead of "Bluey - S01E03".
+     * extractShowName is idempotent, so kidsShowIndex lookups still hit.
+     */
+    private fun dedupShowEpisodes(items: List<Channel>): List<Channel> {
+        val seen = mutableSetOf<String>()
+        return items.mapNotNull { ch ->
+            if (ch.contentType != ContentType.SERIES) return@mapNotNull ch
+            val showName = extractShowName(ch.name)
+            if (seen.add(showName)) ch.copy(name = showName) else null
+        }
+    }
 
     private fun selectBand(band: KidsDiscovery.AgeBand) {
         if (currentBand == band && contentList.adapter != null) return
         currentBand = band
         bandPrefs.set(band)
-        applyCurrentBand()
+        // Update the highlight up front. selectBand is the source of truth
+        // for the current band — if we leave the highlight refresh to
+        // applyCurrentBand() it never runs on the search-active path
+        // (showSearchResults doesn't touch tab styling), so the user can
+        // see results from the new band while the old tab stays gold.
+        updateTabHighlights()
+        // Preserve an active search across band changes so the user doesn't
+        // see the typed query but unfiltered shelves underneath. With <2
+        // chars (no real search), fall back to shelves for the new band.
+        val q = searchInput.text?.toString()?.trim().orEmpty()
+        if (q.length >= 2) showSearchResults(q) else applyCurrentBand()
     }
 
     private fun applyCurrentBand() {
         updateTabHighlights()
-        if (allKidsContent.isEmpty()) { showEmpty(); return }
-        scope.launch {
+        searchJob?.cancel()
+        if (allKidsContent.isEmpty()) {
+            showingSearchResults = false
+            showEmpty()
+            return
+        }
+        searchJob = scope.launch {
             val rows = withContext(Dispatchers.IO) { buildKidsDiscoveryRows(currentBand) }
             if (rows.isEmpty()) showEmpty() else showContent(rows)
+            showingSearchResults = false
         }
     }
 
@@ -244,9 +333,15 @@ class KidsBrowserActivity : BaseActivity() {
 
         val rows = mutableListOf<NetflixRow>()
 
-        // Continue Watching — oversized hero row at the top
+        // Continue Watching — oversized hero row at the top.
+        // We can't use Discovery.continueWatching here because the kids
+        // catalog is deduped to one tile per show, while playback records
+        // the actual episode URL. A direct streamUrl lookup against the
+        // deduped pool would miss every episode that isn't the show's
+        // representative. kidsContinueWatching walks kidsShowIndex and
+        // maps episode URLs back to the show tile.
         val history = WatchHistoryManager(this)
-        val cw = Discovery.continueWatching(history, pool)
+        val cw = kidsContinueWatching(history, pool)
         if (cw.isNotEmpty()) {
             rows.add(NetflixRow.CategoryRow(
                 title = "▶  Pick Up Where You Left Off",
@@ -291,7 +386,55 @@ class KidsBrowserActivity : BaseActivity() {
             rows.add(NetflixRow.CategoryRow(cat, items))
         }
 
+        // Sparse-band fallback: if nothing above qualified (no franchise
+        // matches, no mood >= 3, no category >= 3), the user otherwise
+        // sees an empty screen even though `pool` had matching items.
+        // Surface them in a single "More for Kids" shelf so the band
+        // selection always produces something usable.
+        if (rows.isEmpty()) {
+            rows.add(NetflixRow.CategoryRow(
+                title = "More for Kids",
+                items = pool.take(60),
+                origin = "kids-fallback"
+            ))
+        }
+
         return rows
+    }
+
+    /**
+     * Continue-Watching list for the deduped Kids catalog. For movies and
+     * live channels we match by streamUrl as usual. For series we map
+     * each watched episode URL back to its show via kidsShowIndex, then
+     * surface the show's representative tile (deduped by show name so
+     * back-to-back episodes of one show only show one CW card).
+     */
+    private fun kidsContinueWatching(
+        history: WatchHistoryManager,
+        pool: List<Channel>,
+        limit: Int = 12,
+    ): List<Channel> {
+        val byUrl = pool.associateBy { it.streamUrl }
+        val episodeUrlToShow: Map<String, Channel> = run {
+            val showByName = pool
+                .filter { it.contentType == ContentType.SERIES }
+                .associateBy { it.name }
+            val map = HashMap<String, Channel>()
+            for ((name, eps) in (kidsShowIndex ?: emptyMap())) {
+                val rep = showByName[name] ?: continue
+                for (ep in eps) map[ep.streamUrl] = rep
+            }
+            map
+        }
+        val seenShowIds = mutableSetOf<String>()
+        val out = mutableListOf<Channel>()
+        for (entry in history.getContinueWatching()) {
+            val candidate = byUrl[entry.streamUrl] ?: episodeUrlToShow[entry.streamUrl] ?: continue
+            if (candidate.contentType == ContentType.SERIES && !seenShowIds.add(candidate.id)) continue
+            out.add(candidate)
+            if (out.size >= limit) break
+        }
+        return out
     }
 
     private fun updateTabHighlights() {
@@ -332,14 +475,24 @@ class KidsBrowserActivity : BaseActivity() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
                 val query = s?.toString()?.trim() ?: ""
-                if (query.length >= 2) showSearchResults(query)
-                else if (query.isEmpty()) applyCurrentBand()
+                searchJob?.cancel()
+                when {
+                    query.length >= 2 -> showSearchResults(query)
+                    showingSearchResults -> {
+                        // Sub-2-char (including empty) and we were showing
+                        // search results / a no-match empty — restore the
+                        // shelves so stale results don't linger.
+                        applyCurrentBand()
+                    }
+                    // else: shelves already up; sub-2-char keystroke is a no-op
+                }
             }
         })
     }
 
     private fun showSearchResults(query: String) {
-        scope.launch {
+        searchJob?.cancel()
+        searchJob = scope.launch {
             val rows = withContext(Dispatchers.IO) {
                 val pool = KidsDiscovery.all(allKidsContent, currentBand)
                 val results = pool.filter {
@@ -356,6 +509,7 @@ class KidsBrowserActivity : BaseActivity() {
                 emptyView.visibility = View.VISIBLE
                 emptyView.text = "No results for \"$query\""
             }
+            showingSearchResults = true
         }
     }
 
@@ -363,8 +517,37 @@ class KidsBrowserActivity : BaseActivity() {
         if (item.contentType == ContentType.SERIES) {
             val xtreamSeriesId = if (item.id.startsWith("xt_series_"))
                 item.id.removePrefix("xt_series_").toIntOrNull() else null
+            // Jellyfin series tiles carry a `jellyfin://series/<id>` marker
+            // URL that the player can't actually stream — episode listing has
+            // to come from JellyfinClient.getEpisodes(). Without this branch,
+            // a Kids user clicking a Jellyfin show would launch the marker
+            // URL in IPTVPlayerActivity and see a load failure.
+            val jellyfinSeriesId = if (item.id.startsWith("jf_series_"))
+                item.id.removePrefix("jf_series_") else null
 
-            if (xtreamSeriesId != null) {
+            if (jellyfinSeriesId != null) {
+                val showName = extractShowName(item.name)
+                showLoading(true)
+                scope.launch {
+                    val episodes = withContext(Dispatchers.IO) {
+                        try {
+                            val prefs = PrefsManager(this@KidsBrowserActivity)
+                            val jf = JellyfinClient(
+                                JellyfinAuth(prefs.jellyfinServer, prefs.jellyfinUsername, prefs.jellyfinPassword)
+                            )
+                            jf.authenticate()
+                            jf.getEpisodes(jellyfinSeriesId)
+                        } catch (_: Exception) { emptyList() }
+                    }
+                    showLoading(false)
+                    if (episodes.isNotEmpty())
+                        ShowDetailActivity.launch(
+                            this@KidsBrowserActivity, showName, item.category, item.logoUrl, episodes
+                        )
+                    else
+                        Toast.makeText(this@KidsBrowserActivity, "Could not load episodes", Toast.LENGTH_SHORT).show()
+                }
+            } else if (xtreamSeriesId != null) {
                 val showName = extractShowName(item.name)
                 showLoading(true)
                 scope.launch {
@@ -377,28 +560,46 @@ class KidsBrowserActivity : BaseActivity() {
                     }
                     showLoading(false)
                     if (episodes.isNotEmpty())
-                        ShowDetailActivity.launch(this@KidsBrowserActivity, showName, item.category, item.logoUrl, episodes)
+                        ShowDetailActivity.launch(
+                            this@KidsBrowserActivity, showName, item.category, item.logoUrl, episodes,
+                            xtreamSeriesId = xtreamSeriesId
+                        )
                     else
                         Toast.makeText(this@KidsBrowserActivity, "Could not load episodes", Toast.LENGTH_SHORT).show()
                 }
             } else {
+                // M3U series — always route through ShowDetailActivity, even
+                // for single-episode shows, matching VODBrowserActivity's
+                // shows path. Skipping straight to the player on size==1
+                // bypasses season/episode context and the detail-screen
+                // rating gate, so a kids-classified-but-actually-restricted
+                // single-episode series would otherwise play unchecked.
                 val showName = extractShowName(item.name)
                 if (kidsShowIndex == null) {
                     val allSeries = allKidsContent.filter { it.contentType == ContentType.SERIES }
                     kidsShowIndex = allSeries.groupBy { extractShowName(it.name) }
                 }
-                val episodes = kidsShowIndex?.get(showName) ?: emptyList()
-                if (episodes.size > 1) {
-                    ShowDetailActivity.launch(this, showName, item.category, item.logoUrl, episodes)
-                } else {
-                    startActivity(Intent(this, IPTVPlayerActivity::class.java).apply {
-                        putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
-                        putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, item.name)
-                        putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, item.logoUrl)
-                        putExtra(IPTVPlayerActivity.EXTRA_IS_VOD, true)
-                    })
-                }
+                val episodes = kidsShowIndex?.get(showName) ?: listOf(item)
+                ShowDetailActivity.launch(this, showName, item.category, item.logoUrl, episodes)
             }
+        } else if (item.contentType == ContentType.MOVIE && item.id.startsWith("xt_vod_")) {
+            // Route Xtream movies through MovieDetailActivity so the per-title
+            // MPAA gate (applyMpaa) can block restricted titles when Hide
+            // Restricted Ratings is on. Without this, a restricted movie
+            // that slipped past KidsDiscovery.isKidsItem (e.g. an R-rated
+            // film mis-tagged "Family" by the provider) would play
+            // straight out of Kids with no second-line check.
+            val vodId = item.id.removePrefix("xt_vod_").toIntOrNull() ?: 0
+            val year = Regex("""\((\d{4})\)""").find(item.name)?.groupValues?.get(1).orEmpty()
+            MovieDetailActivity.launch(
+                activity = this,
+                title = item.name,
+                category = item.category,
+                posterUrl = item.logoUrl,
+                streamUrl = item.streamUrl,
+                vodId = vodId,
+                year = year
+            )
         } else {
             startActivity(Intent(this, IPTVPlayerActivity::class.java).apply {
                 putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)

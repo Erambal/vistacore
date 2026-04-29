@@ -60,7 +60,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Search channels &amp; shows…"
+                        android:text="Search movies, shows, channels…"
                         android:textSize="17sp"
                         android:textColor="@color/text_hint"
                         android:fontFamily="sans-serif-light"

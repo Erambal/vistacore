@@ -30,6 +30,7 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
     private lateinit var categoryPicker: Button
     private lateinit var channelRibbon: RecyclerView
     private lateinit var loadingView: View
+    private lateinit var noResultsText: TextView
 
     private var ribbonAdapter: ChannelRibbonAdapter? = null
 
@@ -46,6 +47,7 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
         categoryPicker = findViewById(R.id.sh_category_chips)
         channelRibbon = findViewById(R.id.sh_channel_ribbon)
         loadingView = findViewById(R.id.sh_loading)
+        noResultsText = findViewById(R.id.sh_no_results_text)
 
         channelRibbon.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
 
@@ -58,6 +60,15 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
         })
 
         findViewById<Button>(R.id.sh_btn_number_pad).setOnClickListener { showNumberPadOverlay() }
+
+        intent.getStringExtra(EXTRA_SEARCH_QUERY)?.let { query ->
+            if (query.isNotBlank()) {
+                channelSearch.setText(query)
+                channelSearch.clearFocus()
+                channelRibbon.requestFocus()
+                window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
+            }
+        }
 
         setupPlayer(playerView)
         loadChannels()
@@ -103,10 +114,24 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
     }
 
     private fun refreshRibbon() {
-        ribbonAdapter = ChannelRibbonAdapter(displayedChannels, currentChannel) { ch ->
-            if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
-        }
+        ribbonAdapter = ChannelRibbonAdapter(
+            displayedChannels, currentChannel, favoritesManager,
+            onFavoriteToggle = { id -> toggleChannelFavorite(id) },
+            onClick = { ch ->
+                if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
+            }
+        )
         channelRibbon.adapter = ribbonAdapter
+
+        val q = channelSearch.text?.toString()?.trim().orEmpty()
+        if (displayedChannels.isEmpty() && q.isNotEmpty()) {
+            noResultsText.text = "No channels matching \"$q\""
+            noResultsText.visibility = View.VISIBLE
+            channelRibbon.visibility = View.GONE
+        } else {
+            noResultsText.visibility = View.GONE
+            channelRibbon.visibility = View.VISIBLE
+        }
     }
 
     private fun updateNow(channel: Channel) {

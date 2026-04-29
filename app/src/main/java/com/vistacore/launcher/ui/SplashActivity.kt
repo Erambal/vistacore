@@ -295,8 +295,13 @@ class SplashActivity : BaseActivity() {
         scope.launch {
             val activationManager = DeviceActivationManager(this@SplashActivity)
             val active = activationManager.isDeviceActive()
-            // Register device so admin can see it in the dashboard
-            activationManager.registerDevice()
+            // Register device so admin can see it in the dashboard.
+            // Fire-and-forget: registerDevice carries an 8s connect + 8s read
+            // timeout, so awaiting it would stall splash by up to 16 seconds
+            // when the activation server is down even though cached
+            // activation is already valid. The result isn't load-bearing for
+            // the launch path — it just announces presence to the dashboard.
+            scope.launch { activationManager.registerDevice() }
 
             if (!active) {
                 startActivity(Intent(this@SplashActivity, LockScreenActivity::class.java))
@@ -339,7 +344,11 @@ class SplashActivity : BaseActivity() {
         }
 
         if (!prefs.hasIptvConfig()) {
-            // Setup was skipped, no credentials yet — go to main, user can add later in Settings
+            // Jellyfin is intentionally a hybrid-only source: it integrates
+            // *alongside* an IPTV provider (M3U or Xtream), never on its
+            // own. So if IPTV isn't configured, skip the fetch path even
+            // when Jellyfin credentials are present — the user can finish
+            // setup in Settings.
             updateStatus("Ready", 100)
             goToMain(startTime)
             return
@@ -347,19 +356,25 @@ class SplashActivity : BaseActivity() {
 
         scope.launch {
             try {
-                // Check if caches already exist
-                val hasLiveCache = withContext(Dispatchers.IO) {
-                    val gz = java.io.File(filesDir, "channels_cache.json.gz")
-                    val plain = java.io.File(filesDir, "channels_cache.json")
-                    (gz.exists() && gz.length() > 0) || (plain.exists() && plain.length() > 0)
+                // Check if caches already exist. preloadContent reads three
+                // separate caches (channels / movies / series) so the gate
+                // also has to require all three — without the series check,
+                // Splash would take the warm path on a half-populated cache
+                // and skip the redownload preloadContent depends on. We also
+                // require KEY_LAST_UPDATE > 0 (set only after a non-empty
+                // fetch) so a transient outage that produced empty cache
+                // files doesn't satisfy the warm-path gate forever.
+                fun cacheExists(name: String): Boolean {
+                    val gz = java.io.File(filesDir, "$name.gz")
+                    val plain = java.io.File(filesDir, name)
+                    return (gz.exists() && gz.length() > 0) || (plain.exists() && plain.length() > 0)
                 }
-                val hasMovieCache = withContext(Dispatchers.IO) {
-                    val gz = java.io.File(filesDir, "movies_cache.json.gz")
-                    val plain = java.io.File(filesDir, "movies_cache.json")
-                    (gz.exists() && gz.length() > 0) || (plain.exists() && plain.length() > 0)
-                }
+                val hasLiveCache = withContext(Dispatchers.IO) { cacheExists("channels_cache.json") }
+                val hasMovieCache = withContext(Dispatchers.IO) { cacheExists("movies_cache.json") }
+                val hasSeriesCache = withContext(Dispatchers.IO) { cacheExists("series_cache.json") }
+                val hadSuccessfulFetch = ChannelUpdateWorker.getLastUpdateTime(this@SplashActivity) > 0
 
-                if (hasLiveCache && hasMovieCache) {
+                if (hasLiveCache && hasMovieCache && hasSeriesCache && hadSuccessfulFetch) {
                     if (!ContentCache.isReady) {
                         // Start rotating fun messages while preloading
                         val msgs = preloadMessages.shuffled()
@@ -410,38 +425,53 @@ class SplashActivity : BaseActivity() {
                     }
                 }
 
-                // Timeout: if download takes > 45 seconds, go to main anyway
-                var timedOut = false
-                val timeoutJob = launch {
-                    delay(45000)
-                    timedOut = true
-                    messageJob.cancel()
+                // Race the fetch against a 45s budget. withTimeoutOrNull
+                // cancels the inner coroutine (and the withContext(IO) it
+                // wraps) when the deadline expires, so the splash coroutine
+                // doesn't keep awaiting a stale result while the worker —
+                // already enqueued below on timeout — does the same work.
+                // The previous timeoutJob design queued a parallel worker
+                // refresh and navigated to home, but the original fetch
+                // kept running until completion, double-hitting providers.
+                //
+                // Use the same fetch path the periodic worker uses so the
+                // first-launch catalog matches what the next worker tick
+                // would produce: Jellyfin merged with IPTV, Dispatcharr VOD
+                // routing when configured, per-source error fallback.
+                val allChannels = withTimeoutOrNull(45_000L) {
+                    withContext(Dispatchers.IO) {
+                        ChannelUpdateWorker.fetchAllSources(this@SplashActivity)
+                    }
+                }
+                messageJob.cancel()
+
+                if (allChannels == null) {
+                    // Timed out — let the worker finish in the background
+                    // (refreshNow uses unique-work KEEP, so this won't
+                    // stack on another bootstrap caller's enqueue).
                     updateStatus("Still loading — grab a snack, we'll finish in the background", 80)
                     ChannelUpdateWorker.refreshNow(this@SplashActivity)
                     if (prefs.autoUpdateEnabled) {
                         ChannelUpdateWorker.schedule(this@SplashActivity)
                     }
                     goToMain(startTime)
+                    return@launch
                 }
 
-                val allChannels = withContext(Dispatchers.IO) {
-                    when (prefs.sourceType) {
-                        PrefsManager.SOURCE_M3U -> M3UParser().parse(prefs.m3uUrl)
-                        PrefsManager.SOURCE_XTREAM -> {
-                            val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
-                            val xc = XtreamClient(auth)
-                            val live = xc.getChannels()
-                            val movies = try { xc.getMovies() } catch (_: Exception) { emptyList() }
-                            val series = try { xc.getSeries() } catch (_: Exception) { emptyList() }
-                            live + movies + series
-                        }
-                        else -> emptyList()
+                if (allChannels.isEmpty()) {
+                    // Every source returned empty — almost certainly a
+                    // transient outage. Don't write empty caches (the
+                    // warm-path gate would lock onto them forever). Hand
+                    // off to the background worker for retries and let
+                    // home render its blank state until then.
+                    ChannelUpdateWorker.refreshNow(this@SplashActivity)
+                    if (prefs.autoUpdateEnabled) {
+                        ChannelUpdateWorker.schedule(this@SplashActivity)
                     }
+                    updateStatus("Loading in background — continuing", 100)
+                    goToMain(startTime)
+                    return@launch
                 }
-
-                timeoutJob.cancel()
-                messageJob.cancel()
-                if (timedOut) return@launch
 
                 updateStatus("Organizing ${allChannels.size} items…", 70)
 
@@ -573,17 +603,27 @@ class SplashActivity : BaseActivity() {
             if (!loadPrefs.loadKidsEnabled) {
                 // Skip kids preload
             } else {
-            val allowedKidsCategories = setOf("animation", "family", "kids")
-            val blockedKidsCategories = setOf("action & adventure (shows)", "family (shows)")
+            // Use the same classifier the runtime Kids browser uses
+            // (KidsDiscovery.isKidsItem). The previous exact-category
+            // allowlist was strictly narrower — it accepted only items
+            // whose category was exactly "animation", "family", or
+            // "kids", so franchise-matched titles (Bluey, Paw Patrol,
+            // etc.) parked under any other category never made it into
+            // ContentCache.kidsItems. That left the user with a
+            // smaller catalog when Splash preload had run and a larger
+            // one on cold launches without preload.
+            fun isKids(ch: Channel) = KidsDiscovery.isKidsItem(ch)
 
-            fun isKids(ch: Channel): Boolean {
-                val cat = ch.category.lowercase().trim()
-                if (cat in blockedKidsCategories) return false
-                return cat in allowedKidsCategories
-            }
-
-            val kidsMovies = (movies ?: emptyList()).filter { isKids(it) }
-            val kidsSeries = (series ?: emptyList()).filter { isKids(it) }
+            // Read movies + series from disk independently of the
+            // Movies/Shows preload toggles. The kids switch is its own
+            // setting — turning Movies preload off shouldn't strip
+            // cartoons out of Kids. We reuse the already-loaded movies
+            // and series lists when those toggles were on, and read
+            // from disk otherwise so Kids gets the full catalog regardless.
+            val kidsMovieSource = movies ?: ChannelUpdateWorker.getCachedMovies(this@SplashActivity) ?: emptyList()
+            val kidsSeriesSource = series ?: ChannelUpdateWorker.getCachedSeries(this@SplashActivity) ?: emptyList()
+            val kidsMovies = kidsMovieSource.filter { isKids(it) }
+            val kidsSeries = kidsSeriesSource.filter { isKids(it) }
             val kidsLive = ChannelUpdateWorker.getCachedChannels(this@SplashActivity)?.filter { isKids(it) } ?: emptyList()
             val allKids = kidsMovies + kidsSeries + kidsLive
 
@@ -677,6 +717,12 @@ class SplashActivity : BaseActivity() {
             }
 
             Log.d(TAG, "Preloaded: ${ContentCache.movieRows?.size ?: 0} movie rows, ${ContentCache.showRows?.size ?: 0} show rows, ${ContentCache.kidsRows?.size ?: 0} kids rows, epg=${ContentCache.epgData != null}")
+            // Mark the cache as ready so the next launch's warm-path gate
+            // doesn't re-run preloadContent. We set this even when some
+            // categories produced no rows (e.g. movies-only user) — the
+            // pass itself completed and the underlying caches are loaded;
+            // re-running on every launch wouldn't change the result.
+            ContentCache.isReady = true
         } catch (e: Exception) {
             Log.e(TAG, "Preload failed", e)
         }

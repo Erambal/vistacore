@@ -137,11 +137,27 @@
             android:focusableInTouchMode="true" />
 
         <!-- EPG channel+program list -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/epg_channel_list"
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/epg_channel_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/epg_no_results_text"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="No channels found"
+                android:textSize="18sp"
+                android:textColor="@color/text_hint"
+                android:fontFamily="sans-serif-light"
+                android:visibility="gone" />
+        </FrameLayout>
 
     </LinearLayout>
 

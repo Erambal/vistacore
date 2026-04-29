@@ -49,6 +49,17 @@ class VODBrowserActivity : BaseActivity() {
     private var bannerItems: List<Channel> = emptyList()
     private var bannerIndex = 0
     private var bannerRunnable: Runnable? = null
+    // Tracks the in-flight search/rebuild coroutine so a slow earlier query
+    // can't paint over a faster later one. Cancelled before launching a new
+    // job from the search field's TextWatcher.
+    private var searchJob: Job? = null
+    // Whether the list is currently bound to a search-results / no-match
+    // state (vs. the full row layout). Sub-2-character queries are not real
+    // searches, so when the user backspaces from "ali" → "a" we still need
+    // to swap the stale results back out — but only if we *were* searching.
+    // If the user is on the row layout and types one stray character, we
+    // skip the rebuild to avoid flicker.
+    private var showingSearchResults = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -177,12 +188,17 @@ class VODBrowserActivity : BaseActivity() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
                 val query = s?.toString()?.trim() ?: ""
+                searchJob?.cancel()
                 if (query.length >= 2) {
                     showSearchResults(query)
-                } else if (query.isEmpty()) {
-                    scope.launch {
+                } else if (showingSearchResults) {
+                    // Sub-2-char (including empty) and we're currently showing
+                    // search results / a no-match empty state. Restore the
+                    // full row layout so stale results don't linger.
+                    searchJob = scope.launch {
                         val rows = withContext(Dispatchers.IO) { buildRows(allItems) }
                         showNetflixRows(rows)
+                        showingSearchResults = false
                     }
                 }
             }
@@ -421,6 +437,10 @@ class VODBrowserActivity : BaseActivity() {
         binding.netflixEmpty.visibility = View.GONE
         binding.netflixList.visibility = View.VISIBLE
 
+        // Drop any pagination listener attached to a previous adapter so we
+        // don't accumulate stale ones across initial-load → search → clear
+        // cycles (each rebuild would otherwise leave its callback wired up).
+        binding.netflixList.clearOnScrollListeners()
         // Load more rows as user scrolls down
         binding.netflixList.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
@@ -445,7 +465,7 @@ class VODBrowserActivity : BaseActivity() {
             .replace('\u00B4', '\'')  // acute accent
 
     private fun showSearchResults(query: String) {
-        scope.launch {
+        searchJob = scope.launch {
             val prefs = PrefsManager(this@VODBrowserActivity)
             val rows = withContext(Dispatchers.IO) {
                 val normalizedQuery = normalizeApostrophes(query)
@@ -463,7 +483,13 @@ class VODBrowserActivity : BaseActivity() {
                     listOf(NetflixRow.CategoryRow("Results for \"$query\"", display.take(50)))
                 } else emptyList()
             }
-            binding.netflixList.adapter = NetflixAdapter(rows, this@VODBrowserActivity)
+            if (rows.isEmpty()) {
+                binding.netflixEmpty.text = "No results matching \"$query\""
+                showEmpty()
+            } else {
+                showNetflixRows(rows)
+            }
+            showingSearchResults = true
         }
     }
 

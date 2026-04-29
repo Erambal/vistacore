@@ -162,14 +162,30 @@
             android:focusableInTouchMode="true" />
 
         <!-- Channel grid -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/grid_channel_grid"
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:padding="24dp"
-            android:clipToPadding="false"
-            android:descendantFocusability="afterDescendants" />
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/grid_channel_grid"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="24dp"
+                android:clipToPadding="false"
+                android:descendantFocusability="afterDescendants" />
+
+            <TextView
+                android:id="@+id/grid_no_results_text"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="No channels found"
+                android:textSize="18sp"
+                android:textColor="@color/text_hint"
+                android:fontFamily="sans-serif-light"
+                android:visibility="gone" />
+        </FrameLayout>
 
     </LinearLayout>
 

@@ -30,6 +30,11 @@ class VoiceSearchActivity : BaseActivity() {
 
     private var allContent: List<Channel> = emptyList()
     private var searchJob: Job? = null
+    // The cold-load coroutine is asynchronous; the search field is live the
+    // moment onCreate finishes. Without these flags a fast-typer would hit
+    // performSearch with allContent still empty, see "No results", and not
+    // get a re-run when the load eventually completes.
+    private var contentLoaded = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,14 +44,24 @@ class VoiceSearchActivity : BaseActivity() {
         prefs = PrefsManager(this)
         binding.searchResults.layoutManager = LinearLayoutManager(this)
 
-        // Load all content from cache
+        // Load all content from cache. Apply the same restricted-rating
+        // and hidden-category gates the browsers use so this shortcut
+        // path can't surface titles the user has explicitly hidden.
         scope.launch {
+            val tracker = com.vistacore.launcher.data.UsageTracker(this@VoiceSearchActivity)
+            val hideRestricted = prefs.hideRestrictedRatings
             allContent = withContext(Dispatchers.IO) {
                 val live = ChannelUpdateWorker.getCachedChannels(this@VoiceSearchActivity) ?: emptyList()
                 val movies = ChannelUpdateWorker.getCachedMovies(this@VoiceSearchActivity) ?: emptyList()
                 val series = ChannelUpdateWorker.getCachedSeries(this@VoiceSearchActivity) ?: emptyList()
-                live + movies + series
+                val merged = live + movies + series
+                Discovery.applyRestrictedFilter(merged, hideRestricted)
+                    .filter { !tracker.isCategoryHidden(it.category) }
             }
+            contentLoaded = true
+            // Re-run search if the user already typed while we were loading.
+            val q = binding.searchInput.text?.toString()?.trim().orEmpty()
+            if (q.length >= 2) performSearch(q)
         }
 
         // Setup app deep-link buttons
@@ -104,6 +119,16 @@ class VoiceSearchActivity : BaseActivity() {
     }
 
     private fun performSearch(query: String) {
+        if (!contentLoaded) {
+            // Hold the search instead of painting a false "No results" —
+            // the cold-load completion handler in onCreate re-runs the
+            // search once allContent is populated.
+            binding.searchResults.visibility = View.GONE
+            binding.noResults.visibility = View.VISIBLE
+            binding.noResults.text = "Loading content…"
+            binding.resultsCount.text = ""
+            return
+        }
         searchJob?.cancel()
         searchJob = scope.launch {
             val results = withContext(Dispatchers.IO) {
@@ -169,15 +194,47 @@ class VoiceSearchActivity : BaseActivity() {
                     it.contentType == ContentType.SERIES &&
                     extractShowName(it.name) == showName
                 }
-                ShowDetailActivity.launch(this, showName, channel.category, channel.logoUrl, episodes)
+                // Forward the Xtream series id when present so ShowDetailActivity
+                // can fetch the rich metadata block (plot, cast, rating, trailer)
+                // regardless of how the user got here.
+                val xtreamSeriesId = if (channel.id.startsWith("xt_series_"))
+                    channel.id.removePrefix("xt_series_").toIntOrNull() ?: 0
+                else 0
+                ShowDetailActivity.launch(
+                    this, showName, channel.category, channel.logoUrl, episodes,
+                    xtreamSeriesId = xtreamSeriesId
+                )
             }
             ContentType.MOVIE -> {
-                startActivity(Intent(this, IPTVPlayerActivity::class.java).apply {
-                    putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, channel.streamUrl)
-                    putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, channel.name)
-                    putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, channel.logoUrl)
-                    putExtra(IPTVPlayerActivity.EXTRA_IS_VOD, true)
-                })
+                // Route Xtream movies through MovieDetailActivity so the
+                // per-title MPAA gate runs (applyMpaa disables Play when
+                // Hide Restricted Ratings is on and the rating resolves
+                // to R/TV-MA/etc.). Movies without a vod id (M3U-only,
+                // Jellyfin) have no metadata source for a gate, so they
+                // play directly — the name/category filter applied to
+                // allContent above is the only protection in that case.
+                val vodId = if (channel.id.startsWith("xt_vod_"))
+                    channel.id.removePrefix("xt_vod_").toIntOrNull() ?: 0
+                else 0
+                if (vodId > 0) {
+                    val year = Regex("""\((\d{4})\)""").find(channel.name)?.groupValues?.get(1).orEmpty()
+                    MovieDetailActivity.launch(
+                        activity = this,
+                        title = channel.name,
+                        category = channel.category,
+                        posterUrl = channel.logoUrl,
+                        streamUrl = channel.streamUrl,
+                        vodId = vodId,
+                        year = year
+                    )
+                } else {
+                    startActivity(Intent(this, IPTVPlayerActivity::class.java).apply {
+                        putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, channel.streamUrl)
+                        putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, channel.name)
+                        putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, channel.logoUrl)
+                        putExtra(IPTVPlayerActivity.EXTRA_IS_VOD, true)
+                    })
+                }
             }
             else -> {
                 startActivity(Intent(this, IPTVPlayerActivity::class.java).apply {

@@ -28,6 +28,20 @@ object ContentCache {
     var epgLoadTime: Long = 0
 
     fun clear() {
+        invalidatePreload()
+        epgData = null
+        epgLoadTime = 0
+    }
+
+    /**
+     * Drop preload-derived rows + the isReady flag. Called by the channel
+     * update worker after it rewrites the on-disk cache, so the next splash
+     * pass rebuilds Movies/Shows/Kids rows from the fresh data instead of
+     * reusing stale in-memory rows from the previous build. EPG and the
+     * persisted show-name map are intentionally preserved — channel data
+     * updating doesn't invalidate either.
+     */
+    fun invalidatePreload() {
         movieRows = null
         movieItems = null
         showRows = null
@@ -36,17 +50,41 @@ object ContentCache {
         kidsRows = null
         kidsItems = null
         kidsShowIndex = null
-        epgData = null
-        epgLoadTime = 0
+        isReady = false
     }
 
     /** Precomputed show name map (channelId → showName) */
     var showNameMap: Map<String, String>? = null
 
-    val isReady: Boolean
-        get() = movieRows != null && showRows != null && kidsRows != null
+    /**
+     * True once Splash has run preloadContent at least once for the current
+     * cache. Set by the preloader at the end of its pass; cleared by
+     * [clear]. Replaces a getter that required movieRows/showRows/kidsRows
+     * to all be non-null — that was over-restrictive: when the user has
+     * shows or kids preload disabled (or those caches are empty), the rows
+     * legitimately stay null, so the getter never returned true and
+     * preloadContent re-ran on every launch.
+     */
+    var isReady: Boolean = false
 
     private const val SHOW_NAMES_FILE = "show_names.bin"
+
+    /**
+     * Delete the persisted show-name map and drop its in-memory copy.
+     * Called by the channel update worker after a cache rewrite — the map
+     * is keyed by channel id, so a refreshed catalog whose IDs match the
+     * old size but whose underlying titles changed would otherwise group
+     * episodes into the wrong shows on the next splash. The next preload
+     * pass will recompute the map and re-save it.
+     */
+    fun deleteShowNameMap(context: Context) {
+        try {
+            File(context.filesDir, SHOW_NAMES_FILE).delete()
+        } catch (e: Exception) {
+            Log.e("ContentCache", "Failed to delete show name map", e)
+        }
+        showNameMap = null
+    }
 
     /** Save show name map to disk as simple key=value lines */
     fun saveShowNameMap(context: Context, map: Map<String, String>) {

@@ -72,7 +72,10 @@ class MainActivity : BaseActivity() {
                 ChannelUpdateWorker.schedule(this)
             }
 
-            // Build full cache (including movies/series) in background on first launch
+            // Build full cache (including movies/series) in background on
+            // first launch. Gated on IPTV: Jellyfin is always a hybrid
+            // companion to an M3U/Xtream provider, never a standalone
+            // source — without IPTV, there's no catalog to bootstrap.
             if (prefs.hasIptvConfig()) {
                 buildFullCacheIfNeeded()
             }
@@ -108,16 +111,16 @@ class MainActivity : BaseActivity() {
     }
 
     /**
-     * Stable fingerprint of IPTV-related prefs. If any of these change we
-     * must reload channels; otherwise the cached in-memory list is valid.
+     * Stable fingerprint of every connection field that determines which
+     * content the app fetches. Delegates to PrefsManager.sourceIdentity()
+     * so this matches what Settings uses for cache invalidation. Earlier
+     * versions of this method omitted password / Dispatcharr key /
+     * Jellyfin fields on the assumption that "same server+user = same
+     * channels" — which silently broke propagation for Jellyfin-only
+     * setups, password rotations after a failed first fetch, and
+     * Dispatcharr key swaps on the same Xtream host.
      */
-    private fun iptvConfigFingerprint(): String = buildString {
-        append(prefs.sourceType).append('|')
-        append(prefs.m3uUrl).append('|')
-        append(prefs.xtreamServer).append('|')
-        append(prefs.xtreamUsername).append('|')
-        // Password intentionally omitted — same server+user = same channels.
-    }
+    private fun iptvConfigFingerprint(): String = prefs.sourceIdentity()
 
     /** Refresh the home-screen sections that depend on user state, not channel data. */
     private fun refreshHomeSections() {
@@ -132,10 +135,16 @@ class MainActivity : BaseActivity() {
     }
 
     private fun buildFullCacheIfNeeded() {
-        val hasCache = java.io.File(filesDir, "movies_cache.json.gz").exists() ||
-            java.io.File(filesDir, "movies_cache.json").exists()
-        if (!hasCache) {
-            Log.d("MainActivity", "No movie cache — triggering background download via WorkManager")
+        // The "movies_cache.json exists" check used to be the gate, but a
+        // transient outage can produce zero-item caches that satisfy file
+        // existence while leaving the catalog empty. KEY_LAST_UPDATE is
+        // only stamped after a non-empty cache write, so it's the real
+        // success sentinel. enqueueUniqueWork in refreshNow also dedupes
+        // against a refresh Splash may have just kicked off — both
+        // bootstrap paths will collapse to a single download.
+        val lastUpdate = ChannelUpdateWorker.getLastUpdateTime(this)
+        if (lastUpdate == 0L) {
+            Log.d("MainActivity", "No successful cache yet — triggering background download via WorkManager")
             ChannelUpdateWorker.refreshNow(this)
         }
     }
@@ -480,26 +489,115 @@ class MainActivity : BaseActivity() {
 
     private fun loadContinueWatching() {
         val watchHistory = com.vistacore.launcher.data.WatchHistoryManager(this)
-        val entries = watchHistory.getContinueWatching()
-
-        if (entries.isEmpty()) {
+        val rawEntries = watchHistory.getContinueWatching()
+        if (rawEntries.isEmpty()) {
             binding.continueWatchingSection.visibility = View.GONE
             return
         }
 
-        binding.continueWatchingSection.visibility = View.VISIBLE
-        binding.continueWatchingRow.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        binding.continueWatchingRow.adapter = ContinueWatchingAdapter(entries, onClick = { entry ->
-            val intent = Intent(this, IPTVPlayerActivity::class.java).apply {
-                putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, entry.streamUrl)
-                putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, entry.name)
-                putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, entry.logoUrl)
-                putExtra(IPTVPlayerActivity.EXTRA_RESUME_POSITION, entry.positionMs)
+        // CW entries can be live channels, movies, or show episodes. The
+        // gate has to look each one up in the *real* catalog: allChannels
+        // here is live-only (cacheChannels writes only LIVE items into the
+        // main cache file), so the previous join missed every VOD entry
+        // and let restricted/hidden movies and shows through. Read movies
+        // and series from their dedicated caches — preferring ContentCache
+        // when populated (Splash preload), falling back to disk otherwise.
+        scope.launch {
+            val moviesCatalog = com.vistacore.launcher.data.ContentCache.movieItems
+                ?: withContext(Dispatchers.IO) {
+                    ChannelUpdateWorker.getCachedMovies(this@MainActivity) ?: emptyList()
+                }
+            val seriesCatalog = com.vistacore.launcher.data.ContentCache.showItems
+                ?: withContext(Dispatchers.IO) {
+                    ChannelUpdateWorker.getCachedSeries(this@MainActivity) ?: emptyList()
+                }
+            val byUrl = HashMap<String, com.vistacore.launcher.iptv.Channel>(
+                allChannels.size + moviesCatalog.size + seriesCatalog.size
+            )
+            for (ch in allChannels) byUrl[ch.streamUrl] = ch
+            for (ch in moviesCatalog) byUrl[ch.streamUrl] = ch
+            for (ch in seriesCatalog) byUrl[ch.streamUrl] = ch
+
+            val tracker = com.vistacore.launcher.data.UsageTracker(this@MainActivity)
+            val hideRestricted = prefs.hideRestrictedRatings
+            val entries = rawEntries.filter { entry ->
+                val ch = byUrl[entry.streamUrl]
+                if (ch != null) {
+                    if (tracker.isCategoryHidden(ch.category)) return@filter false
+                    if (hideRestricted && Discovery.isRestrictedByName(ch)) return@filter false
+                } else {
+                    // Orphan entry — typically an Xtream/Jellyfin series
+                    // episode whose URL isn't in the cache (only the
+                    // wrapper series is). We don't have a category, but
+                    // the episode name often carries a rating tag like
+                    // "(R)" or "TV-MA"; apply the name-only check as the
+                    // floor when the user has the toggle on.
+                    if (hideRestricted && Discovery.isRestrictedByName(entry.name)) return@filter false
+                }
+                true
             }
-            startActivity(intent)
-        }, onLongClick = { entry ->
-            showRemoveHistoryDialog(entry, watchHistory)
+
+            if (entries.isEmpty()) {
+                binding.continueWatchingSection.visibility = View.GONE
+                return@launch
+            }
+
+            binding.continueWatchingSection.visibility = View.VISIBLE
+            binding.continueWatchingRow.layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false)
+            binding.continueWatchingRow.adapter = ContinueWatchingAdapter(entries, onClick = { entry ->
+                resumeContinueWatching(entry, byUrl[entry.streamUrl])
+            }, onLongClick = { entry ->
+                showRemoveHistoryDialog(entry, watchHistory)
+            })
+
+            wireWatchHistoryClearButton(watchHistory)
+        }
+    }
+
+    /**
+     * Resume a Continue Watching entry. Xtream movies route through
+     * MovieDetailActivity so the per-title MPAA gate fires (applyMpaa
+     * disables Play when Hide Restricted is on and the rating resolves
+     * to R/TV-MA/etc.) — IPTVPlayerActivity itself has no rating gate.
+     * The detail screen's playNow falls through to IPTVPlayerActivity
+     * which reads the resume position from WatchHistoryManager, so the
+     * user lands at the same offset as a direct launch would.
+     *
+     * Show episodes and movies without a vodId fall through to direct
+     * playback. We don't route series CW through ShowDetailActivity
+     * because that would force the user to re-pick the episode they
+     * were already mid-stream on; the name filter applied above is the
+     * floor for that path.
+     */
+    private fun resumeContinueWatching(
+        entry: com.vistacore.launcher.data.WatchEntry,
+        ch: com.vistacore.launcher.iptv.Channel?,
+    ) {
+        if (ch != null && ch.contentType == com.vistacore.launcher.iptv.ContentType.MOVIE && ch.id.startsWith("xt_vod_")) {
+            val vodId = ch.id.removePrefix("xt_vod_").toIntOrNull() ?: 0
+            val year = Regex("""\((\d{4})\)""").find(ch.name)?.groupValues?.get(1).orEmpty()
+            MovieDetailActivity.launch(
+                activity = this,
+                title = ch.name,
+                category = ch.category,
+                posterUrl = ch.logoUrl.ifBlank { entry.logoUrl },
+                streamUrl = ch.streamUrl,
+                vodId = vodId,
+                year = year,
+            )
+            return
+        }
+        startActivity(Intent(this, IPTVPlayerActivity::class.java).apply {
+            putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, entry.streamUrl)
+            putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, entry.name)
+            putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, entry.logoUrl)
+            putExtra(IPTVPlayerActivity.EXTRA_RESUME_POSITION, entry.positionMs)
         })
+    }
+
+    private fun wireWatchHistoryClearButton(
+        watchHistory: com.vistacore.launcher.data.WatchHistoryManager,
+    ) {
 
         binding.btnClearWatchHistory.setOnClickListener {
             AlertDialog.Builder(this, R.style.Theme_VistaCore_Dialog)

@@ -1542,8 +1542,18 @@ class IPTVPlayerActivity : BaseActivity() {
         showChannelOverlay()
     }
 
+    // Whether the user wanted the player playing at the moment we last
+    // backgrounded. Used in onResume to decide whether to auto-resume —
+    // without this, a user-initiated pause is silently overridden by a
+    // brief home/back/dialog cycle.
+    private var wasPlayingBeforeBackground: Boolean = true
+
     override fun onPause() {
         super.onPause()
+        // Capture the user's intent (playWhenReady reflects user pause/play
+        // explicitly; isPlaying is also false during buffering, which is
+        // not a user pause). Save position, then pause for lifecycle.
+        wasPlayingBeforeBackground = player?.playWhenReady ?: true
         saveCurrentPosition()
         if (!isInPipMode) player?.pause()
     }
@@ -1560,7 +1570,11 @@ class IPTVPlayerActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
-        player?.play()
+        // Only auto-resume if the user wasn't paused at background time.
+        // Otherwise a quick home-and-back cycle (or any incidental pause
+        // — a system dialog, the screen saver warning) would override an
+        // explicit pause and start playback again on its own.
+        if (wasPlayingBeforeBackground) player?.play()
     }
 
     override fun onDestroy() {

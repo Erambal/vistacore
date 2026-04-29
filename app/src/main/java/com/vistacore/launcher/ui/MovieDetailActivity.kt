@@ -2,7 +2,6 @@ package com.vistacore.launcher.ui
 
 import android.app.Activity
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -254,14 +253,10 @@ class MovieDetailActivity : BaseActivity() {
         if (d.posterUrl.isNotBlank()) {
             Glide.with(this).load(d.posterUrl).into(binding.moviePoster)
         }
-
-        val trailerUrl = resolveTrailerUrl(d.trailer)
-        if (trailerUrl != null) {
-            binding.movieTrailerBtn.visibility = View.VISIBLE
-            binding.movieTrailerBtn.setOnClickListener {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerUrl)))
-            }
-        }
+        // Note: the Trailer button is wired exclusively in onTrailerResolved so
+        // the user can't briefly hit an external ACTION_VIEW handler before the
+        // in-app fullscreen one is bound. ACTION_VIEW also fails on Fire TV /
+        // Google TV without a YouTube app installed (see TrailerPlayer doc).
     }
 
     /**
@@ -293,12 +288,6 @@ class MovieDetailActivity : BaseActivity() {
             .map { CastMember(name = it, character = "", profileUrl = "") }
     }
 
-    private fun resolveTrailerUrl(raw: String): String? {
-        if (raw.isBlank()) return null
-        if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
-        return "https://www.youtube.com/watch?v=${Uri.encode(raw)}"
-    }
-
     private fun playNow() {
         val intent = Intent(this, IPTVPlayerActivity::class.java).apply {
             putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, streamUrl)
@@ -307,6 +296,35 @@ class MovieDetailActivity : BaseActivity() {
             if (year.isNotBlank()) putExtra(IPTVPlayerActivity.EXTRA_CONTENT_YEAR, year)
         }
         startActivity(intent)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Pushing the player on top should silence the trailer immediately.
+        // Without this, the backdrop WebView would keep streaming audio behind
+        // the IPTV player; the fullscreen WebView would do the same if the
+        // overlay was open when the user backgrounded the activity.
+        if (binding.trailerOverlay.visibility == View.VISIBLE) {
+            hideFullscreenTrailer()
+        }
+        TrailerPlayer.stop(binding.detailBackdropTrailer)
+        binding.detailBackdropTrailer.alpha = 0f
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-arm the ambient backdrop trailer if we already resolved one
+        // earlier — onPause stopped it to release the WebView and silence
+        // audio while the player was foregrounded.
+        val id = resolvedTrailerId ?: return
+        if (PrefsManager(this).bannerAutoplayTrailer) {
+            val trailer = binding.detailBackdropTrailer
+            trailer.alpha = 0f
+            trailer.visibility = View.VISIBLE
+            TrailerPlayer.configureBackdropPreview(trailer, id) {
+                trailer.animate().alpha(1f).setDuration(600).start()
+            }
+        }
     }
 
     override fun onDestroy() {

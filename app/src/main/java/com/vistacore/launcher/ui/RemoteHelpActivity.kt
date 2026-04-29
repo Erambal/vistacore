@@ -191,7 +191,13 @@ class RemoteHelpActivity : BaseActivity() {
     }
 
     private fun applyConfig(config: RemoteConfig) {
-        val beforeFingerprint = sourceFingerprint()
+        // Use the canonical source identity from PrefsManager so this path
+        // sees the same set of fields the rest of the app uses (sourceType,
+        // M3U URL, Xtream creds, Dispatcharr key, Jellyfin creds). The
+        // local helper used to omit dispatcharr_api_key and Jellyfin —
+        // remote-pushed key changes wouldn't trigger the cache wipe and
+        // the user kept seeing the old VOD catalog.
+        val beforeFingerprint = prefs.sourceIdentity()
 
         if (config.m3u_url?.isNotBlank() == true) {
             prefs.sourceType = PrefsManager.SOURCE_M3U
@@ -210,15 +216,13 @@ class RemoteHelpActivity : BaseActivity() {
             prefs.epgUrl = config.epg_url
         }
 
-        // If the IPTV source or credentials changed, wipe cached channels/movies/series
-        // and re-fetch. Otherwise the app keeps showing the old provider's content.
-        if (sourceFingerprint() != beforeFingerprint) {
+        // If anything that determines what we fetch changed, wipe cached
+        // content and re-fetch. Otherwise the app keeps showing the old
+        // provider's catalog.
+        if (prefs.sourceIdentity() != beforeFingerprint) {
             com.vistacore.launcher.system.ChannelUpdateWorker.clearCachesAndRefresh(this)
         }
     }
-
-    private fun sourceFingerprint(): String =
-        "${prefs.sourceType}|${prefs.m3uUrl}|${prefs.xtreamServer}|${prefs.xtreamUsername}|${prefs.xtreamPassword}"
 
     override fun onDestroy() {
         super.onDestroy()

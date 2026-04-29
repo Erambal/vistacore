@@ -34,6 +34,17 @@ class SetupActivity : BaseActivity() {
             binding.setupXtreamSection.visibility = if (isM3u) View.GONE else View.VISIBLE
         }
 
+        // Sync the radio + section visibility with the saved source type.
+        // The layout statically defaults to M3U; without this, a user
+        // returning to setup with Xtream creds already configured would
+        // land on the M3U form *and* startSetup would key off the still-
+        // checked M3U radio, dropping their saved Xtream credentials on
+        // a re-Connect.
+        val isXtream = prefs.sourceType == PrefsManager.SOURCE_XTREAM
+        if (isXtream) binding.setupRadioXtream.isChecked = true else binding.setupRadioM3u.isChecked = true
+        binding.setupM3uSection.visibility = if (isXtream) View.GONE else View.VISIBLE
+        binding.setupXtreamSection.visibility = if (isXtream) View.VISIBLE else View.GONE
+
         // Pre-fill if credentials already exist
         binding.setupM3uUrl.setText(prefs.m3uUrl)
         binding.setupXtreamServer.setText(prefs.xtreamServer)
@@ -120,26 +131,16 @@ class SetupActivity : BaseActivity() {
             try {
                 updateProgress("Connecting to server…", 10)
 
-                val allChannels = when (prefs.sourceType) {
-                    PrefsManager.SOURCE_M3U -> withContext(Dispatchers.IO) {
-                        M3UParser().parse(prefs.m3uUrl)
-                    }
-                    PrefsManager.SOURCE_XTREAM -> {
-                        val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
-                        val xc = XtreamClient(auth)
-
-                        updateProgress("Loading live channels…", 20)
-                        val live = withContext(Dispatchers.IO) { xc.getChannels() }
-
-                        updateProgress("Loading movies… (this takes a minute)", 35)
-                        val movies = try { withContext(Dispatchers.IO) { xc.getMovies() } } catch (_: Exception) { emptyList() }
-
-                        updateProgress("Loading TV shows…", 55)
-                        val series = try { withContext(Dispatchers.IO) { xc.getSeries() } } catch (_: Exception) { emptyList() }
-
-                        live + movies + series
-                    }
-                    else -> emptyList()
+                // Use the shared fetch path so first-run produces exactly
+                // what the periodic worker would build: Dispatcharr VOD
+                // fallback when the key is set, Jellyfin merge when those
+                // creds are present (rare during initial setup but the
+                // wizard could conceivably gain that field). Without
+                // this, the first-run catalog differs from every later
+                // refresh until the next worker tick corrects it.
+                updateProgress("Loading content…", 30)
+                val allChannels = withContext(Dispatchers.IO) {
+                    ChannelUpdateWorker.fetchAllSources(this@SetupActivity)
                 }
 
                 val live = allChannels.count { it.contentType == ContentType.LIVE }

@@ -34,6 +34,12 @@ class SettingsActivity : BaseActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var prefs: PrefsManager
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    // Identity snapshot captured at activity entry (and re-captured after
+    // each successful commit). Both Save and onPause compare against this
+    // so that a radio-only source flip — which writes prefs.sourceType
+    // *immediately* via the OnCheckedChangeListener, before any save — is
+    // still recognised as a config change that warrants a cache wipe.
+    private var entrySourceIdentity: String = ""
 
     // Nav rail items and corresponding content sections
     private lateinit var navItems: List<TextView>
@@ -51,6 +57,7 @@ class SettingsActivity : BaseActivity() {
         setContentView(binding.root)
 
         prefs = PrefsManager(this)
+        entrySourceIdentity = sourceIdentity()
 
         // Restore the section the user was on. Needed because changing UI
         // scale or app language calls recreate(), which otherwise dumps the
@@ -239,20 +246,18 @@ class SettingsActivity : BaseActivity() {
 
     override fun onPause() {
         super.onPause()
-        // Auto-save text fields silently (no toast, no cache clear)
-        when (prefs.sourceType) {
-            PrefsManager.SOURCE_M3U -> prefs.m3uUrl = binding.inputM3uUrl.text.toString().trim()
-            PrefsManager.SOURCE_XTREAM -> {
-                prefs.xtreamServer = binding.inputXtreamServer.text.toString().trim()
-                prefs.xtreamUsername = binding.inputXtreamUsername.text.toString().trim()
-                prefs.xtreamPassword = binding.inputXtreamPassword.text.toString().trim()
-                prefs.dispatcharrApiKey = binding.inputDispatcharrApiKey.text.toString().trim()
-            }
-        }
-        prefs.jellyfinServer = binding.inputJellyfinServer.text.toString().trim()
-        prefs.jellyfinUsername = binding.inputJellyfinUsername.text.toString().trim()
-        prefs.jellyfinPassword = binding.inputJellyfinPassword.text.toString().trim()
-        prefs.epgUrl = binding.inputEpgUrl.text.toString().trim()
+        // Auto-save text fields silently. We persist all fields (not just
+        // the currently selected source's) so toggling the radio doesn't
+        // discard pending edits to the other source's inputs. We *do*
+        // wipe caches when the source identity changed since entry —
+        // otherwise a user can flip M3U <-> Xtream (which writes
+        // prefs.sourceType immediately) and back out without ever hitting
+        // Save, and MainActivity would happily reload the previous
+        // provider's cache on resume. Transient onPause for a sub-activity
+        // (e.g. accessibility settings) is harmless: identity hasn't
+        // changed, so the helper is a no-op.
+        persistConnectionFields()
+        refreshIfSourceIdentityChanged()
     }
 
     private fun setupScreenSaver() {
@@ -314,9 +319,28 @@ class SettingsActivity : BaseActivity() {
         binding.switchLoadShows.isChecked = prefs.loadShowsEnabled
         binding.switchLoadKids.isChecked = prefs.loadKidsEnabled
 
-        binding.switchLoadMovies.setOnCheckedChangeListener { _, checked -> prefs.loadMoviesEnabled = checked }
-        binding.switchLoadShows.setOnCheckedChangeListener { _, checked -> prefs.loadShowsEnabled = checked }
-        binding.switchLoadKids.setOnCheckedChangeListener { _, checked -> prefs.loadKidsEnabled = checked }
+        // Toggling a preload switch has to invalidate the in-memory
+        // ContentCache.isReady flag, otherwise the warm-path gate in
+        // Splash skips preloadContent() while the process stays alive
+        // and the new toggle state appears to do nothing until something
+        // else (worker tick, source change, app restart) clears the flag.
+        // Invalidating drops the row caches; the next splash pass
+        // rebuilds them honouring the new preferences.
+        fun invalidatePreloadOnChange() {
+            com.vistacore.launcher.data.ContentCache.invalidatePreload()
+        }
+        binding.switchLoadMovies.setOnCheckedChangeListener { _, checked ->
+            prefs.loadMoviesEnabled = checked
+            invalidatePreloadOnChange()
+        }
+        binding.switchLoadShows.setOnCheckedChangeListener { _, checked ->
+            prefs.loadShowsEnabled = checked
+            invalidatePreloadOnChange()
+        }
+        binding.switchLoadKids.setOnCheckedChangeListener { _, checked ->
+            prefs.loadKidsEnabled = checked
+            invalidatePreloadOnChange()
+        }
 
         // OpenSubtitles API key
         binding.inputOpensubtitlesKey.setText(prefs.openSubtitlesApiKey)
@@ -520,6 +544,10 @@ class SettingsActivity : BaseActivity() {
         binding.switchAutoLaunch.isChecked = prefs.autoLaunchOnBoot
         binding.switchAutoLaunch.setOnCheckedChangeListener { _, isChecked ->
             prefs.autoLaunchOnBoot = isChecked
+            // The Home Capture summary depends on this pref too — refresh
+            // so the user sees the status flip in real time when they turn
+            // Auto-launch off without leaving Settings.
+            updateHomeCaptureUI()
         }
     }
 
@@ -530,12 +558,23 @@ class SettingsActivity : BaseActivity() {
     }
 
     private fun updateHomeCaptureUI() {
-        val enabled = isHomeCaptureEnabled()
-        binding.btnHomeCapture.text = if (enabled) "Enabled ✓" else "Enable"
-        binding.homeCaptureSummary.text = if (enabled)
-            "Home button will open VistaCore"
-        else
-            "Redirect Home button to VistaCore (requires accessibility permission)"
+        val accessibilityOn = isHomeCaptureEnabled()
+        val autoLaunchOn = prefs.autoLaunchOnBoot
+        // Both pieces have to be true for the redirect to fire — the
+        // accessibility service short-circuits when autoLaunchOnBoot is
+        // off (see HomeCaptureService.onAccessibilityEvent). The button
+        // text reflects the accessibility permission only (that's what
+        // the click actually toggles); the summary line owns the
+        // explanation of any second prerequisite.
+        binding.btnHomeCapture.text = if (accessibilityOn) "Enabled ✓" else "Enable"
+        binding.homeCaptureSummary.text = when {
+            accessibilityOn && autoLaunchOn ->
+                "Home button will open VistaCore"
+            accessibilityOn ->
+                "Accessibility on, but Auto-launch on boot is off — turn it on under Home Screen settings"
+            else ->
+                "Redirect Home button to VistaCore (requires accessibility permission)"
+        }
     }
 
     private fun setupHomeCapture() {
@@ -583,22 +622,57 @@ class SettingsActivity : BaseActivity() {
         }
     }
 
-    private fun saveSettings() {
-        when (prefs.sourceType) {
-            PrefsManager.SOURCE_M3U -> prefs.m3uUrl = binding.inputM3uUrl.text.toString().trim()
-            PrefsManager.SOURCE_XTREAM -> {
-                prefs.xtreamServer = binding.inputXtreamServer.text.toString().trim()
-                prefs.xtreamUsername = binding.inputXtreamUsername.text.toString().trim()
-                prefs.xtreamPassword = binding.inputXtreamPassword.text.toString().trim()
-                prefs.dispatcharrApiKey = binding.inputDispatcharrApiKey.text.toString().trim()
-            }
-        }
+    /**
+     * Snapshot the connection identity. Delegates to PrefsManager so the
+     * exact same fingerprint logic runs in MainActivity (where it
+     * decides whether to reload allChannels on resume). If the two
+     * drift, password / Dispatcharr / Jellyfin-only edits can stop
+     * propagating to the home screen.
+     */
+    private fun sourceIdentity(): String = prefs.sourceIdentity()
+
+    private fun persistConnectionFields() {
+        // Save fields for *both* source types, not just the currently
+        // selected one. Otherwise editing M3U URL → flipping to Xtream
+        // → backing out drops the M3U edit, because the radio toggle
+        // has already updated prefs.sourceType and onPause/saveSettings
+        // would only persist Xtream fields.
+        prefs.m3uUrl = binding.inputM3uUrl.text.toString().trim()
+        prefs.xtreamServer = binding.inputXtreamServer.text.toString().trim()
+        prefs.xtreamUsername = binding.inputXtreamUsername.text.toString().trim()
+        prefs.xtreamPassword = binding.inputXtreamPassword.text.toString().trim()
+        prefs.dispatcharrApiKey = binding.inputDispatcharrApiKey.text.toString().trim()
         prefs.jellyfinServer = binding.inputJellyfinServer.text.toString().trim()
         prefs.jellyfinUsername = binding.inputJellyfinUsername.text.toString().trim()
         prefs.jellyfinPassword = binding.inputJellyfinPassword.text.toString().trim()
         prefs.epgUrl = binding.inputEpgUrl.text.toString().trim()
+    }
+
+    private fun saveSettings() {
+        persistConnectionFields()
+        refreshIfSourceIdentityChanged()
         showStatus(getString(R.string.settings_saved), true)
         Toast.makeText(this, getString(R.string.toast_settings_saved), Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Wipe disk caches and schedule a fresh fetch when the source identity
+     * has drifted from what it was when the user opened Settings. Catches
+     * three flavours of change in one place:
+     *  - radio-only source-type flip (OnCheckedChange writes prefs directly
+     *    so an in-call before/after comparison would miss it),
+     *  - field edits committed via Save,
+     *  - field edits + radio flip committed silently via onPause.
+     * Re-snapshots entrySourceIdentity after a wipe so a subsequent onPause
+     * (e.g. user opens accessibility settings, returns, leaves) doesn't
+     * trigger a redundant second wipe.
+     */
+    private fun refreshIfSourceIdentityChanged() {
+        val current = sourceIdentity()
+        if (current != entrySourceIdentity) {
+            clearCachesAndRefresh()
+            entrySourceIdentity = current
+        }
     }
 
     /** Only called from Test Connection — clears caches when URL confirmed changed */
@@ -606,71 +680,127 @@ class SettingsActivity : BaseActivity() {
         ChannelUpdateWorker.clearCachesAndRefresh(this)
     }
 
-    private fun testConnection() {
-        saveSettings()
-        scope.launch {
-            try {
-                when (prefs.sourceType) {
-                    PrefsManager.SOURCE_M3U -> {
-                        val url = prefs.m3uUrl
-                        if (url.isBlank()) {
-                            showStatus("Please enter a playlist URL", false)
-                            Toast.makeText(this@SettingsActivity, "Please enter a playlist URL", Toast.LENGTH_SHORT).show()
-                            return@launch
-                        }
-                        val channels = withContext(Dispatchers.IO) {
-                            com.vistacore.launcher.iptv.M3UParser().parse(url)
-                        }
-                        val msg = "Connected! Found ${channels.size} channel${if (channels.size != 1) "s" else ""}. Refreshing cache…"
-                        showStatus(msg, true)
-                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
-                        clearCachesAndRefresh()
-                    }
-                    PrefsManager.SOURCE_XTREAM -> {
-                        val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
-                        val client = XtreamClient(auth)
-                        val response = client.authenticate()
-                        if (response.user_info?.status == "Active") {
-                            // Also probe VOD to surface any issues
-                            val apiKey = binding.inputDispatcharrApiKey.text.toString().trim()
-                            val vod = com.vistacore.launcher.iptv.DispatcharrVodClient(prefs.xtreamServer, apiKey)
-                            val movieCount = try { withContext(Dispatchers.IO) { vod.probeMovieCount() } } catch (_: Exception) { -1 }
-                            val seriesCount = try { withContext(Dispatchers.IO) { vod.probeSeriesCount() } } catch (_: Exception) { -1 }
-                            val msg = "Connected! Movies: ${if (movieCount >= 0) movieCount else "error"}, Series: ${if (seriesCount >= 0) seriesCount else "error"}"
-                            showStatus(msg, true)
-                            Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
-                            clearCachesAndRefresh()
-                        } else {
-                            val msg = "Account status: ${response.user_info?.status ?: "Unknown"}"
-                            showStatus(msg, false)
-                            Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
+    /**
+     * Build the VOD-section line for Xtream Test Connection. Mirrors the
+     * runtime fallback in ChannelUpdateWorker.doWork: when the Dispatcharr
+     * key is set, try Dispatcharr first; on either-side failure, fall back
+     * to a cheap Xtream category probe — exactly what the worker does.
+     * The previous Test code always probed Dispatcharr and reported
+     * "movies=error / series=error" on failure even when the runtime
+     * would actually succeed via Xtream.
+     */
+    private suspend fun probeXtreamVod(
+        server: String,
+        apiKey: String,
+        xtream: XtreamClient,
+    ): String {
+        if (apiKey.isNotBlank()) {
+            val vod = com.vistacore.launcher.iptv.DispatcharrVodClient(server, apiKey)
+            val movieCount = try { withContext(Dispatchers.IO) { vod.probeMovieCount() } } catch (_: Exception) { -1 }
+            val seriesCount = try { withContext(Dispatchers.IO) { vod.probeSeriesCount() } } catch (_: Exception) { -1 }
+            if (movieCount >= 0 && seriesCount >= 0) {
+                return "via Dispatcharr — movies=$movieCount, series=$seriesCount"
+            }
+            // Dispatcharr unreachable — runtime falls back to Xtream, so
+            // show what that looks like instead of a flat "error".
+        }
+        val vodCats = try { xtream.probeVodCategoryCount() } catch (_: Exception) { -1 }
+        val seriesCats = try { xtream.probeSeriesCategoryCount() } catch (_: Exception) { -1 }
+        if (vodCats < 0 && seriesCats < 0) return "VOD probe failed"
+        val prefix = if (apiKey.isNotBlank()) "Dispatcharr unreachable, Xtream fallback" else "via Xtream"
+        return "$prefix — vod cats=${if (vodCats >= 0) vodCats else "error"}, series cats=${if (seriesCats >= 0) seriesCats else "error"}"
+    }
 
-                // If Jellyfin is configured, probe it too and report alongside.
-                if (prefs.hasJellyfinConfig()) {
-                    try {
-                        val jf = com.vistacore.launcher.iptv.JellyfinClient(
-                            com.vistacore.launcher.iptv.JellyfinAuth(
-                                prefs.jellyfinServer, prefs.jellyfinUsername, prefs.jellyfinPassword
-                            )
-                        )
-                        withContext(Dispatchers.IO) { jf.authenticate() }
-                        val msg = "Jellyfin: connected as ${prefs.jellyfinUsername}"
-                        showStatus(msg, true)
-                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_SHORT).show()
-                    } catch (e: Exception) {
-                        val detail = e.message ?: "auth failed"
-                        showStatus("Jellyfin failed: $detail", false)
-                        Toast.makeText(this@SettingsActivity, "Jellyfin failed: $detail", Toast.LENGTH_LONG).show()
+    private fun testConnection() {
+        // Persist edits but don't trigger the cache wipe yet — Test
+        // Connection wants to verify first, *then* refresh on success.
+        persistConnectionFields()
+        scope.launch {
+            // Each probe runs independently so a Jellyfin-only setup with a
+            // blank M3U URL, or a broken IPTV server with a working
+            // Jellyfin, both still surface a coherent result instead of
+            // skipping the second probe via the outer catch.
+            val results = mutableListOf<String>()
+            var anySuccess = false
+            var anyFailure = false
+
+            if (prefs.hasIptvConfig()) {
+                try {
+                    when (prefs.sourceType) {
+                        PrefsManager.SOURCE_M3U -> {
+                            val url = prefs.m3uUrl
+                            if (url.isBlank()) {
+                                results += "M3U: no playlist URL configured"
+                                anyFailure = true
+                            } else {
+                                val channels = withContext(Dispatchers.IO) {
+                                    com.vistacore.launcher.iptv.M3UParser().parse(url)
+                                }
+                                results += "M3U: ${channels.size} channel${if (channels.size != 1) "s" else ""}"
+                                anySuccess = true
+                            }
+                        }
+                        PrefsManager.SOURCE_XTREAM -> {
+                            val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
+                            val client = XtreamClient(auth)
+                            val response = withContext(Dispatchers.IO) { client.authenticate() }
+                            if (response.user_info?.status == "Active") {
+                                results += "Xtream: connected (${probeXtreamVod(prefs.xtreamServer, prefs.dispatcharrApiKey, client)})"
+                                anySuccess = true
+                            } else {
+                                results += "Xtream: ${response.user_info?.status ?: "unknown status"}"
+                                anyFailure = true
+                            }
+                        }
                     }
+                } catch (e: Exception) {
+                    val detail = e.cause?.message ?: e.message ?: "error"
+                    android.util.Log.e("Settings", "IPTV connection test failed", e)
+                    results += "IPTV failed: $detail"
+                    anyFailure = true
                 }
-            } catch (e: Exception) {
-                val detail = e.cause?.message ?: e.message ?: "Unknown error"
-                android.util.Log.e("Settings", "Connection test failed", e)
-                showStatus("Failed: $detail", false)
-                Toast.makeText(this@SettingsActivity, "Failed: $detail", Toast.LENGTH_LONG).show()
+            }
+
+            if (prefs.hasJellyfinConfig()) {
+                try {
+                    val jf = com.vistacore.launcher.iptv.JellyfinClient(
+                        com.vistacore.launcher.iptv.JellyfinAuth(
+                            prefs.jellyfinServer, prefs.jellyfinUsername, prefs.jellyfinPassword
+                        )
+                    )
+                    withContext(Dispatchers.IO) { jf.authenticate() }
+                    results += "Jellyfin: connected as ${prefs.jellyfinUsername}"
+                    anySuccess = true
+                } catch (e: Exception) {
+                    val detail = e.message ?: "auth failed"
+                    results += "Jellyfin failed: $detail"
+                    anyFailure = true
+                }
+            }
+
+            if (results.isEmpty()) {
+                showStatus("Configure a source first", false)
+                Toast.makeText(this@SettingsActivity, "Configure a source first", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            // Single status / toast at the end so multi-source results
+            // don't overwrite each other in rapid succession. Status row
+            // shows green only when every probe that ran succeeded.
+            val combined = results.joinToString("\n")
+            showStatus(combined, anySuccess && !anyFailure)
+            Toast.makeText(this@SettingsActivity, combined, Toast.LENGTH_LONG).show()
+
+            // Any successful probe means the cached content may be stale —
+            // refresh so MainActivity picks up the new provider's data.
+            // Also re-snapshot the entry identity. testConnection eagerly
+            // refreshes even when identity didn't drift (the user pressed
+            // Test specifically to refetch); without this, the follow-up
+            // Save or onPause would see drift against the original entry
+            // snapshot and enqueue a *second* refresh on top of this one.
+            if (anySuccess) {
+                clearCachesAndRefresh()
+                entrySourceIdentity = sourceIdentity()
             }
         }
     }
@@ -958,6 +1088,14 @@ class SettingsActivity : BaseActivity() {
 
     private fun updatePinUI() {
         val enabled = prefs.pinEnabled && prefs.settingsPin.isNotBlank()
+        // Re-sync the switch with the actual pinEnabled state. Without this,
+        // first-time setup leaves the switch visually off: the listener
+        // synchronously reverts it (because prefs.pinEnabled is still false
+        // when the dialog opens), and the dialog's later callback sets
+        // prefs.pinEnabled = true but never updates the switch widget.
+        if (binding.switchPinEnabled.isChecked != enabled) {
+            binding.switchPinEnabled.isChecked = enabled
+        }
         binding.btnChangePin.visibility = if (enabled) View.VISIBLE else View.GONE
         binding.pinStatusText.text = if (enabled) "PIN is set" else "Off"
     }
@@ -1040,21 +1178,44 @@ class SettingsActivity : BaseActivity() {
             }
         }
 
-        // Install update button
+        // Install update button. Use downloadUpdate + explicit completion
+        // callback (rather than downloadAndInstall, which is fire-and-forget)
+        // so a failed download can re-enable the button. Without this the
+        // button stays in its "Downloading…" disabled state forever and the
+        // user has to leave Settings and come back to retry.
+        fun startInstall(apkUrl: String) {
+            binding.btnInstallUpdate.isEnabled = false
+            binding.btnInstallUpdate.text = "Downloading…"
+            Toast.makeText(this, "Downloading update…", Toast.LENGTH_SHORT).show()
+            updateManager.downloadUpdate(apkUrl) { file ->
+                if (file != null) {
+                    updateManager.installApk(file)
+                    // Leave the button disabled — the system installer is
+                    // foregrounded next; if the user backs out, they can
+                    // reopen Settings to retry, which re-binds the button.
+                } else {
+                    binding.btnInstallUpdate.isEnabled = true
+                    binding.btnInstallUpdate.text = "Download & Install Update"
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        "Download failed. Try again.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+
         binding.btnInstallUpdate.setOnClickListener {
             val info = cachedUpdateInfo
             if (info != null) {
-                binding.btnInstallUpdate.isEnabled = false
-                binding.btnInstallUpdate.text = "Downloading…"
-                Toast.makeText(this, "Downloading update…", Toast.LENGTH_SHORT).show()
-                updateManager.downloadAndInstall(info.apkUrl)
+                startInstall(info.apkUrl)
             } else {
                 // Fallback: re-check and download
                 binding.btnInstallUpdate.isEnabled = false
                 scope.launch {
                     val result = updateManager.checkForUpdate(prefs.appUpdateRepo)
                     if (result.available && result.info != null) {
-                        updateManager.downloadAndInstall(result.info.apkUrl)
+                        startInstall(result.info.apkUrl)
                     } else {
                         binding.btnInstallUpdate.isEnabled = true
                         binding.btnInstallUpdate.text = "Download & Install Update"

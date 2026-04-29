@@ -119,10 +119,12 @@ class LiveTVClassicActivity : BaseLiveTVActivity() {
     private fun updateChannelList() {
         binding.channelCountLabel.text = "${displayedChannels.size} ch"
         channelAdapter = LiveChannelAdapter(
-            displayedChannels, epgData, true, currentChannel, favoritesManager
-        ) { ch ->
-            if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
-        }
+            displayedChannels, epgData, prefs.showEpgInChannelList, currentChannel, favoritesManager,
+            onFavoriteToggle = { id -> toggleChannelFavorite(id) },
+            onClick = { ch ->
+                if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
+            }
+        )
         binding.channelList.adapter = channelAdapter
 
         val searchQuery = binding.channelSearch.text?.toString()?.trim() ?: ""
@@ -197,6 +199,7 @@ class LiveChannelAdapter(
     private val showEpg: Boolean,
     var currentChannel: Channel?,
     private val favoritesManager: com.vistacore.launcher.data.FavoritesManager,
+    private val onFavoriteToggle: (String) -> Boolean,
     private val onClick: (Channel) -> Unit
 ) : RecyclerView.Adapter<LiveChannelAdapter.VH>() {
 
@@ -253,7 +256,7 @@ class LiveChannelAdapter(
 
         holder.itemView.setOnClickListener { onClick(channel) }
         holder.itemView.setOnLongClickListener {
-            val nowFav = favoritesManager.toggleFavoriteChannel(channel.id)
+            val nowFav = onFavoriteToggle(channel.id)
             if (nowFav) {
                 holder.favIcon.setImageResource(R.drawable.ic_favorite)
                 holder.favIcon.visibility = View.VISIBLE

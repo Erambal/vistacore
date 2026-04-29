@@ -262,6 +262,22 @@ class XtreamClient(private val auth: XtreamAuth) {
         }
     }
 
+    /**
+     * Cheap reachability probe for the VOD endpoint. Returns the count of
+     * movie categories the server exposes, or throws if the endpoint is
+     * unreachable / returns garbage. Used by Settings' Test Connection to
+     * validate the runtime Xtream-fallback path without paying the cost
+     * of a full get_vod_streams fetch.
+     */
+    suspend fun probeVodCategoryCount(): Int = withContext(Dispatchers.IO) {
+        fetchVodCategories().size
+    }
+
+    /** Same as [probeVodCategoryCount] for the series endpoint. */
+    suspend fun probeSeriesCategoryCount(): Int = withContext(Dispatchers.IO) {
+        fetchSeriesCategories().size
+    }
+
     private fun fetchVodCategories(): List<XtreamCategory> {
         val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_vod_categories"
         val body = fetch(url)

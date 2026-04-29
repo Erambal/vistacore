@@ -35,6 +35,7 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
     private lateinit var categoryPicker: Button
     private lateinit var channelRibbon: RecyclerView
     private lateinit var loadingView: View
+    private lateinit var noResultsText: TextView
 
     private var ribbonAdapter: ChannelRibbonAdapter? = null
     private var overlayVisible = true
@@ -54,6 +55,7 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
         categoryPicker = findViewById(R.id.imm_category_chips)
         channelRibbon = findViewById(R.id.imm_channel_ribbon)
         loadingView = findViewById(R.id.imm_loading)
+        noResultsText = findViewById(R.id.imm_no_results_text)
 
         channelRibbon.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
 
@@ -66,6 +68,15 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
         })
 
         findViewById<Button>(R.id.imm_btn_number_pad).setOnClickListener { showNumberPadOverlay() }
+
+        intent.getStringExtra(EXTRA_SEARCH_QUERY)?.let { query ->
+            if (query.isNotBlank()) {
+                channelSearch.setText(query)
+                channelSearch.clearFocus()
+                channelRibbon.requestFocus()
+                window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
+            }
+        }
 
         setupPlayer(player_view)
         loadChannels()
@@ -111,10 +122,24 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
     }
 
     private fun refreshRibbon() {
-        ribbonAdapter = ChannelRibbonAdapter(displayedChannels, currentChannel) { ch ->
-            if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
-        }
+        ribbonAdapter = ChannelRibbonAdapter(
+            displayedChannels, currentChannel, favoritesManager,
+            onFavoriteToggle = { id -> toggleChannelFavorite(id) },
+            onClick = { ch ->
+                if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
+            }
+        )
         channelRibbon.adapter = ribbonAdapter
+
+        val q = channelSearch.text?.toString()?.trim().orEmpty()
+        if (displayedChannels.isEmpty() && q.isNotEmpty()) {
+            noResultsText.text = "No channels matching \"$q\""
+            noResultsText.visibility = View.VISIBLE
+            channelRibbon.visibility = View.GONE
+        } else {
+            noResultsText.visibility = View.GONE
+            channelRibbon.visibility = View.VISIBLE
+        }
     }
 
     private fun updateNowPlaying(channel: Channel) {
@@ -150,6 +175,8 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
 class ChannelRibbonAdapter(
     private val channels: List<Channel>,
     var currentChannel: Channel?,
+    private val favoritesManager: com.vistacore.launcher.data.FavoritesManager,
+    private val onFavoriteToggle: (String) -> Boolean,
     private val onClick: (Channel) -> Unit
 ) : RecyclerView.Adapter<ChannelRibbonAdapter.VH>() {
 
@@ -157,6 +184,7 @@ class ChannelRibbonAdapter(
         val logo: ImageView = itemView.findViewById(R.id.ribbon_logo)
         val number: TextView = itemView.findViewById(R.id.ribbon_number)
         val name: TextView = itemView.findViewById(R.id.ribbon_name)
+        val favIcon: ImageView = itemView.findViewById(R.id.ribbon_fav)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -182,7 +210,15 @@ class ChannelRibbonAdapter(
             holder.logo.setImageResource(R.drawable.ic_iptv)
         }
 
+        holder.favIcon.visibility =
+            if (favoritesManager.isFavoriteChannel(channel.id)) View.VISIBLE else View.GONE
+
         holder.itemView.setOnClickListener { onClick(channel) }
+        holder.itemView.setOnLongClickListener {
+            val nowFav = onFavoriteToggle(channel.id)
+            holder.favIcon.visibility = if (nowFav) View.VISIBLE else View.GONE
+            true
+        }
         holder.itemView.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
     }
 

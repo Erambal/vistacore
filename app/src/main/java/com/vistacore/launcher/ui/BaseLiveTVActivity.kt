@@ -138,17 +138,8 @@ abstract class BaseLiveTVActivity : BaseActivity() {
 
             if (loadedChannels.isNotEmpty()) {
                 allChannels = loadedChannels.sortedBy { it.number }
-                // Default to the Recent category when the user has any
-                // watch history so the channels they actually use are the
-                // first thing on screen. Falls back to All on first launch.
-                val startInRecents = recents.hasRecents() &&
-                    recents.getRecentChannels(allChannels).isNotEmpty()
-                selectedCategory = if (startInRecents) CATEGORY_RECENT else CATEGORY_ALL
-                categoryChannels = if (startInRecents) {
-                    recents.getRecentChannels(allChannels)
-                } else {
-                    allChannels
-                }
+                selectedCategory = initialCategory()
+                categoryChannels = channelsForCategory(selectedCategory)
                 // Apply any live search the user has already typed while we
                 // were loading, plus any pending query from the launcher.
                 val pending = intent.getStringExtra(EXTRA_SEARCH_QUERY)?.trim() ?: ""
@@ -245,16 +236,18 @@ abstract class BaseLiveTVActivity : BaseActivity() {
 
     protected fun selectCategory(name: String) {
         selectedCategory = name
-        categoryChannels = when (name) {
-            CATEGORY_ALL -> allChannels
-            CATEGORY_RECENT -> recents.getRecentChannels(allChannels)
-            CATEGORY_FAVORITES -> favoritesManager.filterFavorites(allChannels)
-            else -> allChannels.filter { it.category == name }
-        }
+        categoryChannels = channelsForCategory(name)
         // Re-apply any active search query so changing category while the user
         // has typed something doesn't wipe out their filter.
         filterChannels(currentSearchQuery())
         onCategoriesChanged(buildCategories())
+    }
+
+    private fun channelsForCategory(name: String): List<Channel> = when (name) {
+        CATEGORY_ALL -> allChannels
+        CATEGORY_RECENT -> recents.getRecentChannels(allChannels)
+        CATEGORY_FAVORITES -> favoritesManager.filterFavorites(allChannels)
+        else -> allChannels.filter { it.category == name }
     }
 
     /**
@@ -264,14 +257,24 @@ abstract class BaseLiveTVActivity : BaseActivity() {
      */
     protected open fun currentSearchQuery(): String = ""
 
+    /**
+     * Which category to land on when channels finish loading. Default lands on
+     * Recent when the user has resolvable history, otherwise All. Variants
+     * without a category picker (Carousel groups by row instead) should pin
+     * this to All so the user isn't trapped behind a hidden Recent filter.
+     */
+    protected open fun initialCategory(): String =
+        if (recents.getRecentChannels(allChannels).isNotEmpty()) CATEGORY_RECENT
+        else CATEGORY_ALL
+
     protected fun buildCategories(): List<String> {
-        // Order: Recent first (when the user has history), then Favorites,
-        // then All, then provider categories. Recent leads so the channels
-        // the user actually watches are the default landing spot in the
-        // category picker.
+        // Order: Recent first (when the user has resolvable history), then
+        // Favorites, then All, then provider categories. We resolve against
+        // allChannels so a stale stored ID from an old lineup doesn't surface
+        // an empty Recent / Favorites category in the picker.
         val cats = mutableListOf<String>()
-        if (recents.hasRecents()) cats.add(CATEGORY_RECENT)
-        if (favoritesManager.getFavoriteChannelIds().isNotEmpty()) cats.add(CATEGORY_FAVORITES)
+        if (recents.getRecentChannels(allChannels).isNotEmpty()) cats.add(CATEGORY_RECENT)
+        if (favoritesManager.filterFavorites(allChannels).isNotEmpty()) cats.add(CATEGORY_FAVORITES)
         cats.add(CATEGORY_ALL)
         allChannels.map { it.category }.distinct().sorted().forEach { cats.add(it) }
         return cats
@@ -282,6 +285,9 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         currentChannel = channel
         prefs.lastChannel = channel.id
         recents.addRecent(channel.id)
+        // A new recent may add the Recent category to the picker for the first
+        // time, and reorders the Recent list if we're already viewing it.
+        refreshDerivedCategoryViews()
 
         player?.let { exo ->
             val source = buildMediaSource(channel.streamUrl)
@@ -291,6 +297,40 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         }
 
         onSelectedChannelChanged(previous, channel)
+    }
+
+    /**
+     * Toggle a channel's favorite state and refresh any derived category UI
+     * (the picker entry, and the displayed list when viewing Favorites).
+     * Returns the new favorite state.
+     */
+    protected fun toggleChannelFavorite(channelId: String): Boolean {
+        val nowFav = favoritesManager.toggleFavoriteChannel(channelId)
+        refreshDerivedCategoryViews()
+        return nowFav
+    }
+
+    /**
+     * Recompute the category list and, when the user is currently viewing a
+     * derived category (Recent / Favorites), refresh its channel contents.
+     * If the active category just disappeared (e.g. last favorite removed),
+     * fall back to All so the user isn't stranded on an empty view.
+     */
+    private fun refreshDerivedCategoryViews() {
+        if (allChannels.isEmpty()) return
+        val cats = buildCategories()
+        when {
+            selectedCategory !in cats -> {
+                selectedCategory = CATEGORY_ALL
+                categoryChannels = allChannels
+                filterChannels(currentSearchQuery())
+            }
+            selectedCategory == CATEGORY_RECENT || selectedCategory == CATEGORY_FAVORITES -> {
+                categoryChannels = channelsForCategory(selectedCategory)
+                filterChannels(currentSearchQuery())
+            }
+        }
+        onCategoriesChanged(cats)
     }
 
     private fun buildMediaSource(url: String): MediaSource {

@@ -35,6 +35,7 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
     private lateinit var categoryPicker: android.widget.Button
     private lateinit var channelList: RecyclerView
     private lateinit var loadingView: View
+    private lateinit var noResultsText: TextView
 
     private var epgAdapter: LiveTVChannelRowAdapter? = null
 
@@ -50,6 +51,7 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
         categoryPicker = findViewById(R.id.epg_category_chips)
         channelList = findViewById(R.id.epg_channel_list)
         loadingView = findViewById(R.id.epg_loading)
+        noResultsText = findViewById(R.id.epg_no_results_text)
 
         channelList.layoutManager = LinearLayoutManager(this)
 
@@ -62,6 +64,15 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
         })
 
         findViewById<View>(R.id.epg_btn_number_pad).setOnClickListener { showNumberPadOverlay() }
+
+        intent.getStringExtra(EXTRA_SEARCH_QUERY)?.let { query ->
+            if (query.isNotBlank()) {
+                channelSearch.setText(query)
+                channelSearch.clearFocus()
+                channelList.requestFocus()
+                window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
+            }
+        }
 
         setupPlayer(miniPlayer)
         loadChannels()
@@ -100,10 +111,24 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
     }
 
     private fun refreshList() {
-        epgAdapter = LiveTVChannelRowAdapter(displayedChannels, epgData, favoritesManager) { ch ->
-            if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
-        }
+        epgAdapter = LiveTVChannelRowAdapter(
+            displayedChannels, epgData, favoritesManager,
+            onFavoriteToggle = { id -> toggleChannelFavorite(id) },
+            onClick = { ch ->
+                if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
+            }
+        )
         channelList.adapter = epgAdapter
+
+        val q = channelSearch.text?.toString()?.trim().orEmpty()
+        if (displayedChannels.isEmpty() && q.isNotEmpty()) {
+            noResultsText.text = "No channels matching \"$q\""
+            noResultsText.visibility = View.VISIBLE
+            channelList.visibility = View.GONE
+        } else {
+            noResultsText.visibility = View.GONE
+            channelList.visibility = View.VISIBLE
+        }
     }
 
     private fun updateProgramInfo(channel: Channel) {
@@ -130,6 +155,7 @@ class LiveTVChannelRowAdapter(
     private val channels: List<Channel>,
     private val epgData: EpgData?,
     private val favoritesManager: com.vistacore.launcher.data.FavoritesManager,
+    private val onFavoriteToggle: (String) -> Boolean,
     private val onClick: (Channel) -> Unit
 ) : RecyclerView.Adapter<LiveTVChannelRowAdapter.VH>() {
 
@@ -140,6 +166,7 @@ class LiveTVChannelRowAdapter(
         val now: TextView = itemView.findViewById(R.id.lvrow_now)
         val next: TextView = itemView.findViewById(R.id.lvrow_next)
         val progress: ProgressBar = itemView.findViewById(R.id.lvrow_progress)
+        val favIcon: ImageView = itemView.findViewById(R.id.lvrow_fav)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -184,9 +211,13 @@ class LiveTVChannelRowAdapter(
             holder.progress.visibility = View.INVISIBLE
         }
 
+        holder.favIcon.visibility =
+            if (favoritesManager.isFavoriteChannel(channel.id)) View.VISIBLE else View.GONE
+
         holder.itemView.setOnClickListener { onClick(channel) }
         holder.itemView.setOnLongClickListener {
-            favoritesManager.toggleFavoriteChannel(channel.id)
+            val nowFav = onFavoriteToggle(channel.id)
+            holder.favIcon.visibility = if (nowFav) View.VISIBLE else View.GONE
             true
         }
         holder.itemView.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }

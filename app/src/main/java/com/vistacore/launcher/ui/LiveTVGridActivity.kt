@@ -36,6 +36,7 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
     private lateinit var categoryPicker: android.widget.Button
     private lateinit var channelGrid: RecyclerView
     private lateinit var loadingView: View
+    private lateinit var noResultsText: TextView
 
     private var gridAdapter: ChannelTileAdapter? = null
 
@@ -51,6 +52,7 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
         categoryPicker = findViewById(R.id.grid_category_chips)
         channelGrid = findViewById(R.id.grid_channel_grid)
         loadingView = findViewById(R.id.grid_loading)
+        noResultsText = findViewById(R.id.grid_no_results_text)
 
         channelGrid.layoutManager = GridLayoutManager(this, 6)
 
@@ -66,6 +68,17 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
             startActivity(Intent(this, EpgGuideActivity::class.java))
         }
         findViewById<View>(R.id.grid_btn_number_pad).setOnClickListener { showNumberPadOverlay() }
+
+        // Surface a launcher-supplied search query in the visible box so a
+        // category change doesn't silently wipe the active filter.
+        intent.getStringExtra(EXTRA_SEARCH_QUERY)?.let { query ->
+            if (query.isNotBlank()) {
+                channelSearch.setText(query)
+                channelSearch.clearFocus()
+                channelGrid.requestFocus()
+                window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
+            }
+        }
 
         setupPlayer(miniPlayer)
         loadChannels()
@@ -111,10 +124,29 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
     }
 
     private fun refreshGrid() {
-        gridAdapter = ChannelTileAdapter(displayedChannels, epgData, currentChannel, favoritesManager) { ch ->
-            if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
-        }
+        // Per-tile "now playing" line is gated by the Show EPG in channel
+        // list pref. Passing null here is what the adapter already treats
+        // as "no EPG to show" — leaves the top mini-player info intact
+        // since that uses the activity's own epgData reference.
+        val tileEpg = if (prefs.showEpgInChannelList) epgData else null
+        gridAdapter = ChannelTileAdapter(
+            displayedChannels, tileEpg, currentChannel, favoritesManager,
+            onFavoriteToggle = { id -> toggleChannelFavorite(id) },
+            onClick = { ch ->
+                if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
+            }
+        )
         channelGrid.adapter = gridAdapter
+
+        val q = channelSearch.text?.toString()?.trim().orEmpty()
+        if (displayedChannels.isEmpty() && q.isNotEmpty()) {
+            noResultsText.text = "No channels matching \"$q\""
+            noResultsText.visibility = View.VISIBLE
+            channelGrid.visibility = View.GONE
+        } else {
+            noResultsText.visibility = View.GONE
+            channelGrid.visibility = View.VISIBLE
+        }
     }
 
     private fun updatePreview(channel: Channel) {
@@ -140,6 +172,7 @@ class ChannelTileAdapter(
     private val epgData: EpgData?,
     var currentChannel: Channel?,
     private val favoritesManager: com.vistacore.launcher.data.FavoritesManager,
+    private val onFavoriteToggle: (String) -> Boolean,
     private val onClick: (Channel) -> Unit
 ) : RecyclerView.Adapter<ChannelTileAdapter.VH>() {
 
@@ -187,7 +220,7 @@ class ChannelTileAdapter(
 
         holder.itemView.setOnClickListener { onClick(channel) }
         holder.itemView.setOnLongClickListener {
-            val nowFav = favoritesManager.toggleFavoriteChannel(channel.id)
+            val nowFav = onFavoriteToggle(channel.id)
             holder.favIcon.visibility = if (nowFav) View.VISIBLE else View.GONE
             true
         }

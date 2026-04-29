@@ -41,40 +41,43 @@ class EpgParser {
             .url(url)
             .header("User-Agent", "VistaCore/1.0")
             .build()
-        val response = client.newCall(request).execute()
+        // Wrap in `use` so the response (and its socket FD) closes even
+        // if parseXmlTvStream throws partway through. Inner stream `use`
+        // alone wasn't enough — the OkHttp connection itself stayed open
+        // and leaked an FD per EPG load.
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("Failed to load EPG: ${response.code}")
+            }
+            val body = response.body ?: throw Exception("Empty EPG data")
+            // Stream-parse directly from the network — never load full XML into memory
+            // Only manually decompress for actual .gz file URLs.
+            // OkHttp transparently handles Content-Encoding: gzip for normal HTTP responses,
+            // so we must NOT double-decompress those.
+            val rawStream = body.byteStream()
+            val buffered = BufferedInputStream(rawStream, 8192)
 
-        if (!response.isSuccessful) {
-            throw Exception("Failed to load EPG: ${response.code}")
+            // Sniff for gzip magic bytes (1F 8B) to auto-detect compressed data
+            // that OkHttp didn't decompress (e.g. .gz file downloads or servers
+            // that set Content-Type: application/gzip instead of Content-Encoding)
+            buffered.mark(2)
+            val b1 = buffered.read()
+            val b2 = buffered.read()
+            buffered.reset()
+            val isGzipData = (b1 == 0x1F && b2 == 0x8B)
+
+            val stream: InputStream = if (isGzipData) {
+                Log.d(TAG, "EPG data is gzip compressed, decompressing")
+                GZIPInputStream(buffered)
+            } else {
+                Log.d(TAG, "EPG data is plain XML")
+                buffered
+            }
+
+            val result = stream.use { parseXmlTvStream(it) }
+            Log.d(TAG, "EPG loaded: ${result.channels.size} channels, ${result.programs.size} programs")
+            result
         }
-
-        val body = response.body ?: throw Exception("Empty EPG data")
-        // Stream-parse directly from the network — never load full XML into memory
-        // Only manually decompress for actual .gz file URLs.
-        // OkHttp transparently handles Content-Encoding: gzip for normal HTTP responses,
-        // so we must NOT double-decompress those.
-        val rawStream = body.byteStream()
-        val buffered = BufferedInputStream(rawStream, 8192)
-
-        // Sniff for gzip magic bytes (1F 8B) to auto-detect compressed data
-        // that OkHttp didn't decompress (e.g. .gz file downloads or servers
-        // that set Content-Type: application/gzip instead of Content-Encoding)
-        buffered.mark(2)
-        val b1 = buffered.read()
-        val b2 = buffered.read()
-        buffered.reset()
-        val isGzipData = (b1 == 0x1F && b2 == 0x8B)
-
-        val stream: InputStream = if (isGzipData) {
-            Log.d(TAG, "EPG data is gzip compressed, decompressing")
-            GZIPInputStream(buffered)
-        } else {
-            Log.d(TAG, "EPG data is plain XML")
-            buffered
-        }
-
-        val result = stream.use { parseXmlTvStream(it) }
-        Log.d(TAG, "EPG loaded: ${result.channels.size} channels, ${result.programs.size} programs")
-        result
     }
 
     private fun parseXmlTvStream(inputStream: InputStream): EpgData {

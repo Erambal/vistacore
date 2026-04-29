@@ -416,10 +416,16 @@ class XtreamClient(private val auth: XtreamAuth) {
 
     private fun fetchWithClient(httpClient: OkHttpClient, url: String): String {
         val request = Request.Builder().url(url).build()
-        val response = httpClient.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw Exception("Request failed: ${response.code}")
+        // `use` closes the response (and its socket/FD) on every path —
+        // success, HTTP error, or thrown exception. Without it, every
+        // call leaks a connection until OkHttp's pool happens to evict
+        // it, which under heavy fetch traffic (categories + per-category
+        // series fetches + EPG + auth) quickly hits the FD limit.
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("Request failed: ${response.code}")
+            }
+            return response.body?.string() ?: throw Exception("Empty response")
         }
-        return response.body?.string() ?: throw Exception("Empty response")
     }
 }

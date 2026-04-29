@@ -87,31 +87,28 @@ class AppUpdateManager(private val context: Context) {
                     .url(apiUrl)
                     .header("Accept", "application/vnd.github.v3+json")
                     .build()
-                val response = client.newCall(request).execute()
-
-                if (response.code == 404) {
-                    return@withContext UpdateCheckResult(
+                val release = client.newCall(request).execute().use { response ->
+                    if (response.code == 404) {
+                        return@withContext UpdateCheckResult(
+                            available = false,
+                            currentVersionName = currentVersionName,
+                            error = "No releases found"
+                        )
+                    }
+                    if (!response.isSuccessful) {
+                        return@withContext UpdateCheckResult(
+                            available = false,
+                            currentVersionName = currentVersionName,
+                            error = "GitHub returned ${response.code}"
+                        )
+                    }
+                    val body = response.body?.string() ?: return@withContext UpdateCheckResult(
                         available = false,
                         currentVersionName = currentVersionName,
-                        error = "No releases found"
+                        error = "Empty response"
                     )
+                    Gson().fromJson(body, GitHubRelease::class.java)
                 }
-
-                if (!response.isSuccessful) {
-                    return@withContext UpdateCheckResult(
-                        available = false,
-                        currentVersionName = currentVersionName,
-                        error = "GitHub returned ${response.code}"
-                    )
-                }
-
-                val body = response.body?.string() ?: return@withContext UpdateCheckResult(
-                    available = false,
-                    currentVersionName = currentVersionName,
-                    error = "Empty response"
-                )
-
-                val release = Gson().fromJson(body, GitHubRelease::class.java)
 
                 // Find the matching .apk asset for this flavor (a=modern, b=legacy)
                 val suffix = if (com.vistacore.launcher.BuildConfig.LEGACY_TLS) "b.apk" else "a.apk"

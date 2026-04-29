@@ -83,9 +83,16 @@ class DispatcharrVodClient(
             .url(url)
             .header("X-API-Key", apiKey)
             .build()
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
-        return response.body?.string() ?: throw Exception("Empty response")
+        // Wrap in `use` so the response body — and the underlying socket /
+        // file descriptor — is always closed, even on the success path.
+        // Without this, paginated fetches (movies and series each loop
+        // until `next == null`) leak a connection per page; under
+        // worker + splash + settings traffic that quickly hits the
+        // process-level FD limit and surfaces as "Too many open streams".
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
+            return response.body?.string() ?: throw Exception("Empty response")
+        }
     }
 }
 

@@ -123,8 +123,7 @@ class CatchUpManager {
                 .build()
 
             val request = Request.Builder().url(url).head().build()
-            val response = client.newCall(request).execute()
-            response.isSuccessful
+            client.newCall(request).execute().use { response -> response.isSuccessful }
         } catch (_: Exception) {
             false
         }

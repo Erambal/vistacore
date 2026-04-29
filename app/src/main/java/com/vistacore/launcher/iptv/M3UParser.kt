@@ -54,17 +54,20 @@ class M3UParser {
             .url(url.trim())
             .header("User-Agent", "VistaCore/1.0")
             .build()
-        val response = client.newCall(request).execute()
-
-        if (!response.isSuccessful) {
-            throw Exception("Failed to load playlist: HTTP ${response.code}")
-        }
-
-        val body = response.body ?: throw Exception("Empty playlist response")
-        // Stream-parse line by line — never load the full file into memory
-        body.byteStream().use { stream ->
-            val reader = BufferedReader(InputStreamReader(stream, Charsets.UTF_8), 8192)
-            parseFromReader(reader)
+        // `use` on the response so the underlying socket closes even when
+        // parseFromReader throws halfway through the stream — without it
+        // the body's input stream would close (the inner `use`) but the
+        // OkHttp connection itself would leak its FD until pool eviction.
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("Failed to load playlist: HTTP ${response.code}")
+            }
+            val body = response.body ?: throw Exception("Empty playlist response")
+            // Stream-parse line by line — never load the full file into memory
+            body.byteStream().use { stream ->
+                val reader = BufferedReader(InputStreamReader(stream, Charsets.UTF_8), 8192)
+                parseFromReader(reader)
+            }
         }
     }
 

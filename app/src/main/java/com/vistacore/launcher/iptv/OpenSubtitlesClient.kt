@@ -87,25 +87,25 @@ class OpenSubtitlesClient(private val apiKey: String) {
             .build()
 
         try {
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                Log.w(TAG, "Search failed: HTTP ${response.code}")
-                return@withContext emptyList()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Search failed: HTTP ${response.code}")
+                    return@withContext emptyList()
+                }
+                val body = response.body?.string() ?: return@withContext emptyList()
+                val parsed = gson.fromJson(body, SearchResponse::class.java)
+                parsed.data?.mapNotNull { item ->
+                    val attrs = item.attributes ?: return@mapNotNull null
+                    val file = attrs.files?.firstOrNull() ?: return@mapNotNull null
+                    SubtitleResult(
+                        fileId = file.file_id ?: 0,
+                        language = attrs.language ?: "unknown",
+                        title = attrs.release ?: attrs.feature_details?.title ?: query,
+                        downloadCount = attrs.download_count ?: 0,
+                        year = attrs.feature_details?.year?.toString()
+                    )
+                } ?: emptyList()
             }
-
-            val body = response.body?.string() ?: return@withContext emptyList()
-            val parsed = gson.fromJson(body, SearchResponse::class.java)
-            parsed.data?.mapNotNull { item ->
-                val attrs = item.attributes ?: return@mapNotNull null
-                val file = attrs.files?.firstOrNull() ?: return@mapNotNull null
-                SubtitleResult(
-                    fileId = file.file_id ?: 0,
-                    language = attrs.language ?: "unknown",
-                    title = attrs.release ?: attrs.feature_details?.title ?: query,
-                    downloadCount = attrs.download_count ?: 0,
-                    year = attrs.feature_details?.year?.toString()
-                )
-            } ?: emptyList()
         } catch (e: Exception) {
             Log.e(TAG, "Search error", e)
             emptyList()
@@ -131,15 +131,15 @@ class OpenSubtitlesClient(private val apiKey: String) {
                 .post(jsonBody.toRequestBody("application/json".toMediaType()))
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                Log.w(TAG, "Download request failed: HTTP ${response.code}")
-                return@withContext null
+            val downloadUrl = client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Download request failed: HTTP ${response.code}")
+                    return@withContext null
+                }
+                val body = response.body?.string() ?: return@withContext null
+                val parsed = gson.fromJson(body, DownloadResponse::class.java)
+                parsed.link
             }
-
-            val body = response.body?.string() ?: return@withContext null
-            val parsed = gson.fromJson(body, DownloadResponse::class.java)
-            val downloadUrl = parsed.link
             if (downloadUrl.isNullOrBlank()) {
                 Log.w(TAG, "No download link in response")
                 return@withContext null
@@ -147,15 +147,15 @@ class OpenSubtitlesClient(private val apiKey: String) {
 
             // Step 2: Download the actual subtitle file
             val fileRequest = Request.Builder().url(downloadUrl).build()
-            val fileResponse = client.newCall(fileRequest).execute()
-            if (!fileResponse.isSuccessful) {
-                Log.w(TAG, "File download failed: HTTP ${fileResponse.code}")
-                return@withContext null
-            }
-
             val subtitleDir = File(cacheDir, "subtitles").also { it.mkdirs() }
             val outFile = File(subtitleDir, "sub_${fileId}.srt")
-            outFile.writeBytes(fileResponse.body?.bytes() ?: return@withContext null)
+            client.newCall(fileRequest).execute().use { fileResponse ->
+                if (!fileResponse.isSuccessful) {
+                    Log.w(TAG, "File download failed: HTTP ${fileResponse.code}")
+                    return@withContext null
+                }
+                outFile.writeBytes(fileResponse.body?.bytes() ?: return@withContext null)
+            }
 
             Log.d(TAG, "Subtitle downloaded: ${outFile.absolutePath}")
             outFile.absolutePath

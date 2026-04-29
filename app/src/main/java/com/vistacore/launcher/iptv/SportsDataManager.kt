@@ -100,11 +100,10 @@ class SportsDataManager {
         val url = "https://site.api.espn.com/apis/site/v2/sports/$endpoint/scoreboard"
 
         val request = Request.Builder().url(url).build()
-        val response = client.newCall(request).execute()
-
-        if (!response.isSuccessful) return emptyList()
-
-        val body = response.body?.string() ?: return emptyList()
+        val body = client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return emptyList()
+            response.body?.string() ?: return emptyList()
+        }
         return parseScoreboard(body, sport, league)
     }
 

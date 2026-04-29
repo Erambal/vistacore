@@ -156,13 +156,14 @@ class RemoteHelpActivity : BaseActivity() {
                     val config = withContext(Dispatchers.IO) {
                         val url = "${relayUrl.trimEnd('/')}/pair/$pairingCode"
                         val request = Request.Builder().url(url).build()
-                        val response = client.newCall(request).execute()
-                        if (response.isSuccessful) {
-                            val body = response.body?.string()
-                            if (!body.isNullOrBlank() && body != "null") {
-                                Gson().fromJson(body, RemoteConfig::class.java)
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                val body = response.body?.string()
+                                if (!body.isNullOrBlank() && body != "null") {
+                                    Gson().fromJson(body, RemoteConfig::class.java)
+                                } else null
                             } else null
-                        } else null
+                        }
                     }
 
                     if (config != null) {

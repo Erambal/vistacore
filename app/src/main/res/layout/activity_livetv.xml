@@ -140,7 +140,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Double-click a channel to go full screen  ·  Hold ▶ to favorite  ·  Hold OK or center to open the number pad"
+                android:text="Double-click a channel to go full screen  ·  Hold OK for channel options"
                 android:textSize="13sp"
                 android:textColor="@color/text_hint"
                 android:fontFamily="sans-serif-light"

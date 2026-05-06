@@ -111,8 +111,7 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
     private fun refreshList() {
         epgAdapter = LiveTVChannelRowAdapter(
             displayedChannels, epgData, favoritesManager,
-            onFavoriteToggle = { id -> toggleChannelFavorite(id) },
-            onLongOk = { showNumberPadOverlay() },
+            onChannelMenu = { ch -> showChannelContextMenu(ch) },
             onClick = { ch ->
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }
@@ -154,8 +153,7 @@ class LiveTVChannelRowAdapter(
     private val channels: List<Channel>,
     private val epgData: EpgData?,
     private val favoritesManager: com.vistacore.launcher.data.FavoritesManager,
-    private val onFavoriteToggle: (String) -> Boolean,
-    private val onLongOk: () -> Unit,
+    private val onChannelMenu: (Channel) -> Unit,
     private val onClick: (Channel) -> Unit
 ) : RecyclerView.Adapter<LiveTVChannelRowAdapter.VH>() {
 
@@ -214,22 +212,16 @@ class LiveTVChannelRowAdapter(
         renderEpgFav(holder.favIcon, favoritesManager.isFavoriteChannel(channel.id))
 
         holder.itemView.setOnClickListener { onClick(channel) }
-        // Long-press right → favorite. Long-press OK → number pad.
+        // Long-press OK opens the channel context menu (favorite + go-to).
         holder.itemView.setOnKeyListener { _, keyCode, event ->
-            if (event.action != android.view.KeyEvent.ACTION_DOWN) return@setOnKeyListener false
-            when (keyCode) {
-                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (event.repeatCount == 1) {
-                        renderEpgFav(holder.favIcon, onFavoriteToggle(channel.id))
-                        true
-                    } else false
-                }
-                android.view.KeyEvent.KEYCODE_DPAD_CENTER,
-                android.view.KeyEvent.KEYCODE_ENTER -> {
-                    if (event.isLongPress) { onLongOk(); true } else false
-                }
-                else -> false
-            }
+            val isCenterLongPress = event.action == android.view.KeyEvent.ACTION_DOWN &&
+                (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                    keyCode == android.view.KeyEvent.KEYCODE_ENTER) &&
+                event.isLongPress
+            if (isCenterLongPress) {
+                onChannelMenu(channel)
+                true
+            } else false
         }
         holder.itemView.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
     }

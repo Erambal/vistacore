@@ -115,8 +115,7 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
     private fun refreshRibbon() {
         ribbonAdapter = ChannelRibbonAdapter(
             displayedChannels, currentChannel, favoritesManager,
-            onFavoriteToggle = { id -> toggleChannelFavorite(id) },
-            onLongOk = { showNumberPadOverlay() },
+            onChannelMenu = { ch -> showChannelContextMenu(ch) },
             onClick = { ch ->
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }

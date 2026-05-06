@@ -394,6 +394,34 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    /**
+     * Long-press OK / DPAD_CENTER on any channel cell pops this menu.
+     * Single gesture, two actions — works on every layout (vertical
+     * sidebars and horizontal ribbons alike) without colliding with
+     * D-pad navigation. Replaces the prior long-press-RIGHT favorite
+     * gesture which only made sense in vertical layouts.
+     */
+    protected fun showChannelContextMenu(channel: Channel) {
+        val isFav = favoritesManager.isFavoriteChannel(channel.id)
+        val favLabel = if (isFav) "★  Remove from favorites" else "☆  Add to favorites"
+        val items = arrayOf(favLabel, "#  Go to channel…")
+        androidx.appcompat.app.AlertDialog.Builder(this, com.vistacore.launcher.R.style.Theme_VistaCore_Dialog)
+            .setTitle(channel.name)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> {
+                        toggleChannelFavorite(channel.id)
+                        // Rebuild the visible list so the heart icon reflects
+                        // the new state — refreshDerivedCategoryViews only
+                        // rebinds for Recent / Favorites views, not All.
+                        onDisplayedChannelsChanged()
+                    }
+                    1 -> showNumberPadOverlay()
+                }
+            }
+            .show()
+    }
+
     protected fun showNumberPadOverlay(prefill: String = "") {
         if (allChannels.isEmpty()) return
         val input = android.widget.EditText(this).apply {
@@ -432,7 +460,7 @@ abstract class BaseLiveTVActivity : BaseActivity() {
 
         input.setOnEditorActionListener { _, _, _ -> submit(); true }
 
-        // Auto-submit after 3s of no further typing — matches the cable-box
+        // Auto-submit after 2s of no further typing — matches the cable-box
         // pattern where you key in 5-0-2 and the box just tunes a moment
         // later. Reset the timer on every change so fast typists aren't
         // cut off mid-number.
@@ -442,10 +470,10 @@ abstract class BaseLiveTVActivity : BaseActivity() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: android.text.Editable?) {
                 input.removeCallbacks(autoSubmit)
-                if (!s.isNullOrEmpty()) input.postDelayed(autoSubmit, 3000)
+                if (!s.isNullOrEmpty()) input.postDelayed(autoSubmit, 2000)
             }
         })
-        if (prefill.isNotEmpty()) input.postDelayed(autoSubmit, 3000)
+        if (prefill.isNotEmpty()) input.postDelayed(autoSubmit, 2000)
         dialog.setOnDismissListener { input.removeCallbacks(autoSubmit) }
 
         dialog.show()

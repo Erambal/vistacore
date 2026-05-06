@@ -1141,9 +1141,16 @@ class SettingsActivity : BaseActivity() {
             updateManager.clearCachedUpdate()
         }
 
-        // Check for updates button
+        // Check for updates button.
+        // We use isClickable=false (not isEnabled=false) for the busy
+        // state because a disabled view can't hold focus — Android's
+        // focus finder hands focus to the next reachable control,
+        // which usually means the nav rail. The "Checking…" label is
+        // the visual busy indicator; the button itself stays focused
+        // and lit so the user keeps their place.
         binding.btnCheckUpdate.setOnClickListener {
-            binding.btnCheckUpdate.isEnabled = false
+            if (!binding.btnCheckUpdate.isClickable) return@setOnClickListener
+            binding.btnCheckUpdate.isClickable = false
             binding.btnCheckUpdate.text = "Checking…"
             binding.updateStatusText.visibility = android.view.View.GONE
             binding.btnInstallUpdate.visibility = android.view.View.GONE
@@ -1156,7 +1163,7 @@ class SettingsActivity : BaseActivity() {
 
                 val result = updateManager.checkForUpdate(repo)
 
-                binding.btnCheckUpdate.isEnabled = true
+                binding.btnCheckUpdate.isClickable = true
                 binding.btnCheckUpdate.text = "Check for Updates"
 
                 if (result.error != null) {
@@ -1184,17 +1191,17 @@ class SettingsActivity : BaseActivity() {
         // button stays in its "Downloading…" disabled state forever and the
         // user has to leave Settings and come back to retry.
         fun startInstall(apkUrl: String) {
-            binding.btnInstallUpdate.isEnabled = false
+            binding.btnInstallUpdate.isClickable = false
             binding.btnInstallUpdate.text = "Downloading…"
             Toast.makeText(this, "Downloading update…", Toast.LENGTH_SHORT).show()
             updateManager.downloadUpdate(apkUrl) { file ->
                 if (file != null) {
                     updateManager.installApk(file)
-                    // Leave the button disabled — the system installer is
-                    // foregrounded next; if the user backs out, they can
-                    // reopen Settings to retry, which re-binds the button.
+                    // Leave the button uncllickable — the system installer
+                    // takes over next. If the user backs out, reopening
+                    // Settings re-binds the handler.
                 } else {
-                    binding.btnInstallUpdate.isEnabled = true
+                    binding.btnInstallUpdate.isClickable = true
                     binding.btnInstallUpdate.text = "Download & Install Update"
                     Toast.makeText(
                         this@SettingsActivity,
@@ -1206,18 +1213,19 @@ class SettingsActivity : BaseActivity() {
         }
 
         binding.btnInstallUpdate.setOnClickListener {
+            if (!binding.btnInstallUpdate.isClickable) return@setOnClickListener
             val info = cachedUpdateInfo
             if (info != null) {
                 startInstall(info.apkUrl)
             } else {
                 // Fallback: re-check and download
-                binding.btnInstallUpdate.isEnabled = false
+                binding.btnInstallUpdate.isClickable = false
                 scope.launch {
                     val result = updateManager.checkForUpdate(prefs.appUpdateRepo)
                     if (result.available && result.info != null) {
                         startInstall(result.info.apkUrl)
                     } else {
-                        binding.btnInstallUpdate.isEnabled = true
+                        binding.btnInstallUpdate.isClickable = true
                         binding.btnInstallUpdate.text = "Download & Install Update"
                         Toast.makeText(this@SettingsActivity, "No update available", Toast.LENGTH_SHORT).show()
                     }

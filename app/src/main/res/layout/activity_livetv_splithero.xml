@@ -125,7 +125,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Hold ▶ to favorite  ·  Hold OK to open the number pad"
+                android:text="Hold OK on a channel for options"
                 android:textSize="12sp"
                 android:textColor="@color/text_hint"
                 android:fontFamily="sans-serif-light"

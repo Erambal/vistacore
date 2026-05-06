@@ -118,7 +118,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Hold ▶ to favorite  ·  Hold OK or center to open the number pad"
+            android:text="Hold OK on a channel for options"
             android:textSize="12sp"
             android:textColor="@color/text_hint"
             android:fontFamily="sans-serif-light"

@@ -140,8 +140,7 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
             rows.map { it.title to it.channels },
             currentChannel,
             favoritesManager,
-            onFavoriteToggle = { id -> toggleChannelFavorite(id) },
-            onLongOk = { showNumberPadOverlay() },
+            onChannelMenu = { ch -> showChannelContextMenu(ch) },
             onClick = { ch ->
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }
@@ -164,8 +163,7 @@ class CarouselRowsAdapter(
     private val rows: List<Pair<String, List<Channel>>>,
     private val currentChannel: Channel?,
     private val favoritesManager: com.vistacore.launcher.data.FavoritesManager,
-    private val onFavoriteToggle: (String) -> Boolean,
-    private val onLongOk: () -> Unit,
+    private val onChannelMenu: (Channel) -> Unit,
     private val onClick: (Channel) -> Unit
 ) : RecyclerView.Adapter<CarouselRowsAdapter.VH>() {
 
@@ -185,7 +183,7 @@ class CarouselRowsAdapter(
         holder.title.text = title
         holder.list.layoutManager = LinearLayoutManager(holder.itemView.context, LinearLayoutManager.HORIZONTAL, false)
         holder.list.adapter = ChannelRibbonAdapter(
-            channels, currentChannel, favoritesManager, onFavoriteToggle, onLongOk, onClick
+            channels, currentChannel, favoritesManager, onChannelMenu, onClick
         )
     }
 

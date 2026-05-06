@@ -41,6 +41,12 @@ abstract class BaseLiveTVActivity : BaseActivity() {
     protected val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     protected var player: ExoPlayer? = null
+    /** Last PlayerView the preview was attached to. Stored so the base
+     *  class can rebuild the player on its own when it had to be released
+     *  for a fullscreen handoff (see goFullScreen / onResume). */
+    private var attachedPlayerView: PlayerView? = null
+    private var releasedForFullscreen = false
+
     protected var allChannels: List<Channel> = emptyList()
     protected var categoryChannels: List<Channel> = emptyList()
     protected var displayedChannels: List<Channel> = emptyList()
@@ -76,6 +82,7 @@ abstract class BaseLiveTVActivity : BaseActivity() {
      * to the given PlayerView.
      */
     protected fun setupPlayer(playerView: PlayerView) {
+        attachedPlayerView = playerView
         // Match IPTVPlayerActivity's player config so the preview and the
         // full-screen player behave identically: same buffer timings, same
         // decoder fallback for flaky hardware HEVC, same extension-renderer
@@ -347,6 +354,16 @@ abstract class BaseLiveTVActivity : BaseActivity() {
     }
 
     protected fun goFullScreen(channel: Channel) {
+        // Free the preview player's hardware decoder before launching
+        // the fullscreen activity. On budget Fire TV / Google TV boxes
+        // there's only one performant H.264/HEVC decoder, so leaving
+        // the preview alive (even paused) makes fullscreen fall back to
+        // a software decoder and stutter. The preview gets rebuilt in
+        // onResume when the user returns from fullscreen.
+        player?.release()
+        player = null
+        releasedForFullscreen = true
+
         val intent = Intent(this, IPTVPlayerActivity::class.java).apply {
             putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, channel.streamUrl)
             putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, channel.name)
@@ -403,7 +420,16 @@ abstract class BaseLiveTVActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
-        player?.play()
+        // Coming back from a fullscreen handoff: the preview player was
+        // released to free the hardware decoder. Rebuild it now and tune
+        // back to whatever the user had selected.
+        if (releasedForFullscreen && player == null) {
+            releasedForFullscreen = false
+            attachedPlayerView?.let { setupPlayer(it) }
+            currentChannel?.let { tuneToChannel(it) }
+        } else {
+            player?.play()
+        }
     }
 
     override fun onDestroy() {

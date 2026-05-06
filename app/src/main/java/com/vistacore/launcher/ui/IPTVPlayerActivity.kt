@@ -49,6 +49,14 @@ import com.vistacore.launcher.system.ChannelUpdateWorker
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class IPTVPlayerActivity : BaseActivity() {
 
+    /**
+     * Stay in landscape regardless of device orientation. Video playback
+     * is 16:9 — letting the activity rotate to portrait would either
+     * letterbox the video to a tiny strip or stretch it, neither of
+     * which is what the user wants while watching a stream.
+     */
+    override fun allowsRotation(): Boolean = false
+
     companion object {
         const val EXTRA_STREAM_URL = "stream_url"
         const val EXTRA_CHANNEL_NAME = "channel_name"

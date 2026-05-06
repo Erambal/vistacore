@@ -136,11 +136,11 @@
             android:orientation="vertical"
             android:background="@android:color/black">
 
-            <!-- Hint text -->
+            <!-- Hint text — covers fullscreen, favorite, and number-pad gestures. -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Double-click a channel to go full screen"
+                android:text="Double-click a channel to go full screen  ·  Hold ▶ to favorite  ·  Hold OK or center to open the number pad"
                 android:textSize="13sp"
                 android:textColor="@color/text_hint"
                 android:fontFamily="sans-serif-light"
@@ -157,20 +157,6 @@
                 android:layout_weight="1"
                 app:use_controller="false"
                 app:resize_mode="fit" />
-
-            <!-- Go to Channel button — focusability controlled in code;
-                 only enabled when a channel list item has focus -->
-            <Button
-                android:id="@+id/btn_number_pad"
-                android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:text="Go to Channel #"
-                android:textSize="16sp"
-                android:textColor="@color/text_secondary"
-                android:fontFamily="sans-serif-medium"
-                android:background="@drawable/button_goto_channel"
-                android:focusable="false"
-                android:focusableInTouchMode="false" />
 
             <!-- Now playing / Up next strip -->
             <LinearLayout

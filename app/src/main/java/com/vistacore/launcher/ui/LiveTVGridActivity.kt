@@ -67,7 +67,6 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
         findViewById<View>(R.id.grid_btn_guide).setOnClickListener {
             startActivity(Intent(this, EpgGuideActivity::class.java))
         }
-        findViewById<View>(R.id.grid_btn_number_pad).setOnClickListener { showNumberPadOverlay() }
 
         // Surface a launcher-supplied search query in the visible box so a
         // category change doesn't silently wipe the active filter.
@@ -132,6 +131,7 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
         gridAdapter = ChannelTileAdapter(
             displayedChannels, tileEpg, currentChannel, favoritesManager,
             onFavoriteToggle = { id -> toggleChannelFavorite(id) },
+            onLongOk = { showNumberPadOverlay() },
             onClick = { ch ->
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }
@@ -173,6 +173,7 @@ class ChannelTileAdapter(
     var currentChannel: Channel?,
     private val favoritesManager: com.vistacore.launcher.data.FavoritesManager,
     private val onFavoriteToggle: (String) -> Boolean,
+    private val onLongOk: () -> Unit,
     private val onClick: (Channel) -> Unit
 ) : RecyclerView.Adapter<ChannelTileAdapter.VH>() {
 
@@ -215,16 +216,34 @@ class ChannelTileAdapter(
             holder.now.text = ""
         }
 
-        holder.favIcon.visibility =
-            if (favoritesManager.isFavoriteChannel(channel.id)) View.VISIBLE else View.GONE
+        renderTileFav(holder.favIcon, favoritesManager.isFavoriteChannel(channel.id))
 
         holder.itemView.setOnClickListener { onClick(channel) }
-        holder.itemView.setOnLongClickListener {
-            val nowFav = onFavoriteToggle(channel.id)
-            holder.favIcon.visibility = if (nowFav) View.VISIBLE else View.GONE
-            true
+        // Long-press right → favorite. Long-press OK → number pad.
+        holder.itemView.setOnKeyListener { _, keyCode, event ->
+            if (event.action != android.view.KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            when (keyCode) {
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (event.repeatCount == 1) {
+                        renderTileFav(holder.favIcon, onFavoriteToggle(channel.id))
+                        true
+                    } else false
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                android.view.KeyEvent.KEYCODE_ENTER -> {
+                    if (event.isLongPress) { onLongOk(); true } else false
+                }
+                else -> false
+            }
         }
         holder.itemView.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+    }
+
+    private fun renderTileFav(icon: ImageView, isFav: Boolean) {
+        icon.setImageResource(
+            if (isFav) R.drawable.ic_favorite else R.drawable.ic_favorite_outline
+        )
+        icon.visibility = View.VISIBLE
     }
 
     override fun getItemCount() = channels.size

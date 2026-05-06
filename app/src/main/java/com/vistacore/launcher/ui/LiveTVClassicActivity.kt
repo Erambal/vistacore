@@ -65,12 +65,6 @@ class LiveTVClassicActivity : BaseLiveTVActivity() {
     }
 
     private fun setupButtons() {
-        binding.btnNumberPad.setOnClickListener { showNumberPadOverlay() }
-        binding.btnNumberPad.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
-        binding.btnNumberPad.nextFocusLeftId = R.id.channel_list
-        binding.btnNumberPad.isFocusable = true
-        binding.btnNumberPad.isFocusableInTouchMode = false
-
         binding.btnToggleEpg.setOnClickListener {
             startActivity(android.content.Intent(this, EpgGuideActivity::class.java))
         }
@@ -121,6 +115,7 @@ class LiveTVClassicActivity : BaseLiveTVActivity() {
         channelAdapter = LiveChannelAdapter(
             displayedChannels, epgData, prefs.showEpgInChannelList, currentChannel, favoritesManager,
             onFavoriteToggle = { id -> toggleChannelFavorite(id) },
+            onLongOk = { showNumberPadOverlay() },
             onClick = { ch ->
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }
@@ -200,6 +195,8 @@ class LiveChannelAdapter(
     var currentChannel: Channel?,
     private val favoritesManager: com.vistacore.launcher.data.FavoritesManager,
     private val onFavoriteToggle: (String) -> Boolean,
+    /** Long-press OK / DPAD_CENTER on a channel — opens the number pad. */
+    private val onLongOk: () -> Unit,
     private val onClick: (Channel) -> Unit
 ) : RecyclerView.Adapter<LiveChannelAdapter.VH>() {
 
@@ -250,31 +247,44 @@ class LiveChannelAdapter(
             holder.nowPlaying.visibility = View.GONE
         }
 
-        val isFav = favoritesManager.isFavoriteChannel(channel.id)
-        holder.favIcon.visibility = if (isFav) View.VISIBLE else View.GONE
-        if (isFav) holder.favIcon.setImageResource(R.drawable.ic_favorite)
+        renderFavIcon(holder.favIcon, favoritesManager.isFavoriteChannel(channel.id))
 
         holder.itemView.setOnClickListener { onClick(channel) }
-        holder.itemView.setOnLongClickListener {
-            val nowFav = onFavoriteToggle(channel.id)
-            if (nowFav) {
-                holder.favIcon.setImageResource(R.drawable.ic_favorite)
-                holder.favIcon.visibility = View.VISIBLE
-            } else {
-                holder.favIcon.visibility = View.GONE
+        // Gestures:
+        //   long-press DPAD_RIGHT  → toggle favorite (heart fills/unfills)
+        //   long-press DPAD_CENTER → open the channel-number pad
+        // Detected via repeatCount > 0 for RIGHT (not a native long-press
+        // key) and isLongPress for CENTER (which Android handles natively).
+        holder.itemView.setOnKeyListener { _, keyCode, event ->
+            if (event.action != android.view.KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            when (keyCode) {
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (event.repeatCount == 1) {
+                        val nowFav = onFavoriteToggle(channel.id)
+                        renderFavIcon(holder.favIcon, nowFav)
+                        true  // consume so focus doesn't escape right
+                    } else false
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                android.view.KeyEvent.KEYCODE_ENTER -> {
+                    if (event.isLongPress) {
+                        onLongOk()
+                        true
+                    } else false
+                }
+                else -> false
             }
-            true
         }
         holder.itemView.setOnFocusChangeListener { v, f ->
             MainActivity.animateFocus(v, f)
         }
-        // Note: previously this set nextFocusRightId = R.id.btn_number_pad
-        // and toggled the button's focusability inside the focus listener.
-        // That created a race during list rebinds where focus would land
-        // on the number-pad button instead of the new channel — pressing
-        // OK on a "show" would actually fire the channel-number dialog.
-        // The button is now reachable via normal D-pad navigation around
-        // the right column (or the digit-key auto-pop from BaseLiveTV).
+    }
+
+    private fun renderFavIcon(icon: ImageView, isFav: Boolean) {
+        icon.setImageResource(
+            if (isFav) R.drawable.ic_favorite else R.drawable.ic_favorite_outline
+        )
+        icon.visibility = View.VISIBLE
     }
 
     override fun getItemCount() = channels.size

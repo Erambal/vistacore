@@ -112,19 +112,19 @@
                 android:imeOptions="actionSearch"
                 android:singleLine="true" />
 
-            <Button
-                android:id="@+id/imm_btn_number_pad"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="Go to Channel #"
-                android:textColor="@color/text_secondary"
-                android:background="@drawable/card_selector"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
-                android:layout_marginStart="8dp"
-                android:focusable="true"
-                android:focusableInTouchMode="true" />
         </LinearLayout>
+
+        <!-- Gesture hints — long-press right for favorite, OK for number pad. -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Hold ▶ to favorite  ·  Hold OK or center to open the number pad"
+            android:textSize="12sp"
+            android:textColor="@color/text_hint"
+            android:fontFamily="sans-serif-light"
+            android:gravity="center"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp" />
 
         <!-- Category picker (opens modal list on click) -->
         <Button

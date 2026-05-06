@@ -416,19 +416,37 @@ abstract class BaseLiveTVActivity : BaseActivity() {
             .setNegativeButton("Cancel", null)
             .create()
 
-        input.setOnEditorActionListener { _, _, _ ->
-            val num = input.text.toString().trim().toIntOrNull()
-            if (num != null) {
-                val channel = allChannels.find { it.number == num }
-                if (channel != null) {
-                    tuneToChannel(channel)
-                    dialog.dismiss()
-                } else {
-                    android.widget.Toast.makeText(this, "Channel $num not found", android.widget.Toast.LENGTH_SHORT).show()
-                }
+        // Try to tune. Returns true if a channel was found and tuned.
+        fun submit(): Boolean {
+            val num = input.text.toString().trim().toIntOrNull() ?: return false
+            val channel = allChannels.find { it.number == num }
+            return if (channel != null) {
+                tuneToChannel(channel)
+                dialog.dismiss()
+                true
+            } else {
+                android.widget.Toast.makeText(this, "Channel $num not found", android.widget.Toast.LENGTH_SHORT).show()
+                false
             }
-            true
         }
+
+        input.setOnEditorActionListener { _, _, _ -> submit(); true }
+
+        // Auto-submit after 3s of no further typing — matches the cable-box
+        // pattern where you key in 5-0-2 and the box just tunes a moment
+        // later. Reset the timer on every change so fast typists aren't
+        // cut off mid-number.
+        val autoSubmit = Runnable { submit() }
+        input.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                input.removeCallbacks(autoSubmit)
+                if (!s.isNullOrEmpty()) input.postDelayed(autoSubmit, 3000)
+            }
+        })
+        if (prefill.isNotEmpty()) input.postDelayed(autoSubmit, 3000)
+        dialog.setOnDismissListener { input.removeCallbacks(autoSubmit) }
 
         dialog.show()
         input.requestFocus()

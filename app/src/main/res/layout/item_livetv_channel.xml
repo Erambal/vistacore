@@ -63,13 +63,15 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <!-- Favorite indicator (not focusable — long press the row to toggle) -->
+    <!-- Favorite indicator. Always visible — outline when not favorited,
+         filled gold when favorited. Toggle by long-pressing RIGHT on the
+         focused channel row (hint shown beneath the channel list). -->
     <ImageView
         android:id="@+id/ch_fav_icon"
         android:layout_width="24dp"
         android:layout_height="24dp"
         android:scaleType="centerInside"
         android:contentDescription="Favorite"
-        android:visibility="gone" />
+        android:src="@drawable/ic_favorite_outline" />
 
 </LinearLayout>

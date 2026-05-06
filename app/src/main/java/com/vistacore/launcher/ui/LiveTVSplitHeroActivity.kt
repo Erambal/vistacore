@@ -59,7 +59,6 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
             }
         })
 
-        findViewById<Button>(R.id.sh_btn_number_pad).setOnClickListener { showNumberPadOverlay() }
 
         intent.getStringExtra(EXTRA_SEARCH_QUERY)?.let { query ->
             if (query.isNotBlank()) {
@@ -117,6 +116,7 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
         ribbonAdapter = ChannelRibbonAdapter(
             displayedChannels, currentChannel, favoritesManager,
             onFavoriteToggle = { id -> toggleChannelFavorite(id) },
+            onLongOk = { showNumberPadOverlay() },
             onClick = { ch ->
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }

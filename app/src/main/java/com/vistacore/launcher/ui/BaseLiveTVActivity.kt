@@ -373,7 +373,28 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         startActivity(intent)
     }
 
-    protected fun showNumberPadOverlay() {
+    /**
+     * Pop the channel-number dialog when the user types a digit (0–9) on a
+     * remote that actually has number keys. Stick remotes (Onn, Fire) don't
+     * — they use the visible "Go to Channel #" button. The digit they
+     * pressed is pre-filled so they don't have to retype it. Skipped when
+     * an EditText already has focus, so typing into the search field works
+     * normally.
+     */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN &&
+            event.keyCode in android.view.KeyEvent.KEYCODE_0..android.view.KeyEvent.KEYCODE_9 &&
+            currentFocus !is android.widget.EditText &&
+            allChannels.isNotEmpty()
+        ) {
+            val digit = event.keyCode - android.view.KeyEvent.KEYCODE_0
+            showNumberPadOverlay(prefill = digit.toString())
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    protected fun showNumberPadOverlay(prefill: String = "") {
         if (allChannels.isEmpty()) return
         val input = android.widget.EditText(this).apply {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
@@ -383,6 +404,10 @@ abstract class BaseLiveTVActivity : BaseActivity() {
             setTextColor(getColor(com.vistacore.launcher.R.color.text_primary))
             setHintTextColor(getColor(com.vistacore.launcher.R.color.text_hint))
             setPadding(32, 24, 32, 24)
+            if (prefill.isNotEmpty()) {
+                setText(prefill)
+                setSelection(prefill.length)
+            }
         }
 
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this)

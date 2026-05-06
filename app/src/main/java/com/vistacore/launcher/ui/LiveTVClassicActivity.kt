@@ -68,7 +68,7 @@ class LiveTVClassicActivity : BaseLiveTVActivity() {
         binding.btnNumberPad.setOnClickListener { showNumberPadOverlay() }
         binding.btnNumberPad.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         binding.btnNumberPad.nextFocusLeftId = R.id.channel_list
-        binding.btnNumberPad.isFocusable = false
+        binding.btnNumberPad.isFocusable = true
         binding.btnNumberPad.isFocusableInTouchMode = false
 
         binding.btnToggleEpg.setOnClickListener {
@@ -267,13 +267,14 @@ class LiveChannelAdapter(
         }
         holder.itemView.setOnFocusChangeListener { v, f ->
             MainActivity.animateFocus(v, f)
-            val btn = (v.context as? BaseLiveTVActivity)?.findViewById<View>(R.id.btn_number_pad)
-            if (btn != null) {
-                btn.isFocusable = f
-                btn.isFocusableInTouchMode = f
-            }
         }
-        holder.itemView.nextFocusRightId = R.id.btn_number_pad
+        // Note: previously this set nextFocusRightId = R.id.btn_number_pad
+        // and toggled the button's focusability inside the focus listener.
+        // That created a race during list rebinds where focus would land
+        // on the number-pad button instead of the new channel — pressing
+        // OK on a "show" would actually fire the channel-number dialog.
+        // The button is now reachable via normal D-pad navigation around
+        // the right column (or the digit-key auto-pop from BaseLiveTV).
     }
 
     override fun getItemCount() = channels.size

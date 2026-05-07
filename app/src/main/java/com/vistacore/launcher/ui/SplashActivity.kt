@@ -524,7 +524,7 @@ class SplashActivity : BaseActivity() {
         return cleaned.trim().ifBlank { name.trim() }
     }
 
-    private suspend fun preloadContent() = withContext(Dispatchers.IO) {
+    private suspend fun preloadContent(): Unit = withContext(Dispatchers.IO) {
         val loadPrefs = PrefsManager(this@SplashActivity)
         val tracker = com.vistacore.launcher.data.UsageTracker(this@SplashActivity)
         try {

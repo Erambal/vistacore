@@ -158,9 +158,6 @@ class KidsBrowserActivity : BaseActivity() {
 
         val target = if (right) pos + 1 else pos - 1
         if (target < 0) return true
-        while (right && target >= adapter.itemCount && adapter.itemCount < adapter.totalItems()) {
-            adapter.loadMore()
-        }
         if (target >= adapter.itemCount) return true
 
         rv.smoothScrollToPosition(target)
@@ -703,15 +700,6 @@ class KidsNetflixAdapter(
             val posterAdapter = KidsPosterAdapter(row.items, activity, row.hero, row.tintHex)
             recycler.adapter = posterAdapter
             recycler.clearOnScrollListeners()
-            recycler.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    if (dx <= 0) return
-                    val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return
-                    if (lm.findLastVisibleItemPosition() >= posterAdapter.itemCount - 6) {
-                        posterAdapter.loadMore()
-                    }
-                }
-            })
         }
     }
 }
@@ -722,18 +710,6 @@ class KidsPosterAdapter(
     private val hero: Boolean = false,
     private val tintHex: String = ""
 ) : RecyclerView.Adapter<KidsPosterAdapter.VH>() {
-
-    private var visibleCount = minOf(30, items.size)
-
-    fun loadMore() {
-        if (visibleCount >= items.size) return
-        val prev = visibleCount
-        visibleCount = minOf(visibleCount + 20, items.size)
-        notifyItemRangeInserted(prev, visibleCount - prev)
-    }
-
-    /** Full underlying list size, regardless of how many rows are currently bound. */
-    fun totalItems(): Int = items.size
 
     inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val image: ImageView = itemView.findViewById(R.id.poster_image)
@@ -772,5 +748,5 @@ class KidsPosterAdapter(
         holder.itemView.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
     }
 
-    override fun getItemCount() = visibleCount
+    override fun getItemCount() = items.size
 }

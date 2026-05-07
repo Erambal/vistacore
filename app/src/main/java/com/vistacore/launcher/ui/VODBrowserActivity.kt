@@ -61,6 +61,11 @@ class VODBrowserActivity : BaseActivity() {
     // skip the rebuild to avoid flicker.
     private var showingSearchResults = false
 
+    // Where we want focus to land when the user comes back from a detail
+    // page. EditText (the search bar) otherwise grabs focus by default,
+    // which yanks the user away from the show they were just looking at.
+    private var lastFocusedItemId: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityVodNetflixBinding.inflate(layoutInflater)
@@ -98,8 +103,8 @@ class VODBrowserActivity : BaseActivity() {
     /**
      * D-pad LEFT/RIGHT inside a row. Default focus search loses the position
      * when the next poster hasn't been laid out — holding RIGHT ends up
-     * wrapping focus back to the leftmost item. We pre-scroll, loadMore if
-     * needed, then request focus atomically so key-repeat works smoothly.
+     * wrapping focus back to the leftmost item. We pre-scroll, then request
+     * focus atomically so key-repeat works smoothly.
      */
     private fun stepPoster(right: Boolean): Boolean {
         val focused = currentFocus ?: return false
@@ -121,9 +126,6 @@ class VODBrowserActivity : BaseActivity() {
 
         val target = if (right) pos + 1 else pos - 1
         if (target < 0) return true  // trap at left edge; don't escape to a sibling row
-        while (right && target >= adapter.itemCount && adapter.itemCount < adapter.totalItems()) {
-            adapter.loadMore()
-        }
         if (target >= adapter.itemCount) return true  // truly at the end
 
         rv.smoothScrollToPosition(target)
@@ -331,7 +333,7 @@ class VODBrowserActivity : BaseActivity() {
         }
 
         // ─── Discovery shelves (built before category rows) ───────────────
-        // Continue Watching, Surprise Me, Just Added, mood/decade rows.
+        // Continue Watching, Just Added, mood/decade rows.
         // Items already started/finished are hidden from discovery rows so the
         // user doesn't keep seeing the same posters they've already watched.
         val watchHistory = com.vistacore.launcher.data.WatchHistoryManager(this)
@@ -345,14 +347,6 @@ class VODBrowserActivity : BaseActivity() {
                 hero = true,
                 origin = "continue"
             ))
-        }
-
-        // Top 3 personalized picks hero — only for movies. Pulls from the
-        // user's most-watched categories; cold-start falls back to recent
-        // titles so the hero still looks populated.
-        if (contentType == TYPE_MOVIES) {
-            val picks = Discovery.topPicks(displayItems, watchHistory, limit = 3)
-            rows.add(NetflixRow.TopPicks(picks = picks))
         }
 
         // Just Added — filter to items with parsable years, sort newest first
@@ -690,12 +684,6 @@ sealed class NetflixRow {
         val hero: Boolean = false,
         val origin: String = ""
     ) : NetflixRow()
-    /** Hero tile with three personalized picks based on viewing history. */
-    data class TopPicks(
-        val title: String = "Don't know what to watch?",
-        val subtitle: String = "Top picks based on your viewing history",
-        val picks: List<Channel> = emptyList()
-    ) : NetflixRow()
 }
 
 // --- Netflix Main Adapter (banner + category rows) ---
@@ -708,7 +696,6 @@ class NetflixAdapter(
     companion object {
         const val TYPE_BANNER = 0
         const val TYPE_ROW = 1
-        const val TYPE_SURPRISE = 2
         private const val INITIAL_ROWS = 5 // banner + a few discovery shelves
     }
 
@@ -718,7 +705,6 @@ class NetflixAdapter(
     override fun getItemViewType(position: Int) = when (rows[position]) {
         is NetflixRow.Banner -> TYPE_BANNER
         is NetflixRow.CategoryRow -> TYPE_ROW
-        is NetflixRow.TopPicks -> TYPE_SURPRISE
     }
 
     override fun getItemCount() = visibleCount
@@ -738,10 +724,6 @@ class NetflixAdapter(
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_netflix_banner, parent, false)
                 BannerVH(view)
             }
-            TYPE_SURPRISE -> {
-                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_surprise_hero, parent, false)
-                TopPicksVH(view)
-            }
             else -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_netflix_row, parent, false)
                 RowVH(view)
@@ -753,43 +735,6 @@ class NetflixAdapter(
         when (val row = rows[position]) {
             is NetflixRow.Banner -> (holder as BannerVH).bind(currentBanner ?: row.item)
             is NetflixRow.CategoryRow -> (holder as RowVH).bind(row)
-            is NetflixRow.TopPicks -> (holder as TopPicksVH).bind(row)
-        }
-    }
-
-    inner class TopPicksVH(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val title: TextView = itemView.findViewById(R.id.surprise_title)
-        private val subtitle: TextView = itemView.findViewById(R.id.surprise_subtitle)
-        private val picksRow: LinearLayout = itemView.findViewById(R.id.surprise_picks_row)
-
-        fun bind(row: NetflixRow.TopPicks) {
-            title.text = row.title
-            subtitle.text = row.subtitle
-
-            picksRow.removeAllViews()
-            if (row.picks.isEmpty()) {
-                // No viewing history AND no unwatched items — hide the
-                // whole hero rather than show an empty space.
-                itemView.visibility = View.GONE
-                itemView.layoutParams = itemView.layoutParams.apply { height = 0 }
-                return
-            }
-            itemView.visibility = View.VISIBLE
-
-            val inflater = LayoutInflater.from(itemView.context)
-            for (pick in row.picks) {
-                val card = inflater.inflate(R.layout.item_surprise_pick, picksRow, false)
-                val poster = card.findViewById<ImageView>(R.id.pick_poster)
-                val label = card.findViewById<TextView>(R.id.pick_title)
-
-                label.text = activity.getDisplayName(pick)
-                if (pick.logoUrl.isNotBlank()) {
-                    Glide.with(card.context).load(pick.logoUrl).into(poster)
-                }
-                card.setOnClickListener { activity.onItemClicked(pick) }
-                card.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
-                picksRow.addView(card)
-            }
         }
     }
 
@@ -949,20 +894,11 @@ class NetflixAdapter(
             val posterAdapter = PosterAdapter(row.items, activity, row.origin, row.hero)
             recycler.adapter = posterAdapter
             recycler.clearOnScrollListeners()
-            recycler.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    if (dx <= 0) return
-                    val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return
-                    if (lm.findLastVisibleItemPosition() >= posterAdapter.itemCount - 6) {
-                        posterAdapter.loadMore()
-                    }
-                }
-            })
         }
     }
 }
 
-// --- Poster Adapter (horizontal row of posters, lazy-loads 30 at a time) ---
+// --- Poster Adapter (horizontal row of posters) ---
 
 class PosterAdapter(
     private val items: List<Channel>,
@@ -971,19 +907,8 @@ class PosterAdapter(
     private val hero: Boolean = false
 ) : RecyclerView.Adapter<PosterAdapter.VH>() {
 
-    private var visibleCount = minOf(30, items.size)
     // Cached so we don't allocate per-click.
     private val moodPrefs by lazy { MoodPrefsManager(activity) }
-
-    /** Load the next batch when the user scrolls near the end of the row. */
-    fun loadMore() {
-        if (visibleCount >= items.size) return
-        val prev = visibleCount
-        visibleCount = minOf(visibleCount + 20, items.size)
-        notifyItemRangeInserted(prev, visibleCount - prev)
-    }
-
-    fun totalItems(): Int = items.size
 
     inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val image: ImageView = itemView.findViewById(R.id.poster_image)
@@ -1044,5 +969,5 @@ class PosterAdapter(
         }
     }
 
-    override fun getItemCount() = visibleCount
+    override fun getItemCount() = items.size
 }

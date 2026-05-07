@@ -119,64 +119,6 @@ object Discovery {
         return pool.random()
     }
 
-    /**
-     * Top N personalized recommendations for the homepage hero, based on
-     * the categories of titles the user has actually watched (from
-     * [WatchHistoryManager]). Each pick comes from a different category
-     * to avoid three-of-the-same showing up.
-     *
-     * Cold-start (empty history): falls back to unwatched recent titles
-     * so the shelf still looks alive.
-     */
-    fun topPicks(
-        items: List<Channel>,
-        history: WatchHistoryManager,
-        limit: Int = 3
-    ): List<Channel> {
-        val recentHistory = history.getRecent(50)
-        val seenUrls = recentHistory.map { it.streamUrl }.toSet()
-        val unwatched = items.filter { it.streamUrl !in seenUrls && it.logoUrl.isNotBlank() }
-        if (unwatched.isEmpty()) return emptyList()
-
-        // Cold start — user hasn't watched anything yet. Surface the most
-        // recent titles (by embedded year) so the hero isn't empty.
-        if (recentHistory.isEmpty()) {
-            return unwatched.asSequence()
-                .mapNotNull { c -> yearOf(c)?.let { y -> c to y } }
-                .sortedByDescending { it.second }
-                .map { it.first }
-                .take(limit)
-                .toList()
-        }
-
-        // Rank the user's categories by how often they've watched them.
-        val byUrl = items.associateBy { it.streamUrl }
-        val catRank = recentHistory
-            .mapNotNull { byUrl[it.streamUrl]?.category }
-            .groupingBy { it }
-            .eachCount()
-            .entries
-            .sortedByDescending { it.value }
-            .map { it.key }
-
-        val picks = mutableListOf<Channel>()
-        val usedCats = mutableSetOf<String>()
-        for (cat in catRank) {
-            if (picks.size >= limit) break
-            if (cat in usedCats) continue
-            val pick = unwatched.firstOrNull { it.category == cat } ?: continue
-            picks += pick
-            usedCats += cat
-        }
-        // If their history only spans 1-2 categories, pad with any unwatched.
-        var i = 0
-        while (picks.size < limit && i < unwatched.size) {
-            val candidate = unwatched[i++]
-            if (candidate !in picks) picks += candidate
-        }
-        return picks
-    }
-
     // ─── Continue Watching mapping ───
 
     /**

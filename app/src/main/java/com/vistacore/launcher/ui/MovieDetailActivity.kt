@@ -156,6 +156,25 @@ class MovieDetailActivity : BaseActivity() {
                 } catch (_: Exception) { null }
             }
 
+            // Enrich the keyword cache so this title contributes to similarity
+            // ranking next time the user opens Movies. Fire-and-forget — no
+            // UI element on this screen depends on the result.
+            if (tmdbIdResolved != null && streamUrl.isNotBlank() &&
+                !com.vistacore.launcher.data.KeywordCache.has(streamUrl)
+            ) {
+                scope.launch(Dispatchers.IO) {
+                    val kws = try {
+                        TmdbClient(this@MovieDetailActivity)
+                            .getKeywords(tmdbIdResolved, TmdbType.MOVIE)
+                    } catch (_: Exception) { emptyList() }
+                    com.vistacore.launcher.data.KeywordCache.put(
+                        this@MovieDetailActivity,
+                        streamUrl,
+                        com.vistacore.launcher.data.KeywordCache.Entry(tmdbIdResolved, kws)
+                    )
+                }
+            }
+
             val cast = if (tmdbIdResolved != null) {
                 withContext(Dispatchers.IO) {
                     try {

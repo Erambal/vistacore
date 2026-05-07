@@ -187,6 +187,31 @@ class ShowDetailActivity : BaseActivity() {
                 } catch (_: Exception) { null }
             }
 
+            // Enrich keyword cache for every episode URL in this show. The
+            // browser catalog dedupes shows to one representative episode,
+            // while WatchHistoryManager records whichever episode actually
+            // played — keying both against the same keyword set lets the
+            // similarity sort pick up either source. Cheap: ~10 keywords
+            // per entry, dozens of entries per show.
+            if (tmdbIdResolved != null && episodes.isNotEmpty() &&
+                episodes.none { com.vistacore.launcher.data.KeywordCache.has(it.streamUrl) }
+            ) {
+                scope.launch(Dispatchers.IO) {
+                    val kws = try {
+                        TmdbClient(this@ShowDetailActivity)
+                            .getKeywords(tmdbIdResolved, TmdbType.TV)
+                    } catch (_: Exception) { emptyList() }
+                    val entry = com.vistacore.launcher.data.KeywordCache.Entry(tmdbIdResolved, kws)
+                    for (ep in episodes) {
+                        if (ep.streamUrl.isNotBlank()) {
+                            com.vistacore.launcher.data.KeywordCache.put(
+                                this@ShowDetailActivity, ep.streamUrl, entry
+                            )
+                        }
+                    }
+                }
+            }
+
             val cast = if (tmdbIdResolved != null) {
                 withContext(Dispatchers.IO) {
                     try {

@@ -119,6 +119,23 @@ class TmdbClient(context: Context? = null) {
     }
 
     /**
+     * Lowercased keyword tags for a title. Used to score similarity between
+     * the user's watch history and unwatched catalog items so each
+     * category's first row reflects "more like what I've watched."
+     * Returns empty list on any failure.
+     */
+    suspend fun getKeywords(tmdbId: Int, type: TmdbType): List<String> =
+        withContext(Dispatchers.IO) {
+            val body = get("${type.path}/$tmdbId/keywords") ?: return@withContext emptyList()
+            try {
+                val resp = gson.fromJson(body, TmdbKeywordsResponse::class.java) ?: return@withContext emptyList()
+                // Movies use "keywords", TV uses "results" — TMDB schema quirk.
+                val list = resp.keywords ?: resp.results.orEmpty()
+                list.mapNotNull { it.name?.lowercase()?.trim()?.takeIf { kw -> kw.isNotEmpty() } }
+            } catch (_: Exception) { emptyList() }
+        }
+
+    /**
      * Best YouTube trailer video id for a title. Prefers official Trailer
      * videos, falls back to Teaser, then any YouTube video. Returns null
      * when nothing matches.
@@ -218,3 +235,11 @@ private data class TmdbContentRating(
     @SerializedName("iso_3166_1") val iso_3166_1: String? = null,
     val rating: String? = null
 )
+
+// /movie/{id}/keywords returns { keywords: [...] }; /tv/{id}/keywords returns
+// { results: [...] }. Same shape inside, different envelope.
+private data class TmdbKeywordsResponse(
+    val keywords: List<TmdbKeyword>? = null,
+    val results: List<TmdbKeyword>? = null
+)
+private data class TmdbKeyword(val name: String? = null)

@@ -349,6 +349,13 @@ class KidsBrowserActivity : BaseActivity() {
         }
         val seenUrls = Discovery.seenStreamUrls(history)
 
+        // Personalized order inside category rows. Profile is built from the
+        // watch history; empty profile (no watches yet, or no enriched
+        // entries) means the sort is a no-op so the cold path is unchanged.
+        com.vistacore.launcher.data.KeywordCache.ensureLoaded(this)
+        val keywordCache = com.vistacore.launcher.data.KeywordCache.snapshot()
+        val keywordProfile = Discovery.buildKeywordProfile(history, keywordCache)
+
         // Franchise shelves — Bluey, Paw Patrol, Disney, Pixar, Marvel, Star Wars, etc.
         for (fr in KidsDiscovery.FRANCHISES) {
             val items = KidsDiscovery.byFranchise(pool, fr, band)
@@ -380,7 +387,13 @@ class KidsBrowserActivity : BaseActivity() {
             .entries.sortedByDescending { it.value.size }
             .take(8)
         for ((cat, items) in grouped) {
-            rows.add(NetflixRow.CategoryRow(cat, items))
+            val ordered = Discovery.sortByKeywordSimilarity(
+                items = items,
+                profile = keywordProfile,
+                cache = keywordCache,
+                seenUrls = seenUrls
+            )
+            rows.add(NetflixRow.CategoryRow(cat, ordered))
         }
 
         // Sparse-band fallback: if nothing above qualified (no franchise

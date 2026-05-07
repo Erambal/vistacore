@@ -339,6 +339,16 @@ class VODBrowserActivity : BaseActivity() {
         val watchHistory = com.vistacore.launcher.data.WatchHistoryManager(this)
         val seenUrls = Discovery.seenStreamUrls(watchHistory)
 
+        // Personalized in-category ordering: build a keyword-frequency
+        // profile from items the user has watched (TMDB tags cached as
+        // those titles' detail pages were opened), then later sort each
+        // category by overlap so "Adventure" leads with picks similar to
+        // what they've actually watched. Empty profile = pre-enrichment;
+        // sortByKeywordSimilarity short-circuits and the order stays as-is.
+        com.vistacore.launcher.data.KeywordCache.ensureLoaded(this)
+        val keywordCache = com.vistacore.launcher.data.KeywordCache.snapshot()
+        val keywordProfile = Discovery.buildKeywordProfile(watchHistory, keywordCache)
+
         val cw = Discovery.continueWatching(watchHistory, displayItems)
         if (cw.isNotEmpty()) {
             rows.add(NetflixRow.CategoryRow(
@@ -401,7 +411,13 @@ class VODBrowserActivity : BaseActivity() {
         ).take(25)
 
         for ((category, categoryItems) in sortedCategories) {
-            rows.add(NetflixRow.CategoryRow(category, categoryItems))
+            val ordered = Discovery.sortByKeywordSimilarity(
+                items = categoryItems,
+                profile = keywordProfile,
+                cache = keywordCache,
+                seenUrls = seenUrls
+            )
+            rows.add(NetflixRow.CategoryRow(category, ordered))
         }
 
         return rows

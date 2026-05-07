@@ -2,6 +2,7 @@ package com.vistacore.launcher.ui
 
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
+import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -723,6 +724,33 @@ class SplashActivity : BaseActivity() {
             // pass itself completed and the underlying caches are loaded;
             // re-running on every launch wouldn't change the result.
             ContentCache.isReady = true
+
+            // One-time keyword backfill. Resolves TMDB keywords for the
+            // user's existing watch history so similarity-ranked category
+            // ordering works on the first session after the keyword feature
+            // ships, instead of staying empty until detail screens are
+            // re-opened. Fire-and-forget on an app-scoped coroutine so the
+            // ~30 TMDB round-trips don't delay splash → home navigation;
+            // the pref guards re-runs once the work has completed.
+            val splashPrefs = getSharedPreferences("vistacore_splash", Context.MODE_PRIVATE)
+            if (!splashPrefs.getBoolean("keyword_backfill_done", false)) {
+                val movieSnap = ContentCache.movieItems
+                val seriesSnap = ContentCache.showItems
+                val showNameSnap = ContentCache.showNameMap
+                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        com.vistacore.launcher.data.KeywordCache.backfillFromHistory(
+                            context = applicationContext,
+                            movies = movieSnap,
+                            series = seriesSnap,
+                            showNameMap = showNameSnap
+                        )
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Keyword backfill failed: ${e.message}")
+                    }
+                    splashPrefs.edit().putBoolean("keyword_backfill_done", true).apply()
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Preload failed", e)
         }

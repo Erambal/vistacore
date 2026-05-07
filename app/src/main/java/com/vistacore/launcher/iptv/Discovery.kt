@@ -1,6 +1,7 @@
 package com.vistacore.launcher.iptv
 
 import android.content.Context
+import com.vistacore.launcher.data.KeywordCache
 import com.vistacore.launcher.data.WatchHistoryManager
 
 /**
@@ -117,6 +118,63 @@ object Discovery {
         val recent = candidates.filter { (yearOf(it) ?: 0) >= 2010 }
         val pool = if (recent.size >= 30) recent else candidates
         return pool.random()
+    }
+
+    // ─── Keyword similarity ───
+
+    /**
+     * Build a keyword-frequency profile from the user's watch history.
+     * Each keyword that appears in a watched title's TMDB tag list gets a
+     * count of 1 per watch — repeated tags across multiple watched titles
+     * get higher weights, which is what we want: "spy" appearing in three
+     * watched titles should outweigh a one-off "robot" tag.
+     *
+     * Returns an empty map when the user has no history or none of their
+     * watched items have been enriched yet (cold start), in which case
+     * [sortByKeywordSimilarity] short-circuits to alphabetical.
+     */
+    fun buildKeywordProfile(
+        history: WatchHistoryManager,
+        cache: Map<String, KeywordCache.Entry>
+    ): Map<String, Int> {
+        val watched = history.getRecent(30)
+        if (watched.isEmpty() || cache.isEmpty()) return emptyMap()
+        val profile = HashMap<String, Int>()
+        for (entry in watched) {
+            val kw = cache[entry.streamUrl]?.keywords ?: continue
+            for (k in kw) profile[k] = (profile[k] ?: 0) + 1
+        }
+        return profile
+    }
+
+    /**
+     * Re-order a category's items so the user sees personalized picks first.
+     * Sort key, descending: (similarity score by overlapping keywords) →
+     * (year, newer first) → (title, alphabetical). Already-watched items go
+     * to the bottom so the row leads with fresh suggestions.
+     *
+     * Items without cached keywords get score 0 — they fall back to the
+     * year/title tie-breakers, so the cold path stays predictable while
+     * the catalog enriches.
+     */
+    fun sortByKeywordSimilarity(
+        items: List<Channel>,
+        profile: Map<String, Int>,
+        cache: Map<String, KeywordCache.Entry>,
+        seenUrls: Set<String>
+    ): List<Channel> {
+        if (profile.isEmpty()) return items
+        return items.sortedWith(
+            compareBy<Channel> { it.streamUrl in seenUrls } // unwatched first (false < true)
+                .thenByDescending { ch ->
+                    val kws = cache[ch.streamUrl]?.keywords ?: return@thenByDescending 0
+                    var score = 0
+                    for (k in kws) score += profile[k] ?: 0
+                    score
+                }
+                .thenByDescending { yearOf(it) ?: 0 }
+                .thenBy { it.name.lowercase() }
+        )
     }
 
     // ─── Continue Watching mapping ───

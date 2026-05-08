@@ -51,8 +51,7 @@
             android:layout_marginStart="10dp"
             android:inputType="text"
             android:imeOptions="actionSearch"
-            android:singleLine="true"
-            android:focusableInTouchMode="false" />
+            android:singleLine="true" />
     </LinearLayout>
 
     <!-- Loading overlay -->

@@ -325,20 +325,33 @@ class KidsBrowserActivity : BaseActivity() {
 
     /** Build the stack of shelves: Continue Watching → franchises → moods → categories. */
     private fun buildKidsDiscoveryRows(band: KidsDiscovery.AgeBand): List<NetflixRow> {
-        val pool = KidsDiscovery.all(allKidsContent, band)
+        // Hide streams already known to fail (404). Matches resolved movie URLs;
+        // series wrappers fail per-episode at play time, so this prunes movies.
+        val deadUrls = com.vistacore.launcher.data.DeadStreamManager(this).deadUrls()
+        val pool = KidsDiscovery.all(allKidsContent, band).filter { it.streamUrl !in deadUrls }
         if (pool.isEmpty()) return emptyList()
 
         val rows = mutableListOf<NetflixRow>()
 
-        // Continue Watching — oversized hero row at the top.
-        // We can't use Discovery.continueWatching here because the kids
-        // catalog is deduped to one tile per show, while playback records
-        // the actual episode URL. A direct streamUrl lookup against the
-        // deduped pool would miss every episode that isn't the show's
-        // representative. kidsContinueWatching walks kidsShowIndex and
-        // maps episode URLs back to the show tile.
+        // Continue Watching — oversized hero row at the top. Built from the
+        // saved watch entries directly (see Discovery.continueWatchingTiles)
+        // rather than a catalog join, which missed every series episode because
+        // the kids catalog only holds one deduped tile per show.
         val history = WatchHistoryManager(this)
-        val cw = kidsContinueWatching(history, pool)
+        // Build from the saved entries directly (see Discovery.continueWatchingTiles).
+        // Keep only kid-appropriate entries by re-running the kids classifier on
+        // the entry name; dedupe series episodes down to one card per show.
+        val seenShows = HashSet<String>()
+        val cw = Discovery.continueWatchingTiles(
+            history = history,
+            deadUrls = deadUrls,
+            keep = keep@{ entry ->
+                val synthetic = Channel(id = "", name = entry.name, streamUrl = entry.streamUrl)
+                if (!KidsDiscovery.isKidsItem(synthetic)) return@keep false
+                // Dedupe series down to one card per show; movies always pass.
+                if (Discovery.isSeriesEntry(entry)) seenShows.add(extractShowName(entry.name)) else true
+            }
+        )
         if (cw.isNotEmpty()) {
             rows.add(NetflixRow.CategoryRow(
                 title = "▶  Pick Up Where You Left Off",
@@ -412,39 +425,17 @@ class KidsBrowserActivity : BaseActivity() {
         return rows
     }
 
-    /**
-     * Continue-Watching list for the deduped Kids catalog. For movies and
-     * live channels we match by streamUrl as usual. For series we map
-     * each watched episode URL back to its show via kidsShowIndex, then
-     * surface the show's representative tile (deduped by show name so
-     * back-to-back episodes of one show only show one CW card).
-     */
-    private fun kidsContinueWatching(
-        history: WatchHistoryManager,
-        pool: List<Channel>,
-        limit: Int = 12,
-    ): List<Channel> {
-        val byUrl = pool.associateBy { it.streamUrl }
-        val episodeUrlToShow: Map<String, Channel> = run {
-            val showByName = pool
-                .filter { it.contentType == ContentType.SERIES }
-                .associateBy { it.name }
-            val map = HashMap<String, Channel>()
-            for ((name, eps) in (kidsShowIndex ?: emptyMap())) {
-                val rep = showByName[name] ?: continue
-                for (ep in eps) map[ep.streamUrl] = rep
-            }
-            map
-        }
-        val seenShowIds = mutableSetOf<String>()
-        val out = mutableListOf<Channel>()
-        for (entry in history.getContinueWatching()) {
-            val candidate = byUrl[entry.streamUrl] ?: episodeUrlToShow[entry.streamUrl] ?: continue
-            if (candidate.contentType == ContentType.SERIES && !seenShowIds.add(candidate.id)) continue
-            out.add(candidate)
-            if (out.size >= limit) break
-        }
-        return out
+    /** Resume a Continue Watching tile straight in the player at its saved
+     *  position. The tile's streamUrl is the real, already-resolved URL. */
+    private fun resumeFromHistory(item: Channel) {
+        val resumeMs = WatchHistoryManager(this).getPosition(item.streamUrl)
+        startActivity(Intent(this, IPTVPlayerActivity::class.java).apply {
+            putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
+            putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, item.name)
+            putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, item.logoUrl)
+            putExtra(IPTVPlayerActivity.EXTRA_IS_VOD, true)
+            if (resumeMs > 0) putExtra(IPTVPlayerActivity.EXTRA_RESUME_POSITION, resumeMs)
+        })
     }
 
     private fun updateTabHighlights() {
@@ -524,6 +515,11 @@ class KidsBrowserActivity : BaseActivity() {
     }
 
     fun onItemClicked(item: Channel) {
+        // Continue Watching tiles carry the real playable URL — resume directly.
+        if (item.id.startsWith(Discovery.CW_RESUME_PREFIX)) {
+            resumeFromHistory(item)
+            return
+        }
         if (item.contentType == ContentType.SERIES) {
             val xtreamSeriesId = if (item.id.startsWith("xt_series_"))
                 item.id.removePrefix("xt_series_").toIntOrNull() else null

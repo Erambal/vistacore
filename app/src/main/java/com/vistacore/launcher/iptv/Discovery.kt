@@ -2,6 +2,7 @@ package com.vistacore.launcher.iptv
 
 import android.content.Context
 import com.vistacore.launcher.data.KeywordCache
+import com.vistacore.launcher.data.WatchEntry
 import com.vistacore.launcher.data.WatchHistoryManager
 
 /**
@@ -190,6 +191,54 @@ object Discovery {
             .mapNotNull { byUrl[it.streamUrl] }
             .take(limit)
     }
+
+    /** Channel ids built from a watch-history entry carry this prefix so the
+     *  browser click handlers know to resume the saved URL directly instead of
+     *  routing back through a detail screen (which would re-resolve the URL). */
+    const val CW_RESUME_PREFIX = "cw_resume:"
+
+    /**
+     * Build Continue Watching tiles straight from watch-history entries rather
+     * than joining against the current catalog. [continueWatching] above does a
+     * `streamUrl` lookup that silently drops anything not in the in-memory list
+     * — which is *every* series episode (only series wrappers are cached) plus
+     * any title the catalog has since dropped. That's why the Continue Watching
+     * row never appeared inside the Movies/Shows/Kids browsers. A WatchEntry
+     * already holds everything a poster needs (name, logo, the real playable
+     * streamUrl), so we render from it directly and guarantee the row shows up.
+     *
+     * [keep] narrows entries to the calling section (movies vs shows vs kids).
+     * Dead and restricted entries are dropped up front.
+     */
+    fun continueWatchingTiles(
+        history: WatchHistoryManager,
+        deadUrls: Set<String> = emptySet(),
+        hideRestricted: Boolean = false,
+        limit: Int = 12,
+        keep: (WatchEntry) -> Boolean = { true },
+    ): List<Channel> =
+        history.getContinueWatching()
+            .asSequence()
+            .filter { it.streamUrl !in deadUrls }
+            .filter { !hideRestricted || !isRestrictedByName(it.name) }
+            .filter(keep)
+            .map { entry ->
+                Channel(
+                    id = CW_RESUME_PREFIX + entry.streamUrl,
+                    name = entry.name,
+                    streamUrl = entry.streamUrl,
+                    logoUrl = entry.logoUrl,
+                    category = "Continue Watching",
+                    contentType = if (entry.streamUrl.contains("/series/"))
+                        ContentType.SERIES else ContentType.MOVIE,
+                )
+            }
+            .take(limit)
+            .toList()
+
+    /** True when a saved entry looks like a series episode (Xtream `/series/`
+     *  path) vs a movie. Used to route entries to the right browser section. */
+    fun isSeriesEntry(entry: WatchEntry): Boolean = entry.streamUrl.contains("/series/")
 }
 
 /** Persists which mood shelves the user clicks into so we can promote favorites. */

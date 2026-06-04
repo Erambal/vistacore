@@ -319,8 +319,13 @@ class VODBrowserActivity : BaseActivity() {
 
         // Respect the "Hide R-rated content" toggle before any shelving.
         val prefs = PrefsManager(this)
+        // Hide streams we've already seen fail to play (404). The dead set holds
+        // resolved movie URLs; series wrappers won't match (episodes fail at
+        // play time), so this just prunes known-broken movies from the rows.
+        val deadUrls = com.vistacore.launcher.data.DeadStreamManager(this).deadUrls()
         val filteredItems = com.vistacore.launcher.iptv.Discovery
             .applyRestrictedFilter(items, prefs.hideRestrictedRatings)
+            .filter { it.streamUrl !in deadUrls }
         val displayItems = deduplicateShows(filteredItems)
         val rows = mutableListOf<NetflixRow>()
 
@@ -349,7 +354,16 @@ class VODBrowserActivity : BaseActivity() {
         val keywordCache = com.vistacore.launcher.data.KeywordCache.snapshot()
         val keywordProfile = Discovery.buildKeywordProfile(watchHistory, keywordCache)
 
-        val cw = Discovery.continueWatching(watchHistory, displayItems)
+        // Build Continue Watching from the saved entries themselves (not a
+        // catalog join) so it works for series episodes and dropped titles.
+        // Movies section shows non-series entries; Shows section shows series.
+        val isShowsSection = contentType == TYPE_SHOWS
+        val cw = Discovery.continueWatchingTiles(
+            history = watchHistory,
+            deadUrls = deadUrls,
+            hideRestricted = prefs.hideRestrictedRatings,
+            keep = { entry -> Discovery.isSeriesEntry(entry) == isShowsSection }
+        )
         if (cw.isNotEmpty()) {
             rows.add(NetflixRow.CategoryRow(
                 title = "▶  Pick Up Where You Left Off",
@@ -533,6 +547,13 @@ class VODBrowserActivity : BaseActivity() {
     private val usageTracker by lazy { com.vistacore.launcher.data.UsageTracker(this) }
 
     fun onItemClicked(item: Channel) {
+        // Continue Watching tiles carry the real playable URL — resume it
+        // directly instead of routing back through a detail screen.
+        if (item.id.startsWith(Discovery.CW_RESUME_PREFIX)) {
+            resumeFromHistory(item)
+            return
+        }
+
         // Track category usage for personalization
         usageTracker.trackCategoryUsage(item.category)
 
@@ -616,6 +637,21 @@ class VODBrowserActivity : BaseActivity() {
      * the player — there's nothing richer to show, and forcing an empty
      * detail page would just add a click.
      */
+    /** Resume a Continue Watching tile straight in the player at its saved
+     *  position. The tile's streamUrl is the real, already-resolved URL. */
+    private fun resumeFromHistory(item: Channel) {
+        val resumeMs = com.vistacore.launcher.data.WatchHistoryManager(this)
+            .getPosition(item.streamUrl)
+        val intent = Intent(this, IPTVPlayerActivity::class.java).apply {
+            putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
+            putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_NAME, item.name)
+            putExtra(IPTVPlayerActivity.EXTRA_CHANNEL_LOGO, item.logoUrl)
+            putExtra(IPTVPlayerActivity.EXTRA_IS_VOD, true)
+            if (resumeMs > 0) putExtra(IPTVPlayerActivity.EXTRA_RESUME_POSITION, resumeMs)
+        }
+        startActivity(intent)
+    }
+
     private fun openMovieDetailOrPlay(item: Channel) {
         val yearMatch = Regex("""\((\d{4})\)""").find(item.name)
         val year = yearMatch?.groupValues?.get(1) ?: ""

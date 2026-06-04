@@ -789,6 +789,18 @@ class IPTVPlayerActivity : BaseActivity() {
         binding.errorDetails.text = friendly
         binding.errorUrl.text = streamUrl
 
+        // A 404 means this specific title is gone for good — remember it so the
+        // browse rows hide it next time, and drop it from Continue Watching so
+        // it stops resurfacing. We only act on 404; 403 ("subscription expired")
+        // is account-wide and transient, so blocklisting on it would be wrong.
+        if (streamUrl.isNotBlank()) {
+            val emsg = (lastError?.cause?.message ?: lastError?.message ?: "").lowercase()
+            if (emsg.contains("404") || emsg.contains("not found")) {
+                com.vistacore.launcher.data.DeadStreamManager(this).markDead(streamUrl)
+                com.vistacore.launcher.data.WatchHistoryManager(this).remove(streamUrl)
+            }
+        }
+
         // Surface the external-player option when we know the built-in
         // player can't handle this file. The button is declared in the
         // layout but kept gone otherwise so the default UI stays simple.

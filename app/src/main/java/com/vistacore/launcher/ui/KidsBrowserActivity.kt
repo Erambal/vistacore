@@ -205,7 +205,6 @@ class KidsBrowserActivity : BaseActivity() {
                 ?.coerceAtLeast(0)
         } ?: 0
 
-        list.smoothScrollToPosition(targetRow)
         fun tryFocus(): Boolean {
             val vh = list.findViewHolderForAdapterPosition(targetRow) ?: return false
             val innerRv = vh.itemView.findViewById<RecyclerView>(R.id.row_recycler) ?: return false
@@ -216,7 +215,27 @@ class KidsBrowserActivity : BaseActivity() {
                 ?: innerRv.findViewHolderForAdapterPosition(0)?.itemView
             return itemView?.requestFocus() == true
         }
-        list.post { if (!tryFocus()) list.postDelayed({ tryFocus() }, 160) }
+        list.post {
+            // Fast path: adjacent rows are usually already laid out.
+            if (tryFocus()) return@post
+            // Target row recycled off-screen (paging back UP after going far
+            // DOWN). Grab focus the moment its ViewHolder attaches rather than
+            // betting on a fixed delay, which left focus stuck on the boundary
+            // row since the key event is already consumed.
+            list.smoothScrollToPosition(targetRow)
+            list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                    if (tryFocus()) rv.removeOnScrollListener(this)
+                }
+
+                override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                    if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                        if (!tryFocus()) rv.postDelayed({ tryFocus() }, 100)
+                        rv.removeOnScrollListener(this)
+                    }
+                }
+            })
+        }
         return true
     }
 

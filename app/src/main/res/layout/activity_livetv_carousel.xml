@@ -171,10 +171,9 @@
         android:background="@color/background_dark"
         android:visibility="gone">
 
-        <ProgressBar
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:indeterminateTint="@color/accent_gold" />
+        <com.vistacore.launcher.ui.BouncingDotsView
+            android:layout_width="120dp"
+            android:layout_height="56dp" />
     </LinearLayout>
 
 </FrameLayout>

@@ -164,7 +164,6 @@ class VODBrowserActivity : BaseActivity() {
 
     private fun focusRow(rowPos: Int, horizPos: Int) {
         val list = binding.netflixList
-        list.smoothScrollToPosition(rowPos)
 
         fun tryFocus(): Boolean {
             val vh = list.findViewHolderForAdapterPosition(rowPos) ?: return false
@@ -180,7 +179,30 @@ class VODBrowserActivity : BaseActivity() {
         }
 
         list.post {
-            if (!tryFocus()) list.postDelayed({ tryFocus() }, 160)
+            // Fast path: adjacent rows are usually already laid out.
+            if (tryFocus()) return@post
+
+            // The target row was recycled off-screen — e.g. paging back UP
+            // after scrolling far DOWN. A fixed delay was unreliable across
+            // long scroll distances (the row wasn't re-bound in time), which
+            // left focus stuck on the boundary row since the key event is
+            // already consumed. Instead, scroll it in and grab focus the
+            // moment its ViewHolder attaches.
+            list.smoothScrollToPosition(rowPos)
+            list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                    if (tryFocus()) rv.removeOnScrollListener(this)
+                }
+
+                override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                    if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                        // Final attempt once the scroll settles; the inner row
+                        // may still be binding, so retry shortly if needed.
+                        if (!tryFocus()) rv.postDelayed({ tryFocus() }, 100)
+                        rv.removeOnScrollListener(this)
+                    }
+                }
+            })
         }
     }
 

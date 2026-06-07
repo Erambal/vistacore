@@ -314,12 +314,11 @@
                     android:clipChildren="false"
                     android:overScrollMode="never" />
 
-                <ProgressBar
+                <com.vistacore.launcher.ui.BouncingDotsView
                     android:id="@+id/games_loading"
-                    android:layout_width="32dp"
+                    android:layout_width="72dp"
                     android:layout_height="32dp"
                     android:layout_gravity="center"
-                    android:indeterminateTint="@color/accent_gold"
                     android:visibility="gone" />
             </LinearLayout>
 

@@ -278,10 +278,11 @@
             android:background="@color/background_dark"
             android:visibility="gone">
 
-            <ProgressBar
-                android:layout_width="48dp"
+            <com.vistacore.launcher.ui.BouncingDotsView
+                xmlns:app="http://schemas.android.com/apk/res-auto"
+                android:layout_width="100dp"
                 android:layout_height="48dp"
-                android:indeterminateTint="@color/kids_yellow" />
+                app:dotColor="@color/kids_yellow" />
 
             <TextView
                 android:layout_width="wrap_content"

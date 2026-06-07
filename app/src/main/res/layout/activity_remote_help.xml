@@ -134,11 +134,10 @@
                 style="@style/LargeButton" />
         </LinearLayout>
 
-        <ProgressBar
+        <com.vistacore.launcher.ui.BouncingDotsView
             android:id="@+id/listening_progress"
-            android:layout_width="48dp"
+            android:layout_width="100dp"
             android:layout_height="48dp"
-            android:indeterminateTint="@color/accent_gold"
             android:visibility="gone"
             android:layout_marginBottom="8dp" />
 

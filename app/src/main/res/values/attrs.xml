@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="BouncingDotsView">
+        <!-- Fill color of the three dots. Defaults to accent_gold. -->
+        <attr name="dotColor" format="color" />
+    </declare-styleable>
+</resources>

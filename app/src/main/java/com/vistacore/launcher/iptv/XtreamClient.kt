@@ -72,10 +72,10 @@ class XtreamClient(private val auth: XtreamAuth) {
         return streams.map { stream ->
             Channel(
                 id = "xt_${stream.stream_id}",
-                name = stream.name,
+                name = ProviderText.cleanName(stream.name),
                 streamUrl = "${auth.liveStreamUrl}/${stream.stream_id}.${stream.container_extension}",
                 logoUrl = stream.stream_icon ?: "",
-                category = categoryMap[stream.category_id] ?: "Uncategorized",
+                category = ProviderText.cleanCategory(categoryMap[stream.category_id] ?: "Uncategorized"),
                 number = stream.num,
                 epgId = stream.epg_channel_id ?: ""
             )
@@ -102,10 +102,10 @@ class XtreamClient(private val auth: XtreamAuth) {
             .mapIndexed { idx, vod ->
                 Channel(
                     id = "xt_vod_${vod.stream_id}",
-                    name = vod.name ?: "",
+                    name = ProviderText.cleanName(vod.name ?: ""),
                     streamUrl = "${auth.movieStreamUrl}/${vod.stream_id}.${vod.container_extension}",
                     logoUrl = vod.stream_icon ?: "",
-                    category = categoryMap[vod.category_id] ?: "Movies",
+                    category = ProviderText.cleanCategory(categoryMap[vod.category_id] ?: "Movies"),
                     number = idx + 1,
                     contentType = ContentType.MOVIE
                 )
@@ -160,10 +160,10 @@ class XtreamClient(private val auth: XtreamAuth) {
         seriesList.mapIndexed { idx, series ->
             Channel(
                 id = "xt_series_${series.series_id}",
-                name = series.name,
+                name = ProviderText.cleanName(series.name),
                 streamUrl = "${auth.seriesStreamUrl}/${series.series_id}.${series.container_extension}",
                 logoUrl = series.cover ?: "",
-                category = categoryMap[series.category_id] ?: "Series",
+                category = ProviderText.cleanCategory(categoryMap[series.category_id] ?: "Series"),
                 number = idx + 1,
                 contentType = ContentType.SERIES
             )

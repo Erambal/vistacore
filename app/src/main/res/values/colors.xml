@@ -17,10 +17,11 @@
     <color name="focus_glow">#66FFB300</color>
     <color name="selected_overlay">#33FFB300</color>
 
-    <!-- Text -->
+    <!-- Text — opaque for legibility on the dark background; the old alpha'd
+         values dropped below WCAG contrast for seniors at a 10-foot distance. -->
     <color name="text_primary">#FFFFFFFF</color>
-    <color name="text_secondary">#CCB0B8C8</color>
-    <color name="text_hint">#99788896</color>
+    <color name="text_secondary">#FFC9D1DF</color>
+    <color name="text_hint">#FFA7B0C0</color>
 
     <!-- App Card Brand Colors -->
     <color name="disney_blue">#FF1A1D76</color>
@@ -40,5 +41,5 @@
 
     <!-- Clock -->
     <color name="clock_text">#FFFFFFFF</color>
-    <color name="date_text">#CCB0B8C8</color>
+    <color name="date_text">#FFC9D1DF</color>
 </resources>

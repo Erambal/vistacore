@@ -35,6 +35,10 @@ import kotlinx.coroutines.*
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 abstract class BaseLiveTVActivity : BaseActivity() {
 
+    // Live-TV screens render full-screen video behind their overlays; insetting
+    // the content root would letterbox the video. Opt out of overscan padding.
+    override fun appliesOverscanInsets(): Boolean = false
+
     protected lateinit var prefs: PrefsManager
     protected lateinit var recents: RecentChannelsManager
     protected val favoritesManager by lazy { FavoritesManager(this) }

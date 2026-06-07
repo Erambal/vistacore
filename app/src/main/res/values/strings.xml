@@ -84,4 +84,9 @@
     <string name="cd_settings">Open settings</string>
     <string name="cd_channel_logo">Channel logo</string>
     <string name="cd_remote_help">Remote help</string>
+    <string name="cd_favorite">Toggle favorite</string>
+    <string name="cd_search">Search</string>
+    <string name="cd_poster">Poster</string>
+    <string name="cd_source">Source</string>
+    <string name="cd_lock">Locked</string>
 </resources>

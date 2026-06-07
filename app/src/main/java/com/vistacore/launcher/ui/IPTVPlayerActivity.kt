@@ -57,6 +57,9 @@ class IPTVPlayerActivity : BaseActivity() {
      */
     override fun allowsRotation(): Boolean = false
 
+    // Video fills the panel edge-to-edge; no overscan inset.
+    override fun appliesOverscanInsets(): Boolean = false
+
     companion object {
         const val EXTRA_STREAM_URL = "stream_url"
         const val EXTRA_CHANNEL_NAME = "channel_name"

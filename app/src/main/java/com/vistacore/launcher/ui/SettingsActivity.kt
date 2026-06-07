@@ -1195,8 +1195,7 @@ class SettingsActivity : BaseActivity() {
             binding.btnInstallUpdate.text = "Downloading…"
             Toast.makeText(this, "Downloading update…", Toast.LENGTH_SHORT).show()
             updateManager.downloadUpdate(apkUrl) { file ->
-                if (file != null) {
-                    updateManager.installApk(file)
+                if (file != null && updateManager.installApk(file)) {
                     // Leave the button uncllickable — the system installer
                     // takes over next. If the user backs out, reopening
                     // Settings re-binds the handler.

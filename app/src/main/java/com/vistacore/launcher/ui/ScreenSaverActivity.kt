@@ -26,6 +26,9 @@ class ScreenSaverActivity : BaseActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var driftRunnable: Runnable? = null
 
+    // Full-bleed wallpaper; no overscan inset.
+    override fun appliesOverscanInsets(): Boolean = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 

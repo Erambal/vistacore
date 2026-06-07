@@ -13,6 +13,7 @@
 
     <!-- Focus ring -->
     <dimen name="focus_ring_width">4dp</dimen>
+    <dimen name="focus_ring_corner">8dp</dimen>
     <dimen name="focus_scale">1.12</dimen>
 
     <!-- Text Sizes (larger for readability) -->

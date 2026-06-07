@@ -55,13 +55,13 @@
                         android:src="@drawable/ic_voice_search"
                         android:scaleType="centerInside"
                         android:alpha="0.6"
-                        android:contentDescription="Search" />
+                        android:contentDescription="@string/cd_search" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Search movies, shows, channels…"
-                        android:textSize="17sp"
+                        android:textSize="20sp"
                         android:textColor="@color/text_hint"
                         android:fontFamily="sans-serif-light"
                         android:layout_marginStart="12dp" />

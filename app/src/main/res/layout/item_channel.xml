@@ -39,8 +39,8 @@
             android:id="@+id/channel_now_playing"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="14sp"
-            android:textColor="@color/accent_gold"
+            android:textSize="16sp"
+            android:textColor="@color/text_secondary"
             android:fontFamily="sans-serif-light"
             android:maxLines="1"
             android:ellipsize="end"
@@ -54,10 +54,10 @@
         android:layout_height="44dp"
         android:src="@drawable/ic_favorite_outline"
         android:scaleType="centerInside"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:background="@drawable/focus_indicator"
         android:padding="8dp"
         android:focusable="true"
-        android:contentDescription="Toggle favorite"
+        android:contentDescription="@string/cd_favorite"
         android:layout_marginEnd="8dp" />
 
     <!-- Channel Number -->
@@ -65,7 +65,7 @@
         android:id="@+id/channel_number"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textSize="18sp"
+        android:textSize="20sp"
         android:textColor="@color/text_secondary"
         android:fontFamily="sans-serif-light" />
 </LinearLayout>

@@ -19,11 +19,11 @@
         android:padding="48dp">
 
         <!-- Lock icon -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔒"
-            android:textSize="64sp"
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:src="@drawable/ic_lock"
+            android:contentDescription="@string/cd_lock"
             android:layout_marginBottom="24dp" />
 
         <TextView
@@ -49,8 +49,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Contact your administrator to restore access."
-            android:textSize="16sp"
-            android:textColor="@color/text_hint"
+            android:textSize="18sp"
+            android:textColor="@color/text_secondary"
             android:fontFamily="sans-serif-light"
             android:layout_marginBottom="40dp" />
 

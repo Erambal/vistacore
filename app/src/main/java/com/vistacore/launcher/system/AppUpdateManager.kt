@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -196,8 +198,23 @@ class AppUpdateManager(private val context: Context) {
         }
     }
 
-    /** Trigger the system package installer for the downloaded APK. */
-    fun installApk(apkFile: File) {
+    /**
+     * Trigger the system package installer for the downloaded APK.
+     *
+     * SECURITY: refuses to install unless the APK's package name matches ours
+     * and it is signed by the same certificate as the currently-installed app.
+     * Without this, a MITM'd or repo-swapped download could install an
+     * arbitrary attacker-controlled APK (silent RCE via REQUEST_INSTALL_PACKAGES).
+     *
+     * @return true if the installer was launched, false if verification failed.
+     */
+    fun installApk(apkFile: File): Boolean {
+        if (!verifyApkSignature(apkFile)) {
+            Log.e(TAG, "APK signature/package verification FAILED — refusing to install")
+            apkFile.delete()
+            return false
+        }
+
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
@@ -210,13 +227,66 @@ class AppUpdateManager(private val context: Context) {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(intent)
+        return true
+    }
+
+    /**
+     * Verify the downloaded APK before handing it to the installer:
+     *   1. its package name must equal ours (no installing a different app), and
+     *   2. its signing certificate(s) must exactly match the installed app's.
+     *
+     * Fails closed: any parse error or mismatch returns false.
+     */
+    fun verifyApkSignature(apkFile: File): Boolean {
+        return try {
+            val pm = context.packageManager
+            val path = apkFile.absolutePath
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val archive = pm.getPackageArchiveInfo(
+                    path, PackageManager.GET_SIGNING_CERTIFICATES
+                ) ?: return false
+                if (archive.packageName != context.packageName) return false
+                val installed = pm.getPackageInfo(
+                    context.packageName, PackageManager.GET_SIGNING_CERTIFICATES
+                )
+                val archiveSigs = archive.signingInfo?.apkContentsSigners ?: return false
+                val installedSigs = installed.signingInfo?.apkContentsSigners ?: return false
+                signaturesMatch(archiveSigs, installedSigs)
+            } else {
+                @Suppress("DEPRECATION", "PackageManagerGetSignatures")
+                val archive = pm.getPackageArchiveInfo(
+                    path, PackageManager.GET_SIGNATURES
+                ) ?: return false
+                if (archive.packageName != context.packageName) return false
+                @Suppress("DEPRECATION")
+                val installed = pm.getPackageInfo(
+                    context.packageName, PackageManager.GET_SIGNATURES
+                )
+                @Suppress("DEPRECATION")
+                signaturesMatch(archive.signatures, installed.signatures)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "APK signature verification threw — failing closed", e)
+            false
+        }
+    }
+
+    /** True iff both arrays contain the same set of signatures (order-independent, non-empty). */
+    private fun signaturesMatch(a: Array<Signature>?, b: Array<Signature>?): Boolean {
+        if (a.isNullOrEmpty() || b.isNullOrEmpty()) return false
+        val aSet = a.map { it.toCharsString() }.toHashSet()
+        val bSet = b.map { it.toCharsString() }.toHashSet()
+        return aSet == bSet
     }
 
     /** Convenience: download then auto-install. */
     fun downloadAndInstall(apkUrl: String) {
         downloadUpdate(apkUrl) { file ->
             if (file != null) {
-                installApk(file)
+                if (!installApk(file)) {
+                    Log.e(TAG, "Update rejected: APK failed signature verification")
+                }
             } else {
                 Log.e(TAG, "Download failed, APK file not found")
             }

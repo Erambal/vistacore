@@ -30,6 +30,15 @@ open class BaseActivity : AppCompatActivity() {
      */
     open fun allowsRotation(): Boolean = !isTelevision()
 
+    /**
+     * Whether to inset content by a TV-safe overscan margin. Default: on for
+     * TVs only. Many TVs (especially older/cheaper panels) overscan ~5% and
+     * clip whatever sits at the physical edge — on the home screen that's the
+     * clock and the search/settings buttons. Full-bleed screens (the video
+     * player) override this to false so video fills the panel edge-to-edge.
+     */
+    open fun appliesOverscanInsets(): Boolean = isTelevision()
+
     private fun isTelevision(): Boolean {
         val uiMode = (getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)
             ?.currentModeType ?: return false
@@ -44,6 +53,45 @@ open class BaseActivity : AppCompatActivity() {
             // landscape against their will.
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
         }
+    }
+
+    override fun setContentView(layoutResID: Int) {
+        super.setContentView(layoutResID)
+        applyOverscanInsets()
+    }
+
+    override fun setContentView(view: android.view.View?) {
+        super.setContentView(view)
+        applyOverscanInsets()
+    }
+
+    override fun setContentView(view: android.view.View?, params: android.view.ViewGroup.LayoutParams?) {
+        super.setContentView(view, params)
+        applyOverscanInsets()
+    }
+
+    /**
+     * Add a ~2.5%-per-edge safe-area padding to the content root so nothing
+     * sits in the overscan region on TVs. Additive to any padding the layout
+     * already declares, and applied once (guarded by a tag) so repeated
+     * setContentView calls don't stack insets.
+     */
+    private var overscanApplied = false
+
+    private fun applyOverscanInsets() {
+        if (!appliesOverscanInsets() || overscanApplied) return
+        val content = findViewById<android.view.View>(android.R.id.content) ?: return
+
+        val dm = resources.displayMetrics
+        val hInset = (dm.widthPixels * 0.025f).toInt()
+        val vInset = (dm.heightPixels * 0.025f).toInt()
+        content.setPadding(
+            content.paddingLeft + hInset,
+            content.paddingTop + vInset,
+            content.paddingRight + hInset,
+            content.paddingBottom + vInset
+        )
+        overscanApplied = true
     }
 
     override fun attachBaseContext(newBase: Context) {

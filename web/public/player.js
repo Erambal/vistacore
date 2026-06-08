@@ -8,6 +8,8 @@ class VCPlayer {
     this.container = document.getElementById(containerId);
     this.video = null;
     this.hls = null;
+    this.mpegts = null;
+    this._codecCheckTimer = null;
     this.overlay = null;
     this.isPlaying = false;
     this.isFullscreen = false;
@@ -81,7 +83,7 @@ class VCPlayer {
           </div>
         </div>
         <div class="vc-player-loading" style="display:none">
-          <div class="vc-player-spinner"></div>
+          <div class="vc-dots"><span></span><span></span><span></span></div>
         </div>
         <div class="vc-player-error" style="display:none">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
@@ -306,18 +308,69 @@ class VCPlayer {
       return;
     }
 
-    // Destroy old HLS instance
+    // Destroy old playback engines
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;
     }
+    this._teardownMpegts();
 
     // Clear position tracker
     if (this._positionInterval) clearInterval(this._positionInterval);
+    if (this._codecCheckTimer) { clearTimeout(this._codecCheckTimer); this._codecCheckTimer = null; }
 
-    const isHLS = url.includes('.m3u8') || url.includes('/live/');
+    const lower = url.toLowerCase();
+    // Raw MPEG-TS (live channels, and VOD whose container isn't browser-native).
+    // No browser plays MPEG-TS in <video>; mpegts.js demuxes it via MSE.
+    const isTS = /\.ts(\?|$)/.test(lower) || lower.includes('mp2t');
+    const isLiveTs = lower.includes('%2flive%2f') || lower.includes('/live/');
+    const isHLS = !isTS && (/\.m3u8(\?|$)/.test(lower) || lower.includes('mpegurl'));
 
-    if (isHLS && Hls.isSupported()) {
+    // For NATIVE playback only: if audio plays but the browser produced no
+    // picture (videoWidth stays 0), the video codec isn't supported (e.g. a
+    // legacy MPEG-4/DivX mp4). HLS/TS streams are already codec-handled, and a
+    // transcoded HLS feed is guaranteed H.264, so skip the check for those.
+    if (!isTS && !isHLS) {
+      this._codecCheckTimer = setTimeout(() => {
+        if (this.video && !this.video.paused &&
+            this.video.readyState >= 2 && this.video.videoWidth === 0) {
+          this._showError("This title's video format isn't supported in the browser. Use the VistaCore TV app to watch it.");
+        }
+      }, 6000);
+    }
+
+    if (isTS && window.mpegts && mpegts.isSupported()) {
+      this.mpegts = mpegts.createPlayer(
+        { type: 'mpegts', isLive: isLiveTs, url },
+        {
+          // Prioritize SMOOTH playback over low latency (living-room TV):
+          // keep a stash buffer cushion and don't chase the live edge, which
+          // causes repeated micro-seeks and the stutter we were seeing.
+          enableStashBuffer: true,
+          stashInitialSize: 1024 * 384,       // ~384 KB cushion before playback
+          liveBufferLatencyChasing: false,    // don't seek forward to live edge
+          autoCleanupSourceBuffer: true,      // reclaim memory on long sessions
+          lazyLoad: false,
+        }
+      );
+      this.mpegts.attachMediaElement(this.video);
+      this.mpegts.on(mpegts.Events.ERROR, (type, detail) => {
+        console.warn('mpegts error:', type, detail);
+        // Tear the instance down fully — a plain destroy() isn't enough; the
+        // internal transmux worker keeps firing "currentURL of null" unless we
+        // pause/unload/detach first. Guard so repeat errors don't re-enter.
+        this._teardownMpegts();
+        // A MediaError means the data isn't what mpegts expects — either a
+        // codec MSE can't decode (E-AC-3, HEVC) or a non-TS container (fMP4).
+        const isMedia = String(type).toLowerCase().includes('media') ||
+                        String(detail).toLowerCase().includes('unsupported');
+        this._showError(isMedia
+          ? "This stream's format isn't supported in the browser. Use the VistaCore TV app to watch it."
+          : 'Stream unavailable');
+      });
+      this.mpegts.load();
+      this.mpegts.play().catch(() => {});
+    } else if (isHLS && Hls.isSupported()) {
       this.hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
@@ -373,7 +426,7 @@ class VCPlayer {
 
     // Live indicator
     const durEl = this.container.querySelector('.vc-player-duration');
-    if (isHLS && url.includes('/live/')) {
+    if (isLiveTs || (isHLS && (lower.includes('%2flive%2f') || url.includes('/live/')))) {
       durEl.textContent = 'LIVE';
       durEl.style.color = '#4CAF50';
     } else {
@@ -382,12 +435,26 @@ class VCPlayer {
     }
   }
 
+  // Fully dismantle the mpegts.js engine. Order matters: pause + unload +
+  // detach before destroy, or its worker keeps throwing after teardown.
+  _teardownMpegts() {
+    const p = this.mpegts;
+    if (!p) return;
+    this.mpegts = null;
+    try { p.pause(); } catch (_) {}
+    try { p.unload(); } catch (_) {}
+    try { p.detachMediaElement(); } catch (_) {}
+    try { p.destroy(); } catch (_) {}
+  }
+
   stop() {
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;
     }
+    this._teardownMpegts();
     if (this._positionInterval) clearInterval(this._positionInterval);
+    if (this._codecCheckTimer) { clearTimeout(this._codecCheckTimer); this._codecCheckTimer = null; }
     this.video.pause();
     this.video.removeAttribute('src');
     this.video.load();
@@ -461,6 +528,10 @@ class VCPlayer {
     const handle = this.container.querySelector('.vc-player-progress-handle');
     const current = this.container.querySelector('.vc-player-current');
     const duration = this.container.querySelector('.vc-player-duration');
+
+    // A trailing timeupdate can fire after the player UI was torn down
+    // (navigating away / destroy). Bail out rather than crash on null.
+    if (!fill || !handle || !current || !duration || !this.video) return;
 
     if (this.video.duration && isFinite(this.video.duration)) {
       const pct = (this.video.currentTime / this.video.duration) * 100;

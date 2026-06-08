@@ -26,10 +26,10 @@ let currentDetailType = null; // 'movie' or 'series'
 let activeChannelId = null;
 
 // ─── Auth (Google Sign-In) ───
-function isLoggedIn() { return sessionStorage.getItem('vc_user') !== null; }
+function isLoggedIn() { return localStorage.getItem('vc_user') !== null; }
 
 function logout() {
-  sessionStorage.removeItem('vc_user');
+  localStorage.removeItem('vc_user');
   if (window.google && google.accounts && google.accounts.id) {
     google.accounts.id.disableAutoSelect();
   }
@@ -37,7 +37,7 @@ function logout() {
 }
 
 function currentUser() {
-  const r = sessionStorage.getItem('vc_user');
+  const r = localStorage.getItem('vc_user');
   return r ? JSON.parse(r) : null;
 }
 
@@ -122,7 +122,7 @@ async function handleGoogleCredential(response) {
     }
 
     const user = await verifyResp.json();
-    sessionStorage.setItem('vc_user', JSON.stringify({
+    localStorage.setItem('vc_user', JSON.stringify({
       email: user.email,
       name: user.name,
       picture: user.picture,
@@ -149,6 +149,17 @@ function navigateTo(view, params = {}) {
   // Remember scroll position of the view we're leaving, so Back can restore it.
   if (currentView && currentView !== view) {
     scrollMemory[currentView] = window.scrollY;
+  }
+
+  // Stop any active player when leaving its view, so audio/video doesn't keep
+  // running in the background after navigating away (e.g. pressing Back).
+  if (currentView && currentView !== view) {
+    if (currentView === 'livetv' && liveTvPlayer) liveTvPlayer.stop();
+    if (currentView === 'detail' && detailPlayer) {
+      detailPlayer.stop();
+      const wrap = document.getElementById('detail-player-wrap');
+      if (wrap) wrap.style.display = 'none';
+    }
   }
 
   // Tear down detail-page media (trailer iframe, autoplay timer) when leaving.
@@ -182,6 +193,7 @@ function navigateTo(view, params = {}) {
   // from detail), skip the re-init so category/page/scroll state is preserved.
   const restore = params.restore === true;
   switch (view) {
+    case 'home': buildContinueWatching(); break;
     case 'livetv': initLiveTv(); break;
     case 'movies': if (!restore) initMovies(); break;
     case 'tvshows': if (!restore) initTvShows(); break;
@@ -1504,7 +1516,7 @@ function escAttr(s) {
 async function loadSeriesSeasons(seriesId) {
   const tabsEl = document.getElementById('detail-season-tabs');
   const epsEl = document.getElementById('detail-episodes');
-  tabsEl.innerHTML = '<div class="vc-player-spinner" style="margin:1rem auto"></div>';
+  tabsEl.innerHTML = '<div class="vc-dots vc-dots-sm" style="margin:0.5rem auto"><span></span><span></span><span></span></div>';
   epsEl.innerHTML = '';
 
   try {
@@ -1522,7 +1534,7 @@ async function loadSeriesSeasons(seriesId) {
     const showEpisodes = (seasonNum) => {
       const eps = data.seasons[seasonNum] || [];
       epsEl.innerHTML = eps.map(ep => `
-        <div class="episode-item" data-id="${ep.id}" data-ext="${ep.containerExtension}">
+        <div class="episode-item" data-id="${ep.id}" data-ext="${ep.containerExtension}" data-vcodec="${escAttr(ep.videoCodec || '')}" data-acodec="${escAttr(ep.audioCodec || '')}">
           <div class="episode-num">${ep.episodeNum}</div>
           <div class="episode-info">
             <div class="episode-title">${escHtml(ep.title)}</div>
@@ -1537,9 +1549,22 @@ async function loadSeriesSeasons(seriesId) {
       epsEl.querySelectorAll('.episode-item').forEach(item => {
         item.addEventListener('click', () => {
           const epId = item.dataset.id;
-          const ext = item.dataset.ext || 'm3u8';
-          const url = iptv.getSeriesStreamUrl(epId, ext);
-          playInDetailPlayer(url, item.querySelector('.episode-title').textContent);
+          const epTitle = item.querySelector('.episode-title').textContent;
+          const container = item.dataset.ext || '';
+          // VOD isn't transcoded by Dispatcharr, so the browser must be able to
+          // play the file as-is: a native container (mp4/webm) AND decodable
+          // codecs. MKV/AVI, DivX video, or Dolby (E-)AC-3 audio → TV app.
+          const verdict = iptv.browserCanPlay(item.dataset.vcodec, item.dataset.acodec);
+          if (!iptv.isBrowserContainer(container) || !verdict.ok) {
+            // Not browser-playable as-is. Route through the home-GPU transcoder
+            // if configured; otherwise steer to the TV app.
+            const turl = iptv.vodTranscodeUrl(iptv.rawSeriesUrl(epId, container || 'mkv'));
+            if (turl) { playInDetailPlayer(turl, epTitle); return; }
+            toast(`"${epTitle}" can't play in the browser (format not supported) — watch it in the VistaCore TV app.`, true);
+            return;
+          }
+          const url = iptv.getSeriesStreamUrl(epId, container || 'mp4');
+          playInDetailPlayer(url, epTitle);
         });
       });
     };
@@ -1558,7 +1583,17 @@ async function loadSeriesSeasons(seriesId) {
 }
 
 function playMovie(movie) {
-  const url = iptv.getMovieStreamUrl(movie.id, movie.containerExtension || 'mp4');
+  const container = movie.containerExtension || 'mp4';
+  // VOD isn't transcoded by Dispatcharr — only native containers can play.
+  // (Codec-level issues like DivX video are caught by the player's no-picture
+  // check; we don't have per-movie codec metadata up front.)
+  if (!iptv.isBrowserContainer(container)) {
+    const turl = iptv.vodTranscodeUrl(iptv.rawMovieUrl(movie.id, container));
+    if (turl) { playInDetailPlayer(turl, movie.name); return; }
+    toast(`"${movie.name}" can't play in the browser (${container} format) — watch it in the VistaCore TV app.`, true);
+    return;
+  }
+  const url = iptv.getMovieStreamUrl(movie.id, container);
   playInDetailPlayer(url, movie.name);
 }
 
@@ -1899,6 +1934,7 @@ function loadSettings() {
   if (s.xtreamServer) document.getElementById('setting-xtream-server').value = s.xtreamServer;
   if (s.xtreamUser) document.getElementById('setting-xtream-user').value = s.xtreamUser;
   if (s.xtreamPass) document.getElementById('setting-xtream-pass').value = s.xtreamPass;
+  if (s.transcoder) document.getElementById('setting-transcoder').value = s.transcoder;
   if (s.showClock !== undefined) document.getElementById('setting-clock').checked = s.showClock;
   if (s.showGames !== undefined) document.getElementById('setting-games').checked = s.showGames;
 }
@@ -1920,6 +1956,7 @@ document.getElementById('btn-save-settings').addEventListener('click', () => {
     xtreamServer: document.getElementById('setting-xtream-server').value,
     xtreamUser: document.getElementById('setting-xtream-user').value,
     xtreamPass: document.getElementById('setting-xtream-pass').value,
+    transcoder: document.getElementById('setting-transcoder').value.trim(),
     showClock: document.getElementById('setting-clock').checked,
     showGames: document.getElementById('setting-games').checked,
   };
@@ -1960,6 +1997,17 @@ document.getElementById('user-pill').addEventListener('click', () => {
 // Setup prompt button
 document.getElementById('btn-open-setup')?.addEventListener('click', () => {
   document.getElementById('settings-modal').hidden = false;
+});
+
+// Keyboard activation for non-native controls (role="button" on <div>).
+// Enter/Space should fire a click, matching native button behavior.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+  const el = e.target;
+  if (el && el.getAttribute && el.getAttribute('role') === 'button') {
+    e.preventDefault();
+    el.click();
+  }
 });
 
 // ─── Init ───

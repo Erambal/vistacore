@@ -3,6 +3,89 @@
    Handles Xtream Codes API + M3U parsing
    ═══════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════
+   ProviderText — channel/category name cleanup
+   Port of the Android app's ProviderText.kt so web and APK show
+   identical, readable names. The Dispatcharr/fixesto feed prefixes
+   names and categories with tags ("US| ", "PRIME| "), wraps headers
+   in hashes ("##### ENTERTAINMENT #####") and decorates text with
+   superscript unicode and "VIP" tags. We strip all of that.
+   ═══════════════════════════════════════════ */
+const ProviderText = (() => {
+  // Repeated leading "XXX| " tag on a NAME (US|, PRIME|, CITY|, …).
+  const reNameTag = /^\s*[A-Za-z0-9/ ]{1,12}\|\s*/;
+  // Leading region tag on a CATEGORY ("US| "). 24/7 groups use a space, kept.
+  const reRegionTag = /^\s*[A-Za-z0-9]{1,4}\|\s*/;
+  // Region prefix on a NAME that may carry a "(ESPN+ 001)" feed id before the pipe.
+  const reRegionPrefix = /^\s*(?:US|USA|UK|GB|CA|AU|NZ|IE|FR|DE|ES|IT|PT|NL|BE|SE|NO|DK|FI|PL|BR|MX|AR|IN|PK|TR|EU|LA)\b[^|]*\|\s*/;
+  // Decorative codepoints: modifier/superscript letters, sub/superscript digits, '#'.
+  const reDecorations = /[#ʰ-˿ᴀ-ᶿ⁰-₟]/g;
+  const reVip = /\bVIP\b/gi;
+  const reDirecTv = /DIREC\s*TV/gi;
+  const reMultiSpace = /\s{2,}/g;
+  const reStrandedSep = /^[\s/\-|]+|[\s/\-|]+$/g;
+
+  const acronyms = new Set([
+    'US','USA','UK','TV','HD','HQ','4K','PPV','VOD',
+    'ESPN','NFL','NHL','NBA','MLB','MLS','NCAA','NCAAF','NCAAB',
+    'PGA','UFC','WWE','AEW','NASCAR','F1',
+    'HBO','AMC','BET','TBS','TNT','FX','FXX','CNN','CNBC','MSNBC',
+    'CBS','NBC','ABC','FOX','PBS','MTV','TLC','IFC','MGM','CW',
+    'ION','EPIX','SHO','STARZ','MAX','PAC','SEC','BTN','ACC',
+    'WE','OWN','AXS','POP','NHK','RT','PBA',
+    'BBC','CMT','AE','VH','HGTV','TCM','TMC','ID','SD','UHD','FHD',
+  ]);
+
+  function titleCase(text) {
+    if (/[a-z]/.test(text)) return text; // already mixed-case — leave it
+    return text.split(' ').map(token => {
+      if (!token) return token;
+      const letters = token.replace(/[^A-Za-z]/g, '').toUpperCase();
+      if (acronyms.has(letters)) return token.toUpperCase();
+      let out = '';
+      let startOfRun = true;
+      for (const ch of token.toLowerCase()) {
+        if (/[a-z]/i.test(ch)) {
+          out += startOfRun ? ch.toUpperCase() : ch;
+          startOfRun = false;
+        } else {
+          out += ch;
+          startOfRun = true;
+        }
+      }
+      return out;
+    }).join(' ');
+  }
+
+  function tidy(input) {
+    let s = input.replace(reDirecTv, 'DirecTV');
+    s = s.replace(reDecorations, ' ');
+    s = s.replace(reVip, ' ');
+    s = s.replace(reMultiSpace, ' ').trim();
+    s = s.replace(reStrandedSep, '').trim();
+    return titleCase(s);
+  }
+
+  function cleanName(raw) {
+    if (!raw) return raw || '';
+    let s = raw.replace(reRegionPrefix, '');
+    // Peel any remaining simple "XXX| " tags ("PRIME| CITY| Foo" -> "Foo").
+    let m;
+    while ((m = reNameTag.exec(s))) s = s.slice(m[0].length);
+    const cleaned = tidy(s);
+    return cleaned ? cleaned : tidy(raw); // bare-tag entries keep original text
+  }
+
+  function cleanCategory(raw) {
+    if (!raw) return 'Uncategorized';
+    const s = raw.replace(reRegionTag, '');
+    const cleaned = tidy(s);
+    return cleaned ? cleaned : 'Uncategorized';
+  }
+
+  return { cleanName, cleanCategory };
+})();
+
 // ─── Catalog cache (IndexedDB) ───
 // localStorage caps ~5-10 MB; large VOD catalogs blow past that,
 // so we use IndexedDB to persist channels/movies/series between sessions.
@@ -98,6 +181,24 @@ class IPTVService {
     }
     if (settings.m3u) this.m3uUrl = settings.m3u;
     if (settings.epg) this.epgUrl = settings.epg;
+    // Optional home-GPU VOD transcoder (e.g. https://transcode.alturaview.com).
+    this.transcoderUrl = (settings.transcoder || '').replace(/\/+$/, '');
+  }
+
+  // Raw (un-proxied) Xtream VOD URLs — handed to the transcoder, which fetches
+  // them server-side, so they skip our worker proxy.
+  rawMovieUrl(id, ext) {
+    if (!this.xtream) return null;
+    return `${this.xtream.server}/movie/${this.xtream.username}/${this.xtream.password}/${id}.${ext}`;
+  }
+  rawSeriesUrl(id, ext) {
+    if (!this.xtream) return null;
+    return `${this.xtream.server}/series/${this.xtream.username}/${this.xtream.password}/${id}.${ext}`;
+  }
+  // Wrap a raw VOD URL in a transcoder HLS request (null if no transcoder set).
+  vodTranscodeUrl(rawUrl) {
+    if (!this.transcoderUrl || !rawUrl) return null;
+    return `${this.transcoderUrl}/hls.m3u8?src=${encodeURIComponent(rawUrl)}`;
   }
 
   get isConfigured() {
@@ -132,7 +233,17 @@ class IPTVService {
   // and avoid browser mixed-content blocks).
   _proxyUrl(rawUrl) {
     if (!rawUrl) return rawUrl;
-    if (String(rawUrl).startsWith('https://')) return rawUrl;
+    // HLS must always go through the proxy: hls.js fetches the manifest via
+    // XHR (needs CORS, which providers rarely send) and the segment URLs
+    // inside it have to be rewritten back through us. A direct file (mp4) can
+    // play cross-origin natively, so for those we only proxy http (to avoid
+    // mixed-content blocking on our https page).
+    // Streaming formats (HLS .m3u8, raw MPEG-TS .ts) are fetched by hls.js /
+    // mpegts.js via XHR — they need CORS (which providers rarely send) and the
+    // Worker has to stream them. A direct file (mp4) plays cross-origin
+    // natively, so only proxy those when http (to avoid mixed-content blocking).
+    const needsProxy = /\.(m3u8|ts)(\?|$)/i.test(rawUrl);
+    if (!needsProxy && String(rawUrl).startsWith('https://')) return rawUrl;
     return `/api/stream?url=${encodeURIComponent(rawUrl)}`;
   }
 
@@ -149,21 +260,67 @@ class IPTVService {
     return `/api/image?url=${encodeURIComponent(clean)}`;
   }
 
-  getLiveStreamUrl(streamId, ext = 'm3u8') {
-    if (this.xtream) {
-      const direct = `${this.xtream.server}/live/${this.xtream.username}/${this.xtream.password}/${streamId}.${ext}`;
-      return this._proxyUrl(direct);
-    }
-    const ch = this.channels.find(c => c.id === streamId);
-    return ch ? this._proxyUrl(ch.url) : null;
-  }
-
   getMovieStreamUrl(streamId, ext = 'mp4') {
     if (this.xtream) {
       const direct = `${this.xtream.server}/movie/${this.xtream.username}/${this.xtream.password}/${streamId}.${ext}`;
       return this._proxyUrl(direct);
     }
     return null;
+  }
+
+  // Containers a browser <video> can render. Anything else (mkv, avi, ts,
+  // mpg, wmv, flv, vob…) plays audio-only / black in the browser, so we ask
+  // the Xtream panel for its on-the-fly HLS transcode (.m3u8) instead.
+  // Pull a codec name out of an Xtream info.video / info.audio field, which
+  // may be an object ({codec_name:'h264'}) or a bare string.
+  _codecName(v) {
+    if (!v) return '';
+    if (typeof v === 'string') return v.toLowerCase();
+    return String(v.codec_name || '').toLowerCase();
+  }
+
+  // Codecs browsers (Chrome-class MSE) can't decode — these only play in the
+  // native TV app via FFmpeg. Used to warn the user instead of showing a black
+  // screen / silent video / mpegts crash.
+  static UNPLAYABLE_VIDEO = new Set([
+    'mpeg4', 'msmpeg4v1', 'msmpeg4v2', 'msmpeg4v3', 'mpeg2video', 'mpeg1video',
+    'vc1', 'wmv1', 'wmv2', 'wmv3', 'rv10', 'rv20', 'rv30', 'rv40', 'flv1', 'svq3',
+  ]);
+  static UNPLAYABLE_AUDIO = new Set([
+    'eac3', 'ac3', 'dts', 'truehd', 'mp2', 'wmav1', 'wmav2', 'cook', 'ralf',
+  ]);
+  // Returns { ok } or { ok:false, kind:'video'|'audio', codec } when a browser
+  // can't play it. Unknown codecs default to ok (let the player try).
+  browserCanPlay(videoCodec, audioCodec) {
+    const v = String(videoCodec || '').toLowerCase();
+    const a = String(audioCodec || '').toLowerCase();
+    if (v && IPTVService.UNPLAYABLE_VIDEO.has(v)) return { ok: false, kind: 'video', codec: v };
+    if (a && IPTVService.UNPLAYABLE_AUDIO.has(a)) return { ok: false, kind: 'audio', codec: a };
+    return { ok: true };
+  }
+
+  static BROWSER_CONTAINERS = new Set(['mp4', 'm4v', 'mov', 'webm']);
+  // True only for containers a browser <video> can play directly. For VOD
+  // (movies/series) Dispatcharr does NOT transcode/remux, so anything else
+  // (mkv/avi/ts/…) simply can't play in the browser.
+  isBrowserContainer(ext) {
+    const e = String(ext || '').toLowerCase().replace(/^\./, '');
+    return IPTVService.BROWSER_CONTAINERS.has(e);
+  }
+  playableExt(ext) {
+    const e = String(ext || '').toLowerCase().replace(/^\./, '');
+    // mp4/webm play natively; everything else (mkv/avi/mpg/…) we request as
+    // raw MPEG-TS so mpegts.js can demux it in the browser.
+    return IPTVService.BROWSER_CONTAINERS.has(e) ? e : 'ts';
+  }
+
+  getLiveStreamUrl(streamId, ext = 'ts') {
+    if (this.xtream) {
+      const direct = `${this.xtream.server}/live/${this.xtream.username}/${this.xtream.password}/${streamId}.${ext}`;
+      return this._proxyUrl(direct);
+    }
+    const ch = this.channels.find(c => c.id === streamId);
+    return ch ? this._proxyUrl(ch.url) : null;
   }
 
   getSeriesStreamUrl(streamId, ext = 'm3u8') {
@@ -175,9 +332,13 @@ class IPTVService {
   }
 
   // ─── Cache plumbing ───
+  // Bump CATALOG_SCHEMA whenever the parsed catalog shape or name-cleaning
+  // changes, so old caches are ignored instead of showing stale data.
+  static CATALOG_SCHEMA = 2;
   _cacheKey() {
-    if (this.xtream) return `xtream:${this.xtream.server}|${this.xtream.username}`;
-    if (this.m3uUrl) return `m3u:${this.m3uUrl}`;
+    const v = IPTVService.CATALOG_SCHEMA;
+    if (this.xtream) return `xtream:v${v}:${this.xtream.server}|${this.xtream.username}`;
+    if (this.m3uUrl) return `m3u:v${v}:${this.m3uUrl}`;
     return null;
   }
 
@@ -290,7 +451,7 @@ class IPTVService {
     // Parse live channels
     this.categories = (liveCats || []).map(c => ({
       id: String(c.category_id),
-      name: c.category_name,
+      name: ProviderText.cleanCategory(c.category_name),
       count: 0
     }));
 
@@ -300,7 +461,7 @@ class IPTVService {
       return {
         id: String(s.stream_id),
         num: s.num || i + 1,
-        name: s.name || 'Unknown',
+        name: ProviderText.cleanName(s.name) || 'Unknown',
         logo: this._imageUrl(s.stream_icon),
         category: cat ? cat.name : 'Uncategorized',
         categoryId: String(s.category_id || ''),
@@ -313,16 +474,17 @@ class IPTVService {
     // Parse movies
     this.movieCategories = (vodCats || []).map(c => ({
       id: String(c.category_id),
-      name: c.category_name,
+      name: ProviderText.cleanCategory(c.category_name),
       count: 0
     }));
 
-    this.movies = (vodStreams || []).map(m => {
+    // Match the APK: drop 4K VOD (often unplayable on lower-end clients).
+    this.movies = (vodStreams || []).filter(m => !/4k/i.test(m.name || '')).map(m => {
       const cat = this.movieCategories.find(c => c.id === String(m.category_id));
       if (cat) cat.count++;
       return {
         id: String(m.stream_id),
-        name: m.name || 'Unknown',
+        name: ProviderText.cleanName(m.name) || 'Unknown',
         poster: this._imageUrl(m.stream_icon),
         category: cat ? cat.name : 'Uncategorized',
         categoryId: String(m.category_id || ''),
@@ -338,7 +500,7 @@ class IPTVService {
     // Parse series
     this.seriesCategories = (seriesCats || []).map(c => ({
       id: String(c.category_id),
-      name: c.category_name,
+      name: ProviderText.cleanCategory(c.category_name),
       count: 0
     }));
 
@@ -347,7 +509,7 @@ class IPTVService {
       if (cat) cat.count++;
       return {
         id: String(s.series_id),
-        name: s.name || 'Unknown',
+        name: ProviderText.cleanName(s.name) || 'Unknown',
         poster: this._imageUrl(s.cover),
         category: cat ? cat.name : 'Uncategorized',
         categoryId: String(s.category_id || ''),
@@ -379,7 +541,9 @@ class IPTVService {
         duration: ep.info?.duration || '',
         plot: ep.info?.plot || '',
         poster: this._imageUrl(ep.info?.movie_image),
-        rating: ep.info?.rating || ''
+        rating: ep.info?.rating || '',
+        videoCodec: this._codecName(ep.info?.video),
+        audioCodec: this._codecName(ep.info?.audio)
       }));
     }
 
@@ -517,13 +681,14 @@ class IPTVService {
         const tvgName = this._extractAttr(line, 'tvg-name');
         const tvgLogo = this._extractAttr(line, 'tvg-logo');
         const tvgId = this._extractAttr(line, 'tvg-id');
-        const group = this._extractAttr(line, 'group-title') || 'Uncategorized';
+        const group = ProviderText.cleanCategory(this._extractAttr(line, 'group-title') || 'Uncategorized');
         // Display name is after the last comma
         const commaIdx = line.lastIndexOf(',');
-        const displayName = commaIdx >= 0 ? line.substring(commaIdx + 1).trim() : tvgName || 'Unknown';
+        const rawDisplay = commaIdx >= 0 ? line.substring(commaIdx + 1).trim() : tvgName || 'Unknown';
+        const displayName = ProviderText.cleanName(rawDisplay);
 
         currentInfo = {
-          name: displayName || tvgName || 'Unknown',
+          name: displayName || ProviderText.cleanName(tvgName) || 'Unknown',
           logo: tvgLogo || '',
           epgId: tvgId || '',
           category: group

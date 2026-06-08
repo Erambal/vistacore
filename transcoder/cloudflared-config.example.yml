@@ -1,0 +1,23 @@
+# cloudflared config for the render-server tunnel — routes BOTH your existing
+# render server AND the new VistaCore transcoder. Replace <UUID> and the
+# credentials path with your tunnel's (the values printed when you created it).
+#
+# Save as:  C:\Users\Elk Springs Villa\.cloudflared\config.yml
+# Then run: cloudflared tunnel run render-server
+#   (NOT the old `--url http://localhost:3100` form — that single-service flag
+#    overrides this file. Config-file mode is what enables multiple hostnames.)
+
+tunnel: render-server
+credentials-file: C:\Users\Elk Springs Villa\.cloudflared\2d769bc9-0ce3-435a-9632-a6ffd0d49609.json
+
+ingress:
+  # Your existing render server (unchanged).
+  - hostname: render.alturaview.com
+    service: http://localhost:3100
+
+  # NEW: the VistaCore VOD transcoder.
+  - hostname: transcode.alturaview.com
+    service: http://localhost:8088
+
+  # Required catch-all.
+  - service: http_status:404

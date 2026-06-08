@@ -2116,6 +2116,41 @@ img { max-width: 100%; display: block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ═══════════════════════════════════════════
+   Bouncing dots loader — matches the Android
+   app's BouncingDotsView: three gold dots in a
+   calm, staggered sine wave. Used wherever we
+   show "loading" so web and APK feel the same.
+   ═══════════════════════════════════════════ */
+.vc-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  height: 44px;
+}
+.vc-dots > span {
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--gold);
+  /* 1.05s cycle = the APK's cycleMs; ease-in-out approximates the sine bounce. */
+  animation: vc-dot-bounce 1.05s infinite ease-in-out;
+}
+/* Each dot trails the previous by ~9% of the cycle (the APK's 0.55rad stagger). */
+.vc-dots > span:nth-child(1) { animation-delay: -0.30s; }
+.vc-dots > span:nth-child(2) { animation-delay: -0.21s; }
+.vc-dots > span:nth-child(3) { animation-delay: -0.12s; }
+@keyframes vc-dot-bounce {
+  0%, 100% { transform: translateY(38%);  opacity: 0.65; }
+  50%      { transform: translateY(-38%); opacity: 1; }
+}
+/* Smaller variant for inline/section spots. */
+.vc-dots.vc-dots-sm { height: 28px; gap: 0.4rem; }
+.vc-dots.vc-dots-sm > span { width: 9px; height: 9px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-dots > span { animation-duration: 1.6s; }
+}
+
+/* ═══════════════════════════════════════════
    Cast button (Chromecast)
    ═══════════════════════════════════════════ */
 google-cast-launcher {
@@ -2203,4 +2238,33 @@ google-cast-launcher {
   .detail-cast-row { justify-content: flex-start; }
   .detail-player-wrap { padding: 0 1rem 1.5rem; }
   #view-search { padding: calc(var(--topbar-h) + 1rem) 1rem 2rem; }
+}
+
+/* ═══════════════════════════════════════════
+   ACCESSIBILITY — keyboard focus visibility
+   A clear, consistent ring for keyboard users
+   (mouse clicks don't trigger :focus-visible).
+   ═══════════════════════════════════════════ */
+:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+/* Don't double up the ring where we already glow inputs/cards. */
+input:focus-visible { outline-offset: 1px; }
+
+/* Skip link — first tab stop, jumps past the topbar to content. */
+.skip-link {
+  position: fixed; top: 0; left: 50%;
+  transform: translate(-50%, -120%);
+  z-index: 2000;
+  background: var(--gold); color: #1a1200;
+  font-family: var(--font-display); font-weight: 600;
+  padding: 0.6rem 1.2rem; border-radius: 0 0 var(--radius-md) var(--radius-md);
+  text-decoration: none; transition: transform 0.18s ease;
+}
+.skip-link:focus { transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link { transition: none; }
 }

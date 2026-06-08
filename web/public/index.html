@@ -4,12 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VistaCore</title>
+  <meta name="description" content="Your Living Room. Simplified. Live TV, movies, and shows in one calm, easy place.">
   <link rel="icon" type="image/png" href="assets/logo.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0D1117">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="VistaCore">
+  <link rel="apple-touch-icon" href="/assets/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1" async defer></script>
 </head>
@@ -45,13 +54,15 @@
   <!-- ═══ DASHBOARD SCREEN ═══ -->
   <div id="dashboard-screen" class="screen">
 
+    <a href="#view-home" class="skip-link">Skip to content</a>
+
     <!-- Top Bar -->
     <header class="topbar">
       <div class="topbar-left">
-        <button class="topbar-btn topbar-back-btn" id="btn-back" title="Back to Home" style="display:none">
+        <button class="topbar-btn topbar-back-btn" id="btn-back" title="Back to Home" aria-label="Back to Home" style="display:none">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         </button>
-        <div class="topbar-brand" id="topbar-brand-link" style="cursor:pointer">
+        <div class="topbar-brand" id="topbar-brand-link" role="button" tabindex="0" aria-label="Go to Home" style="cursor:pointer">
           <img src="/assets/logo.png" alt="" class="topbar-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
           <svg width="28" height="28" viewBox="0 0 48 48" fill="none" style="display:none">
             <rect x="2" y="8" width="44" height="32" rx="4" stroke="#FFB300" stroke-width="2.5" fill="none"/>
@@ -66,16 +77,16 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
           </svg>
-          <input type="text" id="search-input" placeholder="Search channels, movies, shows...">
+          <input type="text" id="search-input" aria-label="Search channels, movies, and shows" placeholder="Search channels, movies, shows...">
         </div>
       </div>
       <div class="topbar-right">
-        <button class="topbar-btn" id="btn-settings" title="Settings">
+        <button class="topbar-btn" id="btn-settings" title="Settings" aria-label="Settings">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
           </svg>
         </button>
-        <div class="user-pill" id="user-pill">
+        <div class="user-pill" id="user-pill" role="button" tabindex="0" aria-label="Open settings">
           <div class="user-avatar" id="user-avatar">A</div>
           <span class="user-name" id="user-name">Admin</span>
         </div>
@@ -328,7 +339,7 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
               <span>Trailer</span>
             </button>
-            <button class="btn-fav" id="detail-fav" title="Favorite">
+            <button class="btn-fav" id="detail-fav" title="Favorite" aria-label="Add to favorites">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
             </button>
           </div>
@@ -379,7 +390,7 @@
       <div class="modal">
         <div class="modal-header">
           <h2>Settings</h2>
-          <button class="modal-close" id="settings-close">&times;</button>
+          <button class="modal-close" id="settings-close" aria-label="Close settings">&times;</button>
         </div>
         <div class="modal-body">
           <div class="settings-group">
@@ -407,6 +418,14 @@
                 <input type="password" id="setting-xtream-pass" placeholder="Password">
               </div>
             </div>
+          </div>
+          <div class="settings-group">
+            <h3>VOD Transcoder (optional)</h3>
+            <div class="input-group">
+              <label>Transcoder URL</label>
+              <input type="url" id="setting-transcoder" placeholder="https://transcode.alturaview.com">
+            </div>
+            <p class="settings-hint">For movies/shows whose format the browser can't play (MKV, DivX video, or Dolby audio), VistaCore will route them through this home-GPU transcoder instead of asking you to use the TV app. Leave blank to disable.</p>
           </div>
           <div class="settings-group">
             <h3>Catalog</h3>
@@ -442,5 +461,13 @@
   <script src="iptv.js"></script>
   <script src="player.js"></script>
   <script src="app.js"></script>
+  <script>
+    // Register the service worker for app-shell caching + offline shell.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>

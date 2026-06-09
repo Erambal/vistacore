@@ -84,6 +84,7 @@ class VCPlayer {
         </div>
         <div class="vc-player-loading" style="display:none">
           <div class="vc-dots"><span></span><span></span><span></span></div>
+          <p class="vc-player-loading-status" style="font-size:12px;opacity:.6;margin-top:.75rem"></p>
         </div>
         <div class="vc-player-error" style="display:none">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
@@ -242,6 +243,7 @@ class VCPlayer {
       this.isPlaying = true;
       this._updatePlayIcon();
       this._hideLoading();
+      if (this._stallWatch) { clearTimeout(this._stallWatch); this._stallWatch = null; }
     });
     this.video.addEventListener('pause', () => {
       this.isPlaying = false;
@@ -429,11 +431,15 @@ class VCPlayer {
         fragLoadingTimeOut: 60000,
         fragLoadingMaxRetry: 8,
       });
+      this._setLoadingStatus('Connecting to transcoder…');
       this.hls.loadSource(url);
       this.hls.attachMedia(this.video);
+      this.hls.on(Hls.Events.MANIFEST_LOADED, () => this._setLoadingStatus('Stream found, preparing…'));
       this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        this._setLoadingStatus('Starting playback…');
         this._attemptPlay();
       });
+      this.hls.on(Hls.Events.FRAG_BUFFERED, () => this._setLoadingStatus('Buffering video…'));
       let hlsNetRetries = 0;
       this.hls.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
@@ -453,13 +459,30 @@ class VCPlayer {
       });
     } else if (this.video.canPlayType('application/vnd.apple.mpegurl') && isHLS) {
       // Safari native HLS
+      this._setLoadingStatus('Loading stream (native HLS)…');
       this.video.src = url;
       this._attemptPlay();
     } else {
       // Direct (MP4, etc.)
+      this._setLoadingStatus('Loading video…');
       this.video.src = url;
       this._attemptPlay();
     }
+
+    // Native-element progress reporting (covers native HLS + direct MP4). These
+    // are no-ops for hls.js/mpegts since those drive the element internally.
+    this.video.addEventListener('loadedmetadata', () => this._setLoadingStatus('Metadata loaded, buffering…'), { once: true });
+    this.video.addEventListener('loadeddata', () => this._setLoadingStatus('First frame ready…'), { once: true });
+
+    // Watchdog: if after 20s we still haven't produced a frame, the manifest or
+    // segments never arrived. Report it on screen instead of spinning forever.
+    if (this._stallWatch) clearTimeout(this._stallWatch);
+    this._stallWatch = setTimeout(() => {
+      if (this.video && this.video.readyState < 2 && !this.isPlaying) {
+        this._showError('Playback timed out',
+          `Stuck at: ${this.container.querySelector('.vc-player-loading-status')?.textContent || 'connecting'} — readyState ${this.video.readyState}, networkState ${this.video.networkState}`);
+      }
+    }, 20000);
 
     // Restore position if VOD
     if (item && window.watchHistory) {
@@ -538,6 +561,7 @@ class VCPlayer {
     this._teardownMpegts();
     if (this._positionInterval) clearInterval(this._positionInterval);
     if (this._codecCheckTimer) { clearTimeout(this._codecCheckTimer); this._codecCheckTimer = null; }
+    if (this._stallWatch) { clearTimeout(this._stallWatch); this._stallWatch = null; }
     this.video.pause();
     this.video.removeAttribute('src');
     this.video.load();
@@ -641,6 +665,10 @@ class VCPlayer {
   _showLoading() {
     this.container.querySelector('.vc-player-loading').style.display = 'flex';
     this._hideError();
+  }
+  _setLoadingStatus(text) {
+    const el = this.container.querySelector('.vc-player-loading-status');
+    if (el) el.textContent = text || '';
   }
   _hideLoading() {
     this.container.querySelector('.vc-player-loading').style.display = 'none';

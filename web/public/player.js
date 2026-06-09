@@ -304,10 +304,15 @@ class VCPlayer {
     };
     document.addEventListener('keydown', this._onKeyDown);
 
-    // Fullscreen change
-    document.addEventListener('fullscreenchange', () => {
-      this.isFullscreen = !!document.fullscreenElement;
-    });
+    // Fullscreen change (standard + webkit for older Safari/iPad)
+    const onFsChange = () => {
+      this.isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    // iPhone native video fullscreen fires these on the element itself.
+    this.video.addEventListener('webkitbeginfullscreen', () => { this.isFullscreen = true; });
+    this.video.addEventListener('webkitendfullscreen', () => { this.isFullscreen = false; });
 
     // Retry
     el('.vc-player-retry').addEventListener('click', () => {
@@ -592,10 +597,24 @@ class VCPlayer {
 
   toggleFullscreen() {
     const player = this.container.querySelector('.vc-player');
-    if (!document.fullscreenElement) {
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+
+    if (fsEl) {
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      return;
+    }
+
+    // Standard Fullscreen API (desktop, Android Chrome) on the player container
+    // so our overlay controls stay visible.
+    if (player.requestFullscreen) {
       player.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
+    } else if (player.webkitRequestFullscreen) {
+      player.webkitRequestFullscreen();
+    } else if (this.video.webkitEnterFullscreen) {
+      // iPhone Safari: no element fullscreen — only the native <video> player
+      // can go fullscreen. This shows Apple's own controls, which is expected.
+      try { this.video.webkitEnterFullscreen(); } catch (_) {}
     }
   }
 

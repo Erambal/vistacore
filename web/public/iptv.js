@@ -547,7 +547,7 @@ class IPTVService {
       seasons[seasonNum] = (eps || []).map(ep => ({
         id: String(ep.id),
         episodeNum: ep.episode_num || 0,
-        title: ep.title || `Episode ${ep.episode_num}`,
+        title: ProviderText.cleanName(ep.title) || `Episode ${ep.episode_num}`,
         containerExtension: ep.container_extension || 'm3u8',
         duration: ep.info?.duration || '',
         plot: ep.info?.plot || '',

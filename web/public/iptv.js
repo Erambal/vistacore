@@ -16,6 +16,10 @@ const ProviderText = (() => {
   const reNameTag = /^\s*[A-Za-z0-9/ ]{1,12}\|\s*/;
   // Leading region tag on a CATEGORY ("US| "). 24/7 groups use a space, kept.
   const reRegionTag = /^\s*[A-Za-z0-9]{1,4}\|\s*/;
+  // Leading language/country code with ANY separator ("EN - ", "EN| ", "EN: ",
+  // "ES |"). Covers provider feeds that prefix titles & categories with a
+  // 2-3 letter language code. Applied to both names and categories.
+  const reLangPrefix = /^\s*(?:EN|ENG|ES|SPA|FR|FRE|DE|GER|PT|POR|IT|ITA|AR|ARA|NL|RU|RUS|TR|TUR|PL|POL|SV|SWE|NO|NOR|DA|DAN|FI|FIN|EL|GR|RO|HU|CZ|SK|HR|SR|BG|UA|HE|HI|FA|UR)\s*[-|:]\s*/i;
   // Region prefix on a NAME that may carry a "(ESPN+ 001)" feed id before the pipe.
   const reRegionPrefix = /^\s*(?:US|USA|UK|GB|CA|AU|NZ|IE|FR|DE|ES|IT|PT|NL|BE|SE|NO|DK|FI|PL|BR|MX|AR|IN|PK|TR|EU|LA)\b[^|]*\|\s*/;
   // Decorative codepoints: modifier/superscript letters, sub/superscript digits, '#'.
@@ -68,7 +72,8 @@ const ProviderText = (() => {
 
   function cleanName(raw) {
     if (!raw) return raw || '';
-    let s = raw.replace(reRegionPrefix, '');
+    let s = raw.replace(reLangPrefix, '');
+    s = s.replace(reRegionPrefix, '');
     // Peel any remaining simple "XXX| " tags ("PRIME| CITY| Foo" -> "Foo").
     let m;
     while ((m = reNameTag.exec(s))) s = s.slice(m[0].length);
@@ -78,7 +83,8 @@ const ProviderText = (() => {
 
   function cleanCategory(raw) {
     if (!raw) return 'Uncategorized';
-    const s = raw.replace(reRegionTag, '');
+    let s = raw.replace(reLangPrefix, '');
+    s = s.replace(reRegionTag, '');
     const cleaned = tidy(s);
     return cleaned ? cleaned : 'Uncategorized';
   }
@@ -334,7 +340,7 @@ class IPTVService {
   // ─── Cache plumbing ───
   // Bump CATALOG_SCHEMA whenever the parsed catalog shape or name-cleaning
   // changes, so old caches are ignored instead of showing stale data.
-  static CATALOG_SCHEMA = 2;
+  static CATALOG_SCHEMA = 3;
   _cacheKey() {
     const v = IPTVService.CATALOG_SCHEMA;
     if (this.xtream) return `xtream:v${v}:${this.xtream.server}|${this.xtream.username}`;

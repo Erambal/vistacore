@@ -209,7 +209,41 @@ function navigateTo(view, params = {}) {
   } else {
     window.scrollTo(0, 0);
   }
+
+  // Mirror navigation into browser history so the phone/desktop Back gesture
+  // walks the in-app view stack (→ Home → exit) instead of leaving the app on
+  // the first press. Skip when this navigation WAS triggered by Back (popstate).
+  if (!params._fromPop) {
+    const histState = {
+      vcView: view,
+      detailType: currentDetailType,
+      detailId: currentDetailItem?.id,
+      title: params.title,
+      query: params.query,
+    };
+    // The very first navigation replaces the base entry; later ones push, so
+    // each forward step is its own Back stop.
+    if (!history.state || !history.state.vcView) history.replaceState(histState, '');
+    else history.pushState(histState, '');
+  }
 }
+
+// Browser Back / forward → restore the matching in-app view rather than
+// unloading the page. _fromPop prevents this from pushing history again.
+window.addEventListener('popstate', (e) => {
+  const st = e.state;
+  if (!st || !st.vcView) { navigateTo('home', { _fromPop: true }); return; }
+  if (st.vcView === 'detail') {
+    const pool = st.detailType === 'series' ? iptv.series : iptv.movies;
+    const item = pool.find(x => String(x.id) === String(st.detailId));
+    if (item) navigateTo('detail', { item, type: st.detailType, title: st.title, restore: true, _fromPop: true });
+    else navigateTo('home', { _fromPop: true });
+  } else if (st.vcView === 'search') {
+    navigateTo('search', { query: st.query, _fromPop: true });
+  } else {
+    navigateTo(st.vcView, { restore: true, _fromPop: true });
+  }
+});
 
 // (Google Sign-In is initialized in initGoogleSignIn via showScreen('login'))
 
@@ -438,8 +472,13 @@ function buildContinueWatching() {
         navigateTo('livetv');
         setTimeout(() => playChannel(id), 300);
       } else if (type === 'movie') {
-        const movie = iptv.movies.find(m => m.id === id);
+        const movie = iptv.movies.find(m => String(m.id) === String(id));
         if (movie) navigateTo('detail', { item: movie, type: 'movie' });
+        else toast('That movie is no longer in your catalog.', true);
+      } else if (type === 'series') {
+        const series = iptv.series.find(s => String(s.id) === String(id));
+        if (series) navigateTo('detail', { item: series, type: 'series' });
+        else toast('That show is no longer in your catalog.', true);
       }
     };
     card.addEventListener('click', activate);

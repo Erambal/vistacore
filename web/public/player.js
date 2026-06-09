@@ -393,7 +393,10 @@ class VCPlayer {
           : 'Stream unavailable');
       });
       this.mpegts.load();
-      this.mpegts.play().catch(() => {});
+      // mpegts drives the same <video>; route through the autoplay-safe path
+      // so a cold start on mobile falls back to muted instead of stalling.
+      const mp = this.mpegts.play();
+      if (mp && mp.catch) mp.catch(() => this._attemptPlay());
     } else if (isHLS && Hls.isSupported()) {
       this.hls = new Hls({
         maxBufferLength: 30,
@@ -413,7 +416,7 @@ class VCPlayer {
       this.hls.loadSource(url);
       this.hls.attachMedia(this.video);
       this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        this.video.play().catch(() => {});
+        this._attemptPlay();
       });
       this.hls.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
@@ -429,11 +432,11 @@ class VCPlayer {
     } else if (this.video.canPlayType('application/vnd.apple.mpegurl') && isHLS) {
       // Safari native HLS
       this.video.src = url;
-      this.video.play().catch(() => {});
+      this._attemptPlay();
     } else {
       // Direct (MP4, etc.)
       this.video.src = url;
-      this.video.play().catch(() => {});
+      this._attemptPlay();
     }
 
     // Restore position if VOD
@@ -465,6 +468,31 @@ class VCPlayer {
       durEl.textContent = '0:00';
       durEl.style.color = '';
     }
+  }
+
+  // Start playback, surviving mobile autoplay policy. A transcoded HLS feed
+  // can take several seconds to emit its first segment (cold NVENC spin-up);
+  // by the time we call play() the original tap's user-gesture token has
+  // expired, so mobile browsers reject with NotAllowedError and the video
+  // sits on the loading spinner forever. Desktop autoplays regardless.
+  // Recovery: retry muted (always allowed), then nudge the user to unmute.
+  _attemptPlay() {
+    const v = this.video;
+    if (!v) return;
+    const p = v.play();
+    if (!p || !p.catch) return;
+    p.catch((err) => {
+      if (err && err.name === 'NotAllowedError') {
+        v.muted = true;
+        this._updateVolumeIcon();
+        v.play().then(() => {
+          // Playing but silent — show controls so the mute button is obvious.
+          this._hideLoading();
+          this._showOverlay();
+          this.setNowPlaying('Tap 🔊 to unmute');
+        }).catch(() => {});
+      }
+    });
   }
 
   // Fully dismantle the mpegts.js engine. Order matters: pause + unload +

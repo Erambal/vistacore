@@ -496,10 +496,13 @@ class VCPlayer {
         window.watchHistory.add({
           id: item.id,
           type: item.type || 'channel',
-          name: title,
+          name: item.name || title,
           poster: item.poster || item.logo || '',
           position: this.video.currentTime,
-          duration: this.video.duration || 0
+          duration: this.video.duration || 0,
+          // For series: remember which episode so Continue Watching resumes it.
+          episodeId: item.episodeId,
+          episodeName: item.episodeName,
         });
       }
     }, 5000);

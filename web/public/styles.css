@@ -1444,6 +1444,9 @@ img { max-width: 100%; display: block; }
   margin-top: 1.75rem;
 }
 .discover-shelf { padding: 0; }
+/* Continue Watching row at the top of the TV Shows grid view. */
+.vod-continue:empty { display: none; }
+.vod-continue { margin-bottom: 1.5rem; }
 .discover-shelf-title {
   font-family: var(--font-display);
   font-size: 1.35rem; font-weight: 600;

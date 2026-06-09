@@ -473,11 +473,11 @@ function buildContinueWatching() {
         setTimeout(() => playChannel(id), 300);
       } else if (type === 'movie') {
         const movie = iptv.movies.find(m => String(m.id) === String(id));
-        if (movie) navigateTo('detail', { item: movie, type: 'movie' });
+        if (movie) navigateTo('detail', { item: movie, type: 'movie', title: movie.name, resume: true });
         else toast('That movie is no longer in your catalog.', true);
       } else if (type === 'series') {
         const series = iptv.series.find(s => String(s.id) === String(id));
-        if (series) navigateTo('detail', { item: series, type: 'series' });
+        if (series) navigateTo('detail', { item: series, type: 'series', title: series.name, resume: true });
         else toast('That show is no longer in your catalog.', true);
       }
     };
@@ -926,6 +926,23 @@ function renderTvShows(searchQuery = '') {
   const empty = document.getElementById('tvshows-empty');
   const loadMore = document.getElementById('tvshows-load-more');
 
+  // Continue Watching row — only on the default view (no search / "All"), so it
+  // sits at the top of TV Shows the way movies' shelf does.
+  const contEl = document.getElementById('tvshows-continue');
+  if (contEl) {
+    const cw = !searchQuery && tvshowsCategory === 'all'
+      ? (watchHistory.getContinueWatching() || []).filter(i => i.type === 'series')
+      : [];
+    if (cw.length) {
+      contEl.innerHTML = renderShelfHtml({ title: 'Continue Watching', origin: 'continue', items: cw, type: 'series' });
+      contEl.querySelectorAll('.discover-row').forEach(row => bindVodCards(row, 'series'));
+      contEl.style.display = '';
+    } else {
+      contEl.innerHTML = '';
+      contEl.style.display = 'none';
+    }
+  }
+
   if (items.length === 0) {
     grid.innerHTML = '';
     empty.style.display = '';
@@ -1082,7 +1099,9 @@ function bindKidsCards(container) {
         ? iptv.movies.find(m => m.id === id)
         : iptv.series.find(s => s.id === id);
       if (!item) return;
-      navigateTo('detail', { item, type, title: item.name, origin, autoPlay: type === 'movie' });
+      // The kids Continue Watching shelf resumes; other kids shelves tap-to-play.
+      const resume = origin === 'kids-continue';
+      navigateTo('detail', { item, type, title: item.name, origin, resume, autoPlay: !resume && type === 'movie' });
     };
     card.addEventListener('click', trigger);
     card.addEventListener('keydown', e => {
@@ -1206,6 +1225,18 @@ function initDetail(params) {
   // (Series still need the season picker, so we don't auto-play those.)
   if (autoPlay && type === 'movie') {
     requestAnimationFrame(() => playMovie(item));
+  }
+
+  // Continue Watching resume: open the detail page AND jump straight back into
+  // playback at the saved spot. Movies restore position via the player; series
+  // resume the exact stored episode.
+  if (params.resume) {
+    if (type === 'movie') {
+      requestAnimationFrame(() => playMovie(item));
+    } else if (type === 'series') {
+      const entry = watchHistory.getEntry(item.id, 'series');
+      if (entry && entry.episodeId) requestAnimationFrame(() => resumeSeries(item, entry));
+    }
   }
 }
 
@@ -1552,6 +1583,49 @@ function escAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
+// Seasons data for the series currently open in detail — lets a resume request
+// locate the exact episode without re-fetching.
+let currentSeriesData = null;
+
+// Play a single episode object (from getSeriesInfo). Shared by the episode list
+// and by Continue Watching resume.
+function playEpisode(ep) {
+  if (!ep) return;
+  const epId = ep.id;
+  const epTitle = ep.title || 'Episode';
+  const container = ep.containerExtension || '';
+  const meta = { episodeId: epId, episodeName: epTitle };
+  // VOD isn't transcoded by Dispatcharr, so the browser must be able to play the
+  // file as-is: a native container (mp4/webm) AND decodable codecs. MKV/AVI,
+  // DivX video, or Dolby (E-)AC-3 audio → route to the transcoder or TV app.
+  const verdict = iptv.browserCanPlay(ep.videoCodec, ep.audioCodec);
+  if (!iptv.isBrowserContainer(container) || !verdict.ok) {
+    const turl = iptv.vodTranscodeUrl(iptv.rawSeriesUrl(epId, container || 'mkv'));
+    if (turl) { playInDetailPlayer(turl, epTitle, meta); return; }
+    toast(`"${epTitle}" can't play in the browser (format not supported) — watch it in the VistaCore TV app.`, true);
+    return;
+  }
+  const url = iptv.getSeriesStreamUrl(epId, container || 'mp4');
+  playInDetailPlayer(url, epTitle, meta);
+}
+
+// Resume a series at the episode the user last watched (position is restored by
+// the player itself, keyed by the series id).
+async function resumeSeries(series, entry) {
+  try {
+    const data = currentSeriesData && String(series.id) === String(currentDetailItem?.id)
+      ? currentSeriesData
+      : await iptv.getSeriesInfo(series.id);
+    if (!data || !data.seasons) return;
+    let ep = null;
+    for (const k of Object.keys(data.seasons)) {
+      const found = (data.seasons[k] || []).find(e => String(e.id) === String(entry.episodeId));
+      if (found) { ep = found; break; }
+    }
+    if (ep) playEpisode(ep);
+  } catch { /* leave the user on the detail page if resume can't resolve */ }
+}
+
 async function loadSeriesSeasons(seriesId) {
   const tabsEl = document.getElementById('detail-season-tabs');
   const epsEl = document.getElementById('detail-episodes');
@@ -1585,29 +1659,16 @@ async function loadSeriesSeasons(seriesId) {
         </div>
       `).join('');
 
-      epsEl.querySelectorAll('.episode-item').forEach(item => {
-        item.addEventListener('click', () => {
-          const epId = item.dataset.id;
-          const epTitle = item.querySelector('.episode-title').textContent;
-          const container = item.dataset.ext || '';
-          // VOD isn't transcoded by Dispatcharr, so the browser must be able to
-          // play the file as-is: a native container (mp4/webm) AND decodable
-          // codecs. MKV/AVI, DivX video, or Dolby (E-)AC-3 audio → TV app.
-          const verdict = iptv.browserCanPlay(item.dataset.vcodec, item.dataset.acodec);
-          if (!iptv.isBrowserContainer(container) || !verdict.ok) {
-            // Not browser-playable as-is. Route through the home-GPU transcoder
-            // if configured; otherwise steer to the TV app.
-            const turl = iptv.vodTranscodeUrl(iptv.rawSeriesUrl(epId, container || 'mkv'));
-            if (turl) { playInDetailPlayer(turl, epTitle); return; }
-            toast(`"${epTitle}" can't play in the browser (format not supported) — watch it in the VistaCore TV app.`, true);
-            return;
-          }
-          const url = iptv.getSeriesStreamUrl(epId, container || 'mp4');
-          playInDetailPlayer(url, epTitle);
+      epsEl.querySelectorAll('.episode-item').forEach(itemEl => {
+        itemEl.addEventListener('click', () => {
+          const ep = eps.find(e => String(e.id) === String(itemEl.dataset.id));
+          if (ep) playEpisode(ep);
         });
       });
     };
 
+    // Stash the loaded seasons so a resume request can find the right episode.
+    currentSeriesData = data;
     showEpisodes(seasonNums[0]);
     tabsEl.querySelectorAll('.season-tab').forEach(tab => {
       tab.addEventListener('click', () => {
@@ -1636,7 +1697,7 @@ function playMovie(movie) {
   playInDetailPlayer(url, movie.name);
 }
 
-function playInDetailPlayer(url, title) {
+function playInDetailPlayer(url, title, meta = {}) {
   const wrap = document.getElementById('detail-player-wrap');
   wrap.style.display = '';
   if (!detailPlayer) {
@@ -1650,7 +1711,10 @@ function playInDetailPlayer(url, title) {
     id: currentDetailItem?.id,
     type: currentDetailType,
     poster: currentDetailItem?.poster,
-    name: title
+    // Continue Watching shows the series/movie name; episodeName is stored
+    // separately so a series can resume the exact episode.
+    name: currentDetailItem?.name || title,
+    ...meta,
   });
   wrap.scrollIntoView({ behavior: 'smooth' });
 }
@@ -1766,7 +1830,9 @@ function bindVodCards(container, defaultType) {
       else item = iptv.series.find(s => s.id === id);
       if (item) {
         if (origin && origin.startsWith('mood:')) moodPrefs.bump(origin.slice(5));
-        navigateTo('detail', { item, type, title: item.name, origin });
+        // Continue Watching shelves resume playback; everything else opens detail.
+        const resume = origin === 'continue';
+        navigateTo('detail', { item, type, title: item.name, origin, resume });
       }
     };
     card.addEventListener('click', activate);

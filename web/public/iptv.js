@@ -20,6 +20,9 @@ const ProviderText = (() => {
   // "ES |"). Covers provider feeds that prefix titles & categories with a
   // 2-3 letter language code. Applied to both names and categories.
   const reLangPrefix = /^\s*(?:EN|ENG|ES|SPA|FR|FRE|DE|GER|PT|POR|IT|ITA|AR|ARA|NL|RU|RUS|TR|TUR|PL|POL|SV|SWE|NO|NOR|DA|DAN|FI|FIN|EL|GR|RO|HU|CZ|SK|HR|SR|BG|UA|HE|HI|FA|UR)\s*[-|:]\s*/i;
+  // Leading streaming-service tag ("D+ - ", "HBO| ", "ATV+ : "). These carry a
+  // '+' or are multi-word, so they won't collide with real one-word titles.
+  const reServiceTag = /^\s*(?:D\+|DISNEY\s*\+?|HBO\s*MAX|HBOMAX|HBO|ATV\+?|APPLE\s*TV\+?|AMZN|PRIME\s*VIDEO|PMNT\+?|PARAMOUNT\+?|P\+|PEACOCK|PCOCK|NF|HULU|STZ|STARZ|SHO|SHOWTIME)\s*[-|:]\s*/i;
   // Region prefix on a NAME that may carry a "(ESPN+ 001)" feed id before the pipe.
   const reRegionPrefix = /^\s*(?:US|USA|UK|GB|CA|AU|NZ|IE|FR|DE|ES|IT|PT|NL|BE|SE|NO|DK|FI|PL|BR|MX|AR|IN|PK|TR|EU|LA)\b[^|]*\|\s*/;
   // Decorative codepoints: modifier/superscript letters, sub/superscript digits, '#'.
@@ -72,7 +75,8 @@ const ProviderText = (() => {
 
   function cleanName(raw) {
     if (!raw) return raw || '';
-    let s = raw.replace(reLangPrefix, '');
+    let s = raw.replace(reServiceTag, '');
+    s = s.replace(reLangPrefix, '');
     s = s.replace(reRegionPrefix, '');
     // Peel any remaining simple "XXX| " tags ("PRIME| CITY| Foo" -> "Foo").
     let m;
@@ -83,7 +87,8 @@ const ProviderText = (() => {
 
   function cleanCategory(raw) {
     if (!raw) return 'Uncategorized';
-    let s = raw.replace(reLangPrefix, '');
+    let s = raw.replace(reServiceTag, '');
+    s = s.replace(reLangPrefix, '');
     s = s.replace(reRegionTag, '');
     const cleaned = tidy(s);
     return cleaned ? cleaned : 'Uncategorized';
@@ -340,7 +345,7 @@ class IPTVService {
   // ─── Cache plumbing ───
   // Bump CATALOG_SCHEMA whenever the parsed catalog shape or name-cleaning
   // changes, so old caches are ignored instead of showing stale data.
-  static CATALOG_SCHEMA = 3;
+  static CATALOG_SCHEMA = 4;
   _cacheKey() {
     const v = IPTVService.CATALOG_SCHEMA;
     if (this.xtream) return `xtream:v${v}:${this.xtream.server}|${this.xtream.username}`;
@@ -921,9 +926,9 @@ class IPTVService {
     { key: 'bluey',        label: 'Bluey',                 emoji: '🐕',  band: 'toddler', tint: '#f7d33a', pattern: /\bbluey\b/i },
     { key: 'cocomelon',    label: 'Cocomelon',             emoji: '🍉',  band: 'toddler', tint: '#34c759', pattern: /\bcocomelon\b/i },
     { key: 'peppa',        label: 'Peppa Pig',             emoji: '🐷',  band: 'toddler', tint: '#ff85b3', pattern: /\bpeppa\s*pig\b/i },
-    { key: 'sesame',       label: 'Sesame Street',         emoji: '🅰',  band: 'toddler', tint: '#e4002b', pattern: /\bsesame\s*street|elmo|big\s*bird\b/i },
+    { key: 'sesame',       label: 'Sesame Street',         emoji: '🅰',  band: 'toddler', tint: '#e4002b', pattern: /\b(?:sesame\s*street|elmo|big\s*bird)\b/i },
     { key: 'daniel-tiger', label: 'Daniel Tiger',          emoji: '🐯',  band: 'toddler', tint: '#ff7a3d', pattern: /\bdaniel\s*tiger\b/i },
-    { key: 'mickey',       label: 'Mickey Mouse',          emoji: '🐭',  band: 'toddler', tint: '#000000', pattern: /\bmickey\s*mouse|minnie\s*mouse|mickey\s*and\s*the\s*roadster\b/i },
+    { key: 'mickey',       label: 'Mickey Mouse',          emoji: '🐭',  band: 'toddler', tint: '#000000', pattern: /\b(?:mickey\s*mouse|minnie\s*mouse|mickey\s*and\s*the\s*roadster)\b/i },
 
     // Younger kids (5-7)
     { key: 'paw-patrol',   label: 'Paw Patrol',            emoji: '🚒',  band: 'younger', tint: '#0aaeef', pattern: /\bpaw\s*patrol\b/i },
@@ -939,7 +944,7 @@ class IPTVService {
     { key: 'madagascar',   label: 'Madagascar',            emoji: '🦒',  band: 'younger', tint: '#fbb040', pattern: /\bmadagascar\b/i },
     { key: 'ice-age',      label: 'Ice Age',               emoji: '🦣',  band: 'younger', tint: '#74c0fc', pattern: /\bice\s*age\b/i },
     { key: 'tom-jerry',    label: 'Tom and Jerry',         emoji: '😼',  band: 'younger', tint: '#ffb300', pattern: /\btom\s*(and|&|\+)\s*jerry\b/i },
-    { key: 'looney',       label: 'Looney Tunes',          emoji: '🐰',  band: 'younger', tint: '#ff5722', pattern: /\blooney\s*tunes|bugs\s*bunny\b/i },
+    { key: 'looney',       label: 'Looney Tunes',          emoji: '🐰',  band: 'younger', tint: '#ff5722', pattern: /\b(?:looney\s*tunes|bugs\s*bunny)\b/i },
     { key: 'scooby',       label: 'Scooby-Doo',            emoji: '🐾',  band: 'younger', tint: '#8bc34a', pattern: /\bscooby[-\s]*doo\b/i },
 
     // Older kids (8-12)
@@ -1014,9 +1019,16 @@ class IPTVService {
   getKidsByFranchise(franchiseKey, band = 'all', limit = 20) {
     const fr = IPTVService.FRANCHISES.find(f => f.key === franchiseKey);
     if (!fr) return [];
+    // Safety net: even when the franchise name matches, drop anything that trips
+    // the block list (e.g. a same-named horror/crime film) so a kids shelf can
+    // never surface adult content.
+    const ok = item => {
+      const text = ((item.name || '') + ' ' + (item.category || '')).toLowerCase();
+      return !IPTVService.KIDS_BLOCK.test(text);
+    };
     const out = [];
-    for (const m of this.movies) if (fr.pattern.test(m.name) && this._passesAgeBand(m, band)) out.push({ item: m, type: 'movie' });
-    for (const s of this.series) if (fr.pattern.test(s.name) && this._passesAgeBand(s, band)) out.push({ item: s, type: 'series' });
+    for (const m of this.movies) if (fr.pattern.test(m.name) && ok(m) && this._passesAgeBand(m, band)) out.push({ item: m, type: 'movie' });
+    for (const s of this.series) if (fr.pattern.test(s.name) && ok(s) && this._passesAgeBand(s, band)) out.push({ item: s, type: 'series' });
     return out.slice(0, limit);
   }
 
@@ -1179,6 +1191,11 @@ class WatchHistoryManager {
   getPosition(id, type) {
     const item = this.items.find(i => i.id === id && i.type === type);
     return item ? item.position : 0;
+  }
+  // Full stored entry (incl. episodeId for series) so Continue Watching can
+  // resume the exact episode the user last had open.
+  getEntry(id, type) {
+    return this.items.find(i => String(i.id) === String(id) && i.type === type) || null;
   }
   clear() {
     this.items = [];

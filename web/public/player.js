@@ -190,7 +190,11 @@ class VCPlayer {
 
     // Play/Pause
     el('.vc-player-play').addEventListener('click', () => this.togglePlay());
-    this.video.addEventListener('click', () => this.togglePlay());
+    this.video.addEventListener('click', () => {
+      // A vertical swipe (channel change) also fires a click — ignore it.
+      if (this._swiped) { this._swiped = false; return; }
+      this.togglePlay();
+    });
 
     // Fullscreen
     el('.vc-player-fullscreen').addEventListener('click', () => this.toggleFullscreen());
@@ -254,6 +258,26 @@ class VCPlayer {
     const player = this.container.querySelector('.vc-player');
     player.addEventListener('mousemove', () => this._showOverlay());
     player.addEventListener('mouseleave', () => this._startHideTimer());
+
+    // TikTok-style vertical swipe to change channel (live TV only — the detail
+    // player leaves onChannelChange null, so swipes there do nothing).
+    let sy = 0, sx = 0, st = 0;
+    player.addEventListener('touchstart', (e) => {
+      const t = e.touches[0]; if (!t) return;
+      sy = t.clientY; sx = t.clientX; st = Date.now(); this._swiped = false;
+    }, { passive: true });
+    player.addEventListener('touchend', (e) => {
+      if (!this.onChannelChange) return;
+      const t = e.changedTouches[0]; if (!t) return;
+      const dy = t.clientY - sy, dx = t.clientX - sx, dt = Date.now() - st;
+      // A deliberate, mostly-vertical flick: > 60px, steeper than horizontal,
+      // and quick enough to be a swipe rather than a slow drag.
+      if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.4 && dt < 700) {
+        this._swiped = true;
+        this._showOverlay();
+        this.onChannelChange(dy < 0 ? 1 : -1);   // up = next, down = previous
+      }
+    }, { passive: true });
 
     // Keyboard — stored as a bound handler so destroy() can remove it.
     this._onKeyDown = (e) => {
@@ -377,6 +401,14 @@ class VCPlayer {
         startLevel: -1,
         capLevelOnFPSDrop: true,
         lowLatencyMode: false,
+        // A cold transcode (NVENC spin-up) can take several seconds to emit the
+        // first playlist/segment — wait patiently instead of erroring out.
+        manifestLoadingTimeOut: 30000,
+        manifestLoadingMaxRetry: 6,
+        manifestLoadingRetryDelay: 1000,
+        levelLoadingTimeOut: 30000,
+        fragLoadingTimeOut: 60000,
+        fragLoadingMaxRetry: 8,
       });
       this.hls.loadSource(url);
       this.hls.attachMedia(this.video);

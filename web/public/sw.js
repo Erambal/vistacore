@@ -5,7 +5,7 @@
    streams, auth) or cross-origin requests.
    ═══════════════════════════════════════════ */
 
-const CACHE = 'vistacore-shell-v1';
+const CACHE = 'vistacore-shell-v2';
 
 // Core files that make up the app shell.
 const SHELL = [
@@ -71,8 +71,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: stale-while-revalidate — instant from cache, refreshed
-  // in the background.
+  // Code (JS/CSS): network-first so a fresh deploy is picked up on the next
+  // load, falling back to cache only when offline. Avoids serving stale logic.
+  if (/\.(js|css)$/.test(url.pathname)) {
+    event.respondWith(
+      fetch(req)
+        .then((resp) => {
+          if (resp && resp.ok) {
+            const copy = resp.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          }
+          return resp;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Other static assets (images, fonts, manifest): stale-while-revalidate —
+  // instant from cache, refreshed in the background.
   event.respondWith(
     caches.match(req).then((cached) => {
       const network = fetch(req)

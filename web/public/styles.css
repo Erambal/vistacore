@@ -2268,3 +2268,81 @@ input:focus-visible { outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) {
   .skip-link { transition: none; }
 }
+
+/* ═══════════════════════════════════════════
+   MOBILE OVERHAUL — consolidated, appended last
+   so these win over earlier breakpoints.
+   ═══════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Topbar: icon-first, full-width search that never clips its text */
+  .topbar { padding: 0 0.6rem; gap: 0.4rem; }
+  .topbar-left, .topbar-right { gap: 0.4rem; }
+  .topbar-brand-name, .user-name, .topbar-view-title { display: none; }
+  .topbar-logo { height: 24px; }
+  .topbar-center { flex: 1; min-width: 0; padding: 0 0.4rem; }
+  .search-bar { width: 100%; min-width: 0; padding: 0.45rem 0.85rem; }
+  .search-bar input {
+    min-width: 0;        /* allow the input to shrink so text isn't cut off */
+    font-size: 16px;     /* 16px stops iOS Safari zooming in on focus */
+  }
+  .topbar-btn { width: 38px; height: 38px; }
+  .user-pill { padding: 0.3rem; gap: 0; }
+  .user-avatar { width: 30px; height: 30px; }
+
+  /* Hero / clock */
+  .hero-section { height: 220px; }
+  .hero-content { padding: 0 1.25rem 1.5rem; }
+  .clock-time { font-size: 3rem; }
+  .clock-ampm { font-size: 1rem; }
+  .greeting { font-size: 1.05rem; }
+
+  /* Sections + rows */
+  .section { padding: 1rem 1.1rem 0.4rem; }
+  .section-title { font-size: 1.15rem; }
+  .app-card { width: 132px; height: 112px; }
+
+  /* VOD grids: snug poster grid that always fills the width */
+  .vod-view { padding: calc(var(--topbar-h) + 0.75rem) 1rem 3rem; }
+  .vod-grid { grid-template-columns: repeat(3, 1fr); gap: 0.7rem; }
+  .vod-header { gap: 0.75rem; margin-bottom: 1rem; }
+  .vod-search { width: 100%; }
+
+  /* Detail */
+  .detail-content { grid-template-columns: 1fr; gap: 1rem; padding: 1.25rem 1rem; }
+  .detail-poster-wrap { max-width: 150px; margin: 0 auto; }
+  .detail-title { font-size: 1.5rem; text-align: center; }
+  .detail-tagline { font-size: 0.95rem; }
+  .detail-plot { font-size: 0.92rem; }
+  .detail-meta { font-size: 0.82rem; }
+  .detail-facts { grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  /* Actions: full-width primary, compact secondary, wrap cleanly */
+  .detail-actions { gap: 0.5rem; justify-content: center; }
+  .btn-watch-now {
+    min-width: 0; width: 100%;
+    font-size: 1.05rem; padding: 0.9rem 1.4rem;
+  }
+  .btn-trailer, .btn-surprise-again { padding: 0.7rem 1rem; font-size: 0.85rem; }
+  /* Seasons + episodes */
+  .detail-season-tabs { gap: 0.4rem; }
+  .season-tab { padding: 0.4rem 0.85rem; font-size: 0.78rem; }
+  .episode-item { padding: 0.7rem 0.8rem; gap: 0.7rem; }
+  .episode-num { width: 26px; font-size: 0.9rem; }
+  .episode-title { font-size: 0.88rem; }
+  .episode-play { width: 42px; height: 42px; flex-shrink: 0; }
+  .detail-cast-row { gap: 0.7rem; }
+  .detail-player-wrap { padding: 0 1rem 1.5rem; }
+
+  /* Settings → full-screen sheet, easier to use one-handed */
+  .modal-overlay { padding: 0; align-items: stretch; }
+  .modal { max-width: none; max-height: 100%; height: 100%; border-radius: 0; }
+
+  /* Larger touch targets for any small icon buttons */
+  .vc-player-btn { min-width: 44px; min-height: 44px; }
+}
+
+@media (max-width: 480px) {
+  .vod-grid { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+  .clock-time { font-size: 2.6rem; }
+  .hero-section { height: 190px; }
+  .app-card { width: 120px; height: 104px; }
+}

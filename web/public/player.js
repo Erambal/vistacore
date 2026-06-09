@@ -88,6 +88,7 @@ class VCPlayer {
         <div class="vc-player-error" style="display:none">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           <p class="vc-player-error-msg">Unable to play this stream</p>
+          <p class="vc-player-error-detail" style="font-size:12px;opacity:.6;max-width:90%;word-break:break-word;margin:.25rem 0 0"></p>
           <button class="vc-player-btn vc-player-retry">Retry</button>
         </div>
       </div>
@@ -363,6 +364,21 @@ class VCPlayer {
       }, 6000);
     }
 
+    // Diagnostic guard: if the engine a given stream needs isn't present, say
+    // so on screen rather than silently spinning. Vivaldi/Brave-style blockers
+    // can strip the hls.js / mpegts.js CDN scripts, leaving these undefined.
+    if (isTS && !(window.mpegts && mpegts.isSupported())) {
+      this._showError('Live engine unavailable',
+        'mpegts.js missing or unsupported — an ad/tracker blocker may be blocking the CDN script. Allowlist this site.');
+      return;
+    }
+    const nativeHls = this.video.canPlayType('application/vnd.apple.mpegurl');
+    if (isHLS && !(window.Hls && Hls.isSupported()) && !nativeHls) {
+      this._showError('Video engine unavailable',
+        'hls.js missing — an ad/tracker blocker may be blocking the CDN script. Allowlist this site.');
+      return;
+    }
+
     if (isTS && window.mpegts && mpegts.isSupported()) {
       this.mpegts = mpegts.createPlayer(
         { type: 'mpegts', isLive: isLiveTs, url },
@@ -418,14 +434,20 @@ class VCPlayer {
       this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
         this._attemptPlay();
       });
+      let hlsNetRetries = 0;
       this.hls.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
+          const det = `HLS ${data.type} / ${data.details}` +
+            (data.response && data.response.code ? ` (HTTP ${data.response.code})` : '');
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            this.hls.startLoad();
+            // Keep retrying a few times (cold transcode), then give up visibly
+            // instead of silently looping forever.
+            if (hlsNetRetries++ < 6) { this.hls.startLoad(); }
+            else { this._showError('Stream unavailable', det); }
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
             this.hls.recoverMediaError();
           } else {
-            this._showError('Stream unavailable');
+            this._showError('Stream unavailable', det);
           }
         }
       });
@@ -482,6 +504,7 @@ class VCPlayer {
     const p = v.play();
     if (!p || !p.catch) return;
     p.catch((err) => {
+      console.warn('play() rejected:', err && err.name, err && err.message);
       if (err && err.name === 'NotAllowedError') {
         v.muted = true;
         this._updateVolumeIcon();
@@ -622,11 +645,13 @@ class VCPlayer {
   _hideLoading() {
     this.container.querySelector('.vc-player-loading').style.display = 'none';
   }
-  _showError(msg) {
+  _showError(msg, detail) {
     this._hideLoading();
     const errEl = this.container.querySelector('.vc-player-error');
     errEl.style.display = 'flex';
     if (msg) errEl.querySelector('.vc-player-error-msg').textContent = msg;
+    const detEl = errEl.querySelector('.vc-player-error-detail');
+    if (detEl) detEl.textContent = detail || '';
   }
   _hideError() {
     this.container.querySelector('.vc-player-error').style.display = 'none';

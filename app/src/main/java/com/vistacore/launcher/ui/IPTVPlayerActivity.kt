@@ -77,6 +77,12 @@ class IPTVPlayerActivity : BaseActivity() {
         private const val OVERLAY_DISPLAY_MS = 4000L
         private const val SCRUB_HIDE_DELAY_MS = 15000L
         private const val SEEK_INCREMENT_MS = 10000L
+        // A saved position past this fraction of the runtime (or within the
+        // last few seconds) means the title was effectively finished — resume
+        // would seek straight to the end, instantly fire STATE_ENDED and (for
+        // a series) auto-advance to the next episode. Treat it as "start over".
+        private const val RESUME_FINISHED_FRACTION = 0.95
+        private const val RESUME_END_GUARD_MS = 15000L
         private const val TAG = "IPTVPlayer"
         // Auto-retry backoff for 413/429 responses from Xtream-style IPTV
         // backends (typically "too many concurrent streams" or rate limit).
@@ -551,6 +557,11 @@ class IPTVPlayerActivity : BaseActivity() {
                 /* bufferForPlaybackMs */ 2_500,
                 /* bufferForPlaybackAfterRebufferMs */ 10_000
             )
+            // Honour the time window above regardless of the auto-computed byte
+            // budget. Without this, high-bitrate VOD hits ExoPlayer's default
+            // target-buffer-bytes cap and stops buffering far short of 60s,
+            // causing frequent rebuffering on otherwise-adequate connections.
+            .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
         // On some Google TV / Fire TV boxes the hardware HEVC decoder claims
@@ -595,7 +606,16 @@ class IPTVPlayerActivity : BaseActivity() {
                                 hasResumed = true
                                 val resumePos = intent.getLongExtra(EXTRA_RESUME_POSITION, -1)
                                 val savedPos = if (resumePos > 0) resumePos else watchHistory.getPosition(streamUrl)
-                                if (savedPos > 0) {
+                                // Skip the seek when the saved spot is at/near the
+                                // end — otherwise the video ends instantly and a
+                                // series jumps to the next episode (clicked ep 4,
+                                // lands on ep 5). Only applies when we know the
+                                // duration; live/unknown falls back to seeking.
+                                val dur = exo.duration
+                                val finished = dur > 0 && savedPos > 0 &&
+                                    (savedPos >= dur - RESUME_END_GUARD_MS ||
+                                        savedPos.toDouble() / dur >= RESUME_FINISHED_FRACTION)
+                                if (savedPos > 0 && !finished) {
                                     exo.seekTo(savedPos)
                                 }
                                 initContentFilter()

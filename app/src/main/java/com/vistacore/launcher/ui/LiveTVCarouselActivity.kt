@@ -26,6 +26,7 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
     private lateinit var heroSubtitle: TextView
     private lateinit var channelSearch: EditText
     private lateinit var rowsList: RecyclerView
+    private var initialFocusDone = false
     private lateinit var loadingView: View
     private lateinit var noResultsText: TextView
 
@@ -83,6 +84,14 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
 
     override fun onChannelsLoaded() {
         rebuildRows()
+        // Land initial focus on the always-present fullscreen button so the
+        // screen opens with a visible cursor instead of the outer ScrollView
+        // (which left no highlight on entry). One-time only, so later rebuilds
+        // from channel changes don't steal focus.
+        if (!initialFocusDone) {
+            initialFocusDone = true
+            rowsList.post { findViewById<Button>(R.id.car_btn_fullscreen).requestFocus() }
+        }
     }
 
     override fun onCategoriesChanged(categories: List<String>) {

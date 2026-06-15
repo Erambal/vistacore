@@ -19,8 +19,7 @@
             android:layout_height="match_parent"
             android:orientation="vertical"
             android:background="@color/surface_dark"
-            android:descendantFocusability="beforeDescendants"
-            android:focusableInTouchMode="true">
+            android:descendantFocusability="afterDescendants">
 
             <!-- Search / channel number input -->
             <LinearLayout

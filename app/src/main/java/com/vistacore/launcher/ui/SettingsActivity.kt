@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.view.FocusFinder
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -174,6 +176,45 @@ class SettingsActivity : BaseActivity() {
         }
 
         (sections[index] as? android.widget.ScrollView)?.scrollTo(0, 0)
+    }
+
+    /**
+     * Keep LEFT from the content panel anchored to the *active* nav item.
+     *
+     * The panel and the nav rail are vertically misaligned, so Android's
+     * geometric focus search sends a LEFT press from (say) the Connections
+     * controls to whichever nav item happens to line up — usually the wrong
+     * one (e.g. "Live TV"), leaving the focus ring on a different tab than
+     * the section being shown. We intercept only the case where there is no
+     * focusable to the left *within the panel* (i.e. the press would exit it)
+     * and redirect focus to the selected nav item instead. LEFT moves that
+     * stay inside the panel (e.g. Xtream → M3U radio) fall through untouched.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+        ) {
+            val current = currentFocus
+            val panel = binding.contentPanel
+            if (current != null && isDescendantOf(current, panel)) {
+                val leftInPanel = FocusFinder.getInstance()
+                    .findNextFocus(panel, current, View.FOCUS_LEFT)
+                if (leftInPanel == null) {
+                    navItems[selectedNavIndex].requestFocus()
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun isDescendantOf(view: View, parent: ViewGroup): Boolean {
+        var p: android.view.ViewParent? = view.parent
+        while (p != null) {
+            if (p === parent) return true
+            p = p.parent
+        }
+        return false
     }
 
     // ====================== SETTINGS LOGIC ======================

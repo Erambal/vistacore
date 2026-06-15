@@ -25,8 +25,8 @@ android {
         applicationId = "com.vistacore.launcher"
         minSdk = 21
         targetSdk = 34
-        versionCode = 69
-        versionName = "1.8.5"
+        versionCode = 70
+        versionName = "1.8.6"
 
         // TMDB proxy base — same Worker that serves the web app. The Worker's
         // `/api/tmdb` endpoint attaches TMDB_KEY server-side so the APK ships

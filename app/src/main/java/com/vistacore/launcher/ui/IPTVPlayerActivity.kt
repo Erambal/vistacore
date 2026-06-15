@@ -558,9 +558,8 @@ class IPTVPlayerActivity : BaseActivity() {
                 /* bufferForPlaybackAfterRebufferMs */ 10_000
             )
             // Honour the time window above regardless of the auto-computed byte
-            // budget. Without this, high-bitrate VOD hits ExoPlayer's default
-            // target-buffer-bytes cap and stops buffering far short of 60s,
-            // causing frequent rebuffering on otherwise-adequate connections.
+            // budget; without it high-bitrate VOD stops buffering far short of
+            // 60s and rebuffers. Verified on-device: killed minute-cadence stalls.
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 

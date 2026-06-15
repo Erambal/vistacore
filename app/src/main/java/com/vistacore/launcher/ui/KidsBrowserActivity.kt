@@ -157,7 +157,13 @@ class KidsBrowserActivity : BaseActivity() {
         if (pos == RecyclerView.NO_POSITION) return false
 
         val target = if (right) pos + 1 else pos - 1
-        if (target < 0) return true
+        if (target < 0) {
+            // LEFT at the first poster: return to the active sidebar tab
+            // instead of consuming the press (which stranded the user in the
+            // content area with no D-pad way back to the age-band sidebar).
+            activeSidebarTab().requestFocus()
+            return true
+        }
         if (target >= adapter.itemCount) return true
 
         rv.smoothScrollToPosition(target)
@@ -169,6 +175,14 @@ class KidsBrowserActivity : BaseActivity() {
 
     private fun View.isOnSidebarTab(): Boolean =
         this == tabToddler || this == tabYounger || this == tabOlder || this == tabAll
+
+    /** The sidebar tab matching the currently-selected age band. */
+    private fun activeSidebarTab(): View = when (currentBand) {
+        KidsDiscovery.AgeBand.TODDLER -> tabToddler
+        KidsDiscovery.AgeBand.YOUNGER -> tabYounger
+        KidsDiscovery.AgeBand.OLDER -> tabOlder
+        else -> tabAll
+    }
 
     private fun jumpToFirstPosterInVisibleRow(): Boolean {
         val list = contentList

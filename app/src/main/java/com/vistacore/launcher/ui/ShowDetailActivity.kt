@@ -105,6 +105,15 @@ class ShowDetailActivity : BaseActivity() {
         setupSeasonTabs()
         showSeason(seasons.keys.minOrNull() ?: 1)
 
+        // Land initial focus on the first episode so the screen opens with a
+        // visible highlight on actionable content. Without this, focus defaults
+        // to the scroll container (no highlight) or gets grabbed by the inline
+        // trailer WebView, leaving the user with no obvious cursor on entry.
+        binding.episodeList.post {
+            binding.episodeList.findViewHolderForAdapterPosition(0)
+                ?.itemView?.requestFocus()
+        }
+
         binding.castList.layoutManager =
             LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
 

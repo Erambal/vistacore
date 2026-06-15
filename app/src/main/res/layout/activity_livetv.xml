@@ -72,8 +72,7 @@
                     android:minHeight="36dp"
                     android:layout_marginEnd="4dp"
                     android:focusable="true"
-                    android:focusableInTouchMode="true"
-                    android:nextFocusRight="@id/btn_toggle_epg" />
+                    android:focusableInTouchMode="true" />
 
                 <TextView
                     android:id="@+id/channel_count_label"

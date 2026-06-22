@@ -2,6 +2,33 @@
 <resources>
     <string name="app_tagline">Votre Centre de Divertissement</string>
 
+    <!-- Home layouts -->
+    <string name="home_continue">Reprendre</string>
+    <string name="home_lane_live">TV en direct</string>
+    <string name="home_lane_movies">Films</string>
+    <string name="home_lane_shows">Séries</string>
+    <string name="home_press_ok_to_watch">Appuyez sur OK pour regarder</string>
+    <string name="home_live_now">En direct</string>
+    <string name="home_action_search">Recherche</string>
+    <string name="home_action_help">Aide</string>
+    <string name="home_action_settings">Réglages</string>
+    <string name="home_press_back_again">Appuyez encore sur Retour pour quitter</string>
+    <string name="home_show_unavailable">Impossible d\'ouvrir la série</string>
+    <string name="home_no_channels">Aucune chaîne trouvée</string>
+    <string name="home_tvon_channels_hint">Choisissez une chaîne ci-dessous — OK pour le plein écran</string>
+    <string name="home_empty_title">Bienvenue sur VistaCore</string>
+    <string name="home_empty_subtitle">Ouvrez les Réglages pour ajouter votre service TV</string>
+    <string name="settings_home_layout_title">Disposition de l\'accueil</string>
+    <string name="settings_home_layout_summary">Choisissez l\'apparence de l\'écran d\'accueil</string>
+    <string name="settings_home_classic">Classique — tuiles d\'applications (actuel)</string>
+    <string name="settings_home_three_lanes">Trois colonnes — TV en direct, Films &amp; Séries côte à côte</string>
+    <string name="settings_home_tv_turns_on">La TV s\'allume — ouvre directement la TV en direct</string>
+    <string name="settings_home_spotlight">Un à la fois — un grand élément, le plus simple</string>
+    <string name="settings_home_simple_rows">Grand aperçu + rangées — style Netflix</string>
+    <string name="settings_applies_next_home">S\'applique à la prochaine ouverture de l\'accueil</string>
+    <string name="home_spotlight_hint">▲▼ Catégorie     ◀▶ Parcourir     OK pour regarder</string>
+    <string name="home_cat_menu">Menu</string>
+
     <string name="section_favorites">Vos Applications</string>
     <string name="section_iptv">TV en Direct</string>
     <string name="section_all_apps">Toutes les Applications</string>

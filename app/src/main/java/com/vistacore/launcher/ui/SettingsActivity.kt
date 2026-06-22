@@ -75,6 +75,7 @@ class SettingsActivity : BaseActivity() {
         setupHomeCapture()
         setupEpgToggle()
         setupLiveTvStylePicker()
+        setupHomeLayoutPicker()
         setupContentLoading()
         setupContentFiltering()
         setupHiddenCategories()
@@ -353,6 +354,35 @@ class SettingsActivity : BaseActivity() {
                 }
                 .show()
         }
+    }
+
+    private fun setupHomeLayoutPicker() {
+        val layouts = listOf(
+            PrefsManager.HOME_CLASSIC to getString(R.string.settings_home_classic),
+            PrefsManager.HOME_SIMPLE_ROWS to getString(R.string.settings_home_simple_rows),
+            PrefsManager.HOME_TV_TURNS_ON to getString(R.string.settings_home_tv_turns_on)
+        )
+
+        fun labelFor(key: String) =
+            layouts.firstOrNull { it.first == key }?.second ?: getString(R.string.settings_home_classic)
+        binding.btnHomeLayout.text = labelFor(prefs.homeLayout)
+
+        binding.btnHomeLayout.setOnClickListener {
+            val names = layouts.map { it.second }.toTypedArray()
+            val current = layouts.indexOfFirst { it.first == prefs.homeLayout }.coerceAtLeast(0)
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(R.string.settings_home_layout_title)
+                .setSingleChoiceItems(names, current) { dialog, which ->
+                    prefs.homeLayout = layouts[which].first
+                    binding.btnHomeLayout.text = labelFor(layouts[which].first)
+                    dialog.dismiss()
+                    android.widget.Toast.makeText(
+                        this, R.string.settings_applies_next_home, android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+                .show()
+        }
+        binding.btnHomeLayout.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
     }
 
     private fun setupContentLoading() {

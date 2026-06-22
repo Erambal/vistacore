@@ -94,6 +94,38 @@ open class BaseActivity : AppCompatActivity() {
         overscanApplied = true
     }
 
+    // --- Playback Wi-Fi lock ---------------------------------------------
+    // Cheap TV boxes cycle Wi-Fi power-save (reinstalling the APF packet
+    // filter) roughly once a minute, which micro-stalls a live stream and can
+    // even kick the player out of fullscreen. Holding a high-perf / low-latency
+    // Wi-Fi lock while the playback screen is in the foreground keeps the radio
+    // at full power and stops those periodic freezes. No manifest permission is
+    // required for a Wi-Fi lock. Playback activities call acquire in onResume
+    // and release in onPause.
+
+    private var playbackWifiLock: android.net.wifi.WifiManager.WifiLock? = null
+
+    protected fun acquirePlaybackWifiLock() {
+        if (playbackWifiLock?.isHeld == true) return
+        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE)
+            as? android.net.wifi.WifiManager ?: return
+        val mode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            android.net.wifi.WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+        } else {
+            @Suppress("DEPRECATION")
+            android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        }
+        playbackWifiLock = wm.createWifiLock(mode, "vistacore:playback").apply {
+            setReferenceCounted(false)
+            try { acquire() } catch (_: Exception) {}
+        }
+    }
+
+    protected fun releasePlaybackWifiLock() {
+        playbackWifiLock?.let { if (it.isHeld) try { it.release() } catch (_: Exception) {} }
+        playbackWifiLock = null
+    }
+
     override fun attachBaseContext(newBase: Context) {
         val prefs = newBase.getSharedPreferences("vistacore_prefs", Context.MODE_PRIVATE)
 

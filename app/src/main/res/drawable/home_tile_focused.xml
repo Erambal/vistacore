@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strong, unmistakable focus state for low-vision users: a thick gold
+     border and a brightened fill so the cursor position is impossible to
+     miss from across the room. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/card_background_elevated" />
+    <corners android:radius="14dp" />
+    <stroke android:width="6dp" android:color="@color/accent_gold" />
+</shape>

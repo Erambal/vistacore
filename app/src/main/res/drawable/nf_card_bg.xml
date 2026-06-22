@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rounded backer for the inner card. Its uniform corner radius gives the
+     view a rounded outline, so clipToOutline=true rounds the poster/logo art
+     and the title bar together as one card. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/nf_surface" />
+    <corners android:radius="12dp" />
+</shape>

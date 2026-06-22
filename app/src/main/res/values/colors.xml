@@ -42,4 +42,21 @@
     <!-- Clock -->
     <color name="clock_text">#FFFFFFFF</color>
     <color name="date_text">#FFC9D1DF</color>
+
+    <!-- ===== Warm Cinema theme (Netflix layout only) ===== -->
+    <color name="nf_bg">#FF14110C</color>            <!-- warm near-black -->
+    <color name="nf_surface">#FF241B11</color>       <!-- warm card surface -->
+    <color name="nf_label_bg">#FF2A2014</color>      <!-- title bar under tiles -->
+    <color name="nf_chip">#FFEFE4D2</color>          <!-- cream chip behind logos -->
+    <color name="nf_amber">#FFE9A24B</color>         <!-- primary accent -->
+    <color name="nf_cream">#FFF5ECDC</color>         <!-- primary text -->
+    <color name="nf_cream_dim">#FFCBB79C</color>     <!-- secondary text -->
+    <color name="nf_ink">#FF1A1206</color>           <!-- dark text on accents -->
+
+    <!-- Per-row accent colors -->
+    <color name="nf_accent_continue">#FFE9A24B</color> <!-- gold -->
+    <color name="nf_accent_live">#FF49B9A9</color>     <!-- teal -->
+    <color name="nf_accent_movies">#FFE2703A</color>   <!-- burnt orange -->
+    <color name="nf_accent_shows">#FF9A8CF0</color>    <!-- violet -->
+    <color name="nf_accent_apps">#FFA8AEB8</color>     <!-- slate -->
 </resources>

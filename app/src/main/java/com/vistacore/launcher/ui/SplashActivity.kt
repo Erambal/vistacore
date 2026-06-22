@@ -772,7 +772,9 @@ class SplashActivity : BaseActivity() {
 
         handler.postDelayed({
             if (!isFinishing) {
-                startActivity(Intent(this, MainActivity::class.java))
+                // Route through HomeRouterActivity so the user's chosen home
+                // layout (classic / three-lanes / tv-turns-on) is honored.
+                startActivity(Intent(this, HomeRouterActivity::class.java))
                 finish()
                 overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
             }

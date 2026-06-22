@@ -56,6 +56,7 @@ class PrefsManager(context: Context) {
         private const val KEY_AUTOPLAY_NEXT_EPISODE = "autoplay_next_episode"
         private const val KEY_BANNER_AUTOPLAY_TRAILER = "banner_autoplay_trailer"
         private const val KEY_LIVE_TV_STYLE = "live_tv_style"
+        private const val KEY_HOME_LAYOUT = "home_layout"
         private const val KEY_JELLYFIN_SERVER = "jellyfin_server"
         private const val KEY_JELLYFIN_USERNAME = "jellyfin_username"
         private const val KEY_JELLYFIN_PASSWORD = "jellyfin_password"
@@ -70,6 +71,11 @@ class PrefsManager(context: Context) {
         const val LIVE_TV_IMMERSIVE = "immersive"
         const val LIVE_TV_CAROUSEL = "carousel"
         const val LIVE_TV_SPLIT_HERO = "split_hero"
+
+        // Home layout constants
+        const val HOME_CLASSIC = "classic"
+        const val HOME_TV_TURNS_ON = "tv_turns_on"
+        const val HOME_SIMPLE_ROWS = "simple_rows"
 
         const val SOURCE_M3U = 0
         const val SOURCE_XTREAM = 1
@@ -183,6 +189,12 @@ class PrefsManager(context: Context) {
     var liveTvStyle: String
         get() = prefs.getString(KEY_LIVE_TV_STYLE, LIVE_TV_IMMERSIVE) ?: LIVE_TV_IMMERSIVE
         set(value) = prefs.edit().putString(KEY_LIVE_TV_STYLE, value).apply()
+
+    /** Home screen layout. One of HOME_* constants. Default classic (the
+     *  original app-card home). Changes apply the next time Home opens. */
+    var homeLayout: String
+        get() = prefs.getString(KEY_HOME_LAYOUT, HOME_CLASSIC) ?: HOME_CLASSIC
+        set(value) = prefs.edit().putString(KEY_HOME_LAYOUT, value).apply()
 
     /** Kids section enabled. Default true. */
     var kidsEnabled: Boolean

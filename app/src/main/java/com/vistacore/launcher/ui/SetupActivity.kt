@@ -210,7 +210,7 @@ class SetupActivity : BaseActivity() {
     }
 
     private fun goToMain() {
-        startActivity(Intent(this, MainActivity::class.java))
+        startActivity(Intent(this, HomeRouterActivity::class.java))
         finish()
     }
 

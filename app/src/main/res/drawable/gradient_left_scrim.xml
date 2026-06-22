@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Left-to-right warm scrim so hero text stays readable over the backdrop
+     while the artwork shows through on the right. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:startColor="#F514110C"
+        android:centerColor="#A014110C"
+        android:endColor="#0014110C"
+        android:angle="0" />
+</shape>

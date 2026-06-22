@@ -289,7 +289,7 @@
                 <!-- Live TV layout style -->
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Live TV Layout Style" style="@style/SettingsTitle" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pick how channels and info are arranged" style="@style/SettingsSummary" android:layout_marginBottom="8dp" />
-                <Button android:id="@+id/btn_live_tv_style" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Classic" style="@style/LargeButton" android:backgroundTint="@color/iptv_teal" android:layout_marginBottom="24dp" />
+                <Button android:id="@+id/btn_live_tv_style" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Classic" style="@style/LargeButton" android:backgroundTint="@color/iptv_teal" android:foreground="@drawable/focus_ring_overlay" android:layout_marginBottom="24dp" />
 
                 <!-- Show EPG toggle -->
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="20dp">
@@ -541,6 +541,30 @@
                     android:text="Toggle apps on/off and reorder them with the arrows."
                     style="@style/SettingsSummary"
                     android:layout_marginBottom="28dp" />
+
+                <!-- Home Layout picker -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_home_layout_title"
+                    style="@style/SettingsTitle" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_home_layout_summary"
+                    style="@style/SettingsSummary"
+                    android:layout_marginBottom="8dp" />
+                <Button
+                    android:id="@+id/btn_home_layout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_home_classic"
+                    style="@style/LargeButton"
+                    android:backgroundTint="@color/iptv_teal"
+                    android:foreground="@drawable/focus_ring_overlay"
+                    android:layout_marginBottom="28dp"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true" />
 
                 <LinearLayout
                     android:id="@+id/apps_container"

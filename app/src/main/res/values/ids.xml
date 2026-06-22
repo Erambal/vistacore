@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tag key: stores a home tile's bind-time adapter position so D-pad
+         containment can detect a true row edge mid-scroll. -->
+    <item name="tile_position_tag" type="id" />
+</resources>

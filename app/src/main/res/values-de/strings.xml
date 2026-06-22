@@ -2,6 +2,33 @@
 <resources>
     <string name="app_tagline">Ihr Entertainment-Center</string>
 
+    <!-- Home layouts -->
+    <string name="home_continue">Weiterschauen</string>
+    <string name="home_lane_live">Live-TV</string>
+    <string name="home_lane_movies">Filme</string>
+    <string name="home_lane_shows">Serien</string>
+    <string name="home_press_ok_to_watch">OK drücken zum Ansehen</string>
+    <string name="home_live_now">Jetzt live</string>
+    <string name="home_action_search">Suche</string>
+    <string name="home_action_help">Hilfe</string>
+    <string name="home_action_settings">Einstellungen</string>
+    <string name="home_press_back_again">Zum Beenden erneut Zurück drücken</string>
+    <string name="home_show_unavailable">Serie konnte nicht geöffnet werden</string>
+    <string name="home_no_channels">Keine Sender gefunden</string>
+    <string name="home_tvon_channels_hint">Sender unten wählen — OK für Vollbild</string>
+    <string name="home_empty_title">Willkommen bei VistaCore</string>
+    <string name="home_empty_subtitle">Öffnen Sie die Einstellungen, um Ihren TV-Dienst hinzuzufügen</string>
+    <string name="settings_home_layout_title">Startbildschirm-Layout</string>
+    <string name="settings_home_layout_summary">Wählen Sie das Aussehen des Startbildschirms</string>
+    <string name="settings_home_classic">Klassisch — App-Kacheln (aktuell)</string>
+    <string name="settings_home_three_lanes">Drei Spalten — Live-TV, Filme &amp; Serien nebeneinander</string>
+    <string name="settings_home_tv_turns_on">TV geht an — startet direkt im Live-TV</string>
+    <string name="settings_home_spotlight">Eins nach dem anderen — ein großes Element, am einfachsten</string>
+    <string name="settings_home_simple_rows">Große Vorschau + Reihen — Netflix-Stil</string>
+    <string name="settings_applies_next_home">Wird beim nächsten Öffnen des Startbildschirms übernommen</string>
+    <string name="home_spotlight_hint">▲▼ Kategorie     ◀▶ Blättern     OK zum Ansehen</string>
+    <string name="home_cat_menu">Menü</string>
+
     <string name="section_favorites">Ihre Apps</string>
     <string name="section_iptv">Live-TV</string>
     <string name="section_all_apps">Alle Apps</string>

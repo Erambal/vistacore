@@ -13,13 +13,23 @@ package com.vistacore.launcher.iptv
 object ProviderText {
 
     // Repeated leading "XXX| " tag on a channel NAME (US|, PRIME|, CITY|,
-    // NFL TEAMS|, NHL TEAM|, …). Token is uppercase letters/digits/space/slash,
-    // up to 12 chars, so we don't eat the real channel identity that follows.
-    private val reNameTag = Regex("""^\s*[A-Za-z0-9/ ]{1,12}\|\s*""")
+    // NFL TEAMS|, EN|, D+|, A+|, …). Token is a short run of tag-ish characters
+    // (letters/digits and the punctuation providers use in tags: + & / . - _)
+    // up to 15 chars, so we don't eat the real channel identity that follows.
+    // The `+`/`&` etc. matter — "D+| ESPN" used to survive because the old
+    // class excluded them.
+    private val reNameTag = Regex("""^\s*[A-Za-z0-9+&/._\- ]{1,15}\|\s*""")
 
-    // Leading region tag on a CATEGORY ("US| "). 24/7 groups use a space, not a
-    // pipe, so this leaves "24/7 …" untouched (kept per design).
-    private val reRegionTag = Regex("""^\s*[A-Za-z0-9]{1,4}\|\s*""")
+    // Leading region/provider tag on a CATEGORY ("US| ", "EN| ", "D+| "). 24/7
+    // groups use a space, not a pipe, so this leaves "24/7 …" untouched.
+    private val reRegionTag = Regex("""^\s*[A-Za-z0-9+&]{1,6}\|\s*""")
+
+    // Provider/language tag separated by " - " instead of a pipe, the way this
+    // feed actually labels VOD: "EN - Proud (PL)", "D+ - 22 vs. Earth (2021)",
+    // "4K - Foo". A short (≤4) token of letters/digits/'+'; the caller requires
+    // it to contain a LETTER so a real title like "24 - Live Another Day" and
+    // a hyphenated name like "Spider-Man" (no surrounding spaces) are left alone.
+    private val reDashTag = Regex("""^\s*([A-Z0-9+]{1,4})\s+-\s+""")
 
     // Region prefix on a NAME that may carry a parenthetical feed id before the
     // pipe, e.g. "US (ESPN+ 001) | Auckland vs …" -> "Auckland vs …". Anchored
@@ -57,17 +67,26 @@ object ProviderText {
      * "PRIME| 5STARMAX EAST ᴿᴬᵂ" -> "5Starmax East".
      */
     fun cleanName(raw: String): String {
-        // First peel a region prefix that may include a "(ESPN+ 001)" feed id.
-        var s = reRegionPrefix.replaceFirst(raw, "")
-        // Then peel any remaining simple "XXX| " tags ("PRIME| CITY| Foo" -> "Foo").
-        while (true) {
-            val m = reNameTag.find(s) ?: break
-            s = s.substring(m.range.last + 1)
-        }
-        val cleaned = tidy(s)
+        val cleaned = tidy(stripLeadingTags(raw))
         // Bare-tag entries ("NHL LIVE|", "MLB 17 |") would clean to nothing —
         // keep the tag text instead of showing a blank name.
         return if (cleaned.isBlank()) tidy(raw) else cleaned
+    }
+
+    /** Peel a region prefix (possibly with a "(ESPN+ 001)" feed id) then any
+     *  remaining "XXX| " provider tags ("PRIME| CITY| Foo" -> "Foo"). */
+    private fun stripLeadingTags(raw: String): String {
+        var s = reRegionPrefix.replaceFirst(raw, "")
+        while (true) {
+            val pipe = reNameTag.find(s)
+            if (pipe != null) { s = s.substring(pipe.range.last + 1); continue }
+            val dash = reDashTag.find(s)
+            if (dash != null && dash.groupValues[1].any { it.isLetter() }) {
+                s = s.substring(dash.range.last + 1); continue
+            }
+            break
+        }
+        return s
     }
 
     /**
@@ -79,6 +98,18 @@ object ProviderText {
         val s = reRegionTag.replaceFirst(raw, "")
         val cleaned = tidy(s)
         return if (cleaned.isBlank()) "Uncategorized" else cleaned
+    }
+
+    /**
+     * General display cleanup for any user-facing text that didn't go through
+     * [cleanName]/[cleanCategory] at parse time — most importantly EPG program
+     * titles, which arrive raw ("##### ENTERTAINMENT #####", "ᴿᴬᵂ ⁶⁰ᶠᵖˢ"). Strips
+     * the hash borders / superscript decorations and tidies casing without the
+     * aggressive leading-tag peeling that channel names need.
+     */
+    fun cleanDisplay(raw: String): String {
+        val cleaned = tidy(stripLeadingTags(raw))
+        return if (cleaned.isBlank()) tidy(raw).ifBlank { raw.trim() } else cleaned
     }
 
     /** Shared finishing pass: DirecTV fix, decorations/VIP removal, casing. */

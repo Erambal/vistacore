@@ -2,6 +2,33 @@
 <resources>
     <string name="app_tagline">Tu Centro de Entretenimiento</string>
 
+    <!-- Home layouts -->
+    <string name="home_continue">Continuar viendo</string>
+    <string name="home_lane_live">TV en vivo</string>
+    <string name="home_lane_movies">Películas</string>
+    <string name="home_lane_shows">Series</string>
+    <string name="home_press_ok_to_watch">Pulsa OK para ver</string>
+    <string name="home_live_now">En directo</string>
+    <string name="home_action_search">Buscar</string>
+    <string name="home_action_help">Ayuda</string>
+    <string name="home_action_settings">Ajustes</string>
+    <string name="home_press_back_again">Pulsa atrás de nuevo para salir</string>
+    <string name="home_show_unavailable">No se pudo abrir la serie</string>
+    <string name="home_no_channels">No se encontraron canales</string>
+    <string name="home_tvon_channels_hint">Elige un canal abajo — pulsa OK para pantalla completa</string>
+    <string name="home_empty_title">Bienvenido a VistaCore</string>
+    <string name="home_empty_subtitle">Abre Ajustes para añadir tu servicio de TV</string>
+    <string name="settings_home_layout_title">Diseño de inicio</string>
+    <string name="settings_home_layout_summary">Elige cómo se ve la pantalla de inicio</string>
+    <string name="settings_home_classic">Clásico — mosaicos de apps (actual)</string>
+    <string name="settings_home_three_lanes">Tres columnas — TV en vivo, Películas y Series juntas</string>
+    <string name="settings_home_tv_turns_on">TV se enciende — abre directamente la TV en vivo</string>
+    <string name="settings_home_spotlight">Uno a la vez — un elemento grande, lo más fácil</string>
+    <string name="settings_home_simple_rows">Vista previa grande + filas — estilo Netflix</string>
+    <string name="settings_applies_next_home">Se aplica la próxima vez que se abra el inicio</string>
+    <string name="home_spotlight_hint">▲▼ Categoría     ◀▶ Explorar     OK para ver</string>
+    <string name="home_cat_menu">Menú</string>
+
     <string name="section_favorites">Tus Aplicaciones</string>
     <string name="section_iptv">TV en Vivo</string>
     <string name="section_all_apps">Todas las Aplicaciones</string>

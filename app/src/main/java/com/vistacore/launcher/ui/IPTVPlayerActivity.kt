@@ -24,6 +24,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
@@ -84,6 +85,7 @@ class IPTVPlayerActivity : BaseActivity() {
         private const val RESUME_FINISHED_FRACTION = 0.95
         private const val RESUME_END_GUARD_MS = 15000L
         private const val TAG = "IPTVPlayer"
+        private const val FREEZE_TAG = "FreezeDiag"
         // Auto-retry backoff for 413/429 responses from Xtream-style IPTV
         // backends (typically "too many concurrent streams" or rate limit).
         private const val RATE_LIMIT_RETRY_DELAY_MS = 3500L
@@ -98,6 +100,7 @@ class IPTVPlayerActivity : BaseActivity() {
     private var trackSelector: DefaultTrackSelector? = null
     private lateinit var prefs: PrefsManager
     private val handler = Handler(Looper.getMainLooper())
+    private var freezeDiagRunnable: Runnable? = null
     private lateinit var recentChannels: RecentChannelsManager
     private lateinit var watchHistory: com.vistacore.launcher.data.WatchHistoryManager
     private var numberPad: ChannelNumberPad? = null
@@ -545,22 +548,28 @@ class IPTVPlayerActivity : BaseActivity() {
             ts.setParameters(params)
         }
 
-        // Larger buffer to absorb network hiccups from single-bitrate streams.
-        // Defaults are 15s min / 50s max — we bump to 60s min / 180s max.
-        // bufferForPlaybackMs at 2.5s (down from 5s) halves the perceived
-        // spinner time at stream start without hurting steady-state buffering
-        // since the min/max window stays generous.
+        // Buffer sizing is a balance between absorbing network hiccups and not
+        // exhausting the heap. The old config (180s max + prioritizeTime=true)
+        // buffered up to 180s of video *regardless of byte size*; on a
+        // high-bitrate HD stream that's 150-250MB, which overran the 256MB heap
+        // on low-RAM sticks and OOM-crashed the app after ~90min of playback
+        // (confirmed via on-device capture, 2026-06-19).
+        //
+        // The fix: keep a generous-but-BOUNDED buffer. prioritizeTime is now
+        // FALSE so the byte cap is actually enforced, and targetBufferBytes is
+        // pinned to 48MB — large enough to hold ~45-60s of HD (far more than the
+        // tiny auto-computed default that originally caused minute-cadence
+        // rebuffering), but small enough to leave the heap comfortable headroom.
+        // Low-bitrate streams still buffer up to the 90s time ceiling.
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                /* minBufferMs */ 60_000,
-                /* maxBufferMs */ 180_000,
+                /* minBufferMs */ 30_000,
+                /* maxBufferMs */ 90_000,
                 /* bufferForPlaybackMs */ 2_500,
-                /* bufferForPlaybackAfterRebufferMs */ 10_000
+                /* bufferForPlaybackAfterRebufferMs */ 5_000
             )
-            // Honour the time window above regardless of the auto-computed byte
-            // budget; without it high-bitrate VOD stops buffering far short of
-            // 60s and rebuffers. Verified on-device: killed minute-cadence stalls.
-            .setPrioritizeTimeOverSizeThresholds(true)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .setTargetBufferBytes(48 * 1024 * 1024)
             .build()
 
         // On some Google TV / Fire TV boxes the hardware HEVC decoder claims
@@ -684,6 +693,56 @@ class IPTVPlayerActivity : BaseActivity() {
                     tryNextStrategy(exo)
                 }
             })
+
+            // --- Freeze diagnostics (tag: FreezeDiag) -----------------------
+            // Logs the signals needed to tell apart the three freeze causes:
+            //   • network starvation  -> state flips to BUFFERING
+            //   • decoder/render stall -> stays READY+playing but position frozen
+            //   • upstream drop/error  -> onPlayerError / onLoadError fires
+            // Capture on device with:  adb logcat -s FreezeDiag:V
+            exo.addAnalyticsListener(object : AnalyticsListener {
+                override fun onDroppedVideoFrames(
+                    eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long
+                ) {
+                    Log.w(FREEZE_TAG, "droppedFrames=$droppedFrames over ${elapsedMs}ms")
+                }
+                override fun onAudioUnderrun(
+                    eventTime: AnalyticsListener.EventTime, bufferSize: Int,
+                    bufferSizeMs: Long, elapsedSinceLastFeedMs: Long
+                ) {
+                    Log.w(FREEZE_TAG, "audioUnderrun buf=${bufferSizeMs}ms sinceLastFeed=${elapsedSinceLastFeedMs}ms")
+                }
+                override fun onBandwidthEstimate(
+                    eventTime: AnalyticsListener.EventTime, totalLoadTimeMs: Int,
+                    totalBytesLoaded: Long, bitrateEstimate: Long
+                ) {
+                    Log.d(FREEZE_TAG, "bandwidth=${bitrateEstimate / 1000}kbps loaded=${totalBytesLoaded / 1024}KB in ${totalLoadTimeMs}ms")
+                }
+            })
+            // Position heartbeat: every 2s log whether playback is actually
+            // advancing. A frozen picture with state=READY, playing=true and a
+            // non-advancing position is a decoder/render stall (Amlogic), not a
+            // network problem — that's the distinction the old logs couldn't make.
+            freezeDiagRunnable = object : Runnable {
+                var lastPos = -1L
+                var stalls = 0
+                override fun run() {
+                    val p = player ?: return
+                    val pos = p.currentPosition
+                    val advancing = pos != lastPos
+                    if (p.playbackState == Player.STATE_READY && p.isPlaying && !advancing) {
+                        stalls++
+                        Log.w(FREEZE_TAG, "STALL #$stalls pos=${pos}ms state=READY playing=true (picture frozen, no network buffer event)")
+                    } else {
+                        if (stalls > 0) Log.d(FREEZE_TAG, "recovered after $stalls stall ticks")
+                        stalls = 0
+                        Log.d(FREEZE_TAG, "hb pos=${pos}ms state=${p.playbackState} playing=${p.isPlaying} buffered=${p.bufferedPercentage}%")
+                    }
+                    lastPos = pos
+                    handler.postDelayed(this, 2_000)
+                }
+            }
+            handler.postDelayed(freezeDiagRunnable!!, 2_000)
 
             playStream(exo, streamUrl)
         }
@@ -1598,6 +1657,7 @@ class IPTVPlayerActivity : BaseActivity() {
         wasPlayingBeforeBackground = player?.playWhenReady ?: true
         saveCurrentPosition()
         if (!isInPipMode) player?.pause()
+        if (!isInPipMode) releasePlaybackWifiLock()
     }
 
     private fun saveCurrentPosition() {
@@ -1612,6 +1672,7 @@ class IPTVPlayerActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        acquirePlaybackWifiLock()
         // Only auto-resume if the user wasn't paused at background time.
         // Otherwise a quick home-and-back cycle (or any incidental pause
         // — a system dialog, the screen saver warning) would override an

@@ -91,8 +91,13 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         // full-screen player behave identically: same buffer timings, same
         // decoder fallback for flaky hardware HEVC, same extension-renderer
         // mode (OFF — we don't bundle any extension renderers).
+        // Keep the buffer bounded by bytes so high-bitrate HD can't overrun the
+        // heap on low-RAM sticks. Mirrors IPTVPlayerActivity's config (see the
+        // OOM note there) — 48MB cap, byte limit enforced (prioritizeTime=false).
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(60_000, 180_000, 2_500, 10_000)
+            .setBufferDurationsMs(30_000, 90_000, 2_500, 5_000)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .setTargetBufferBytes(48 * 1024 * 1024)
             .build()
         val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(this)
             .setEnableDecoderFallback(true)
@@ -491,10 +496,12 @@ abstract class BaseLiveTVActivity : BaseActivity() {
     override fun onPause() {
         super.onPause()
         player?.pause()
+        releasePlaybackWifiLock()
     }
 
     override fun onResume() {
         super.onResume()
+        acquirePlaybackWifiLock()
         // Coming back from a fullscreen handoff: the preview player was
         // released to free the hardware decoder. Rebuild it now and tune
         // back to whatever the user had selected.

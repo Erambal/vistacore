@@ -3,7 +3,9 @@
     android:shape="rectangle">
     <solid android:color="@color/card_background_elevated" />
     <corners android:radius="@dimen/card_corner_radius" />
+    <!-- Thicker, unmistakable "you are here" border so the cursor is obvious
+         from across the room — matches the home_tile focus used elsewhere. -->
     <stroke
-        android:width="@dimen/focus_ring_width"
+        android:width="6dp"
         android:color="@color/focus_ring" />
 </shape>

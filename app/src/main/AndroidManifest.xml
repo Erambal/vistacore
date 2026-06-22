@@ -98,9 +98,31 @@
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.VistaCore" />
 
-        <!-- Main Launcher Activity -->
+        <!-- Home router — forwards to the chosen home layout variant -->
+        <activity
+            android:name=".ui.HomeRouterActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <!-- Main Launcher Activity (classic home) -->
         <activity
             android:name=".ui.MainActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="keyboard|keyboardHidden|navigation" />
+
+        <!-- Home: TV Turns On (fullscreen live) -->
+        <activity
+            android:name=".ui.HomeTvTurnsOnActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
+            android:configChanges="keyboard|keyboardHidden|navigation" />
+
+        <!-- Home: Big Preview + Simple Rows -->
+        <activity
+            android:name=".ui.HomeSimpleRowsActivity"
             android:exported="false"
             android:screenOrientation="sensorLandscape"
             android:configChanges="keyboard|keyboardHidden|navigation" />

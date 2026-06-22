@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pill chip for the Warm Cinema top bar (Search / Help / Settings). Warm
+     surface by default, strong gold ring on focus so the cursor is obvious. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/nf_label_bg" />
+            <corners android:radius="26dp" />
+            <stroke android:width="4dp" android:color="@color/accent_gold" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/nf_label_bg" />
+            <corners android:radius="26dp" />
+            <stroke android:width="4dp" android:color="@color/accent_gold" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/nf_surface" />
+            <corners android:radius="26dp" />
+            <stroke android:width="1dp" android:color="#33FFFFFF" />
+        </shape>
+    </item>
+</selector>

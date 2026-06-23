@@ -14,8 +14,11 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.vistacore.launcher.R
+import com.vistacore.launcher.data.FavoritesManager
 import com.vistacore.launcher.data.PrefsManager
+import com.vistacore.launcher.data.RecentChannelsManager
 import com.vistacore.launcher.data.UsageTracker
+import com.vistacore.launcher.iptv.Channel
 import com.vistacore.launcher.iptv.ProviderText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +65,10 @@ class HomeSimpleRowsActivity : BaseActivity() {
     private var liveCategory: String? = null
     private var moviesCategory: String? = null
     private var showsCategory: String? = null
+    // Live-only pseudo-categories (mirrors Classic's Recents/Favorites). Sentinels
+    // chosen so they can't collide with a real provider category name.
+    private val FILTER_RECENT = "__vc_recent__"
+    private val FILTER_FAVORITES = "__vc_favorites__"
 
     private val clockTicker = object : Runnable {
         override fun run() {
@@ -167,52 +174,81 @@ class HomeSimpleRowsActivity : BaseActivity() {
 
     private fun liveTiles(data: HomeData) =
         listOf(categoryTile(getString(R.string.home_lane_live), R.color.nf_accent_live) { showCategoryDialog(Section.LIVE) }) +
-            HomeTiles.live(this, data.live.filter { liveCategory == null || it.category == liveCategory })
+            HomeTiles.live(this, filteredFor(Section.LIVE, data))
 
     private fun movieTiles(data: HomeData) =
         listOf(categoryTile(getString(R.string.home_lane_movies), R.color.nf_accent_movies) { showCategoryDialog(Section.MOVIES) }) +
-            HomeTiles.movies(this, data.movies.filter { moviesCategory == null || it.category == moviesCategory })
+            HomeTiles.movies(this, filteredFor(Section.MOVIES, data))
 
     private fun showTiles(data: HomeData) =
         listOf(categoryTile(getString(R.string.home_lane_shows), R.color.nf_accent_shows) { showCategoryDialog(Section.SHOWS) }) +
-            HomeTiles.shows(this, scope, data.shows.filter { showsCategory == null || it.category == showsCategory },
+            HomeTiles.shows(this, scope, filteredFor(Section.SHOWS, data),
                 { b -> loading.visibility = if (b) View.VISIBLE else View.GONE },
                 { Toast.makeText(this, R.string.home_show_unavailable, Toast.LENGTH_SHORT).show() })
+
+    private fun channelsOf(section: Section, data: HomeData) = when (section) {
+        Section.LIVE -> data.live; Section.MOVIES -> data.movies; Section.SHOWS -> data.shows
+    }
+
+    /** Apply the active category filter, including the Live-only Recents/Favorites. */
+    private fun filteredFor(section: Section, data: HomeData): List<Channel> {
+        val channels = channelsOf(section, data)
+        return when (val cat = selectedCategory(section)) {
+            null -> channels
+            FILTER_RECENT -> RecentChannelsManager(this).getRecentChannels(channels)
+            FILTER_FAVORITES -> FavoritesManager(this).filterFavorites(channels)
+            else -> channels.filter { it.category == cat }
+        }
+    }
 
     private fun selectedCategory(s: Section) = when (s) {
         Section.LIVE -> liveCategory; Section.MOVIES -> moviesCategory; Section.SHOWS -> showsCategory
     }
 
+    private fun setSelectedCategory(s: Section, v: String?) = when (s) {
+        Section.LIVE -> liveCategory = v; Section.MOVIES -> moviesCategory = v; Section.SHOWS -> showsCategory = v
+    }
+
+    /** Human label for the active filter, used in the row header. */
+    private fun categoryLabel(cat: String?): String = when (cat) {
+        FILTER_RECENT -> getString(R.string.home_recents)
+        FILTER_FAVORITES -> getString(R.string.home_favorites)
+        null -> ""
+        else -> ProviderText.cleanCategory(cat)
+    }
+
     private fun showCategoryDialog(section: Section) {
         val data = homeData ?: return
         val tracker = UsageTracker(this)
-        val channels = when (section) {
-            Section.LIVE -> data.live; Section.MOVIES -> data.movies; Section.SHOWS -> data.shows
+        val channels = channelsOf(section, data)
+        // Build parallel label/key lists: All, then Live-only Recents/Favorites
+        // (if any), then content categories that have items and aren't hidden.
+        val labels = ArrayList<String>()
+        val keys = ArrayList<String?>()
+        labels.add(getString(R.string.home_all_categories)); keys.add(null)
+        if (section == Section.LIVE) {
+            if (RecentChannelsManager(this).getRecentChannels(channels).isNotEmpty()) {
+                labels.add(getString(R.string.home_recents)); keys.add(FILTER_RECENT)
+            }
+            if (FavoritesManager(this).filterFavorites(channels).isNotEmpty()) {
+                labels.add(getString(R.string.home_favorites)); keys.add(FILTER_FAVORITES)
+            }
         }
-        // Offer only categories that have content and aren't hidden in Settings.
-        val rawCats = channels.asSequence()
+        channels.asSequence()
             .map { it.category }
             .filter { it.isNotBlank() && !tracker.isCategoryHidden(it) }
             .distinct()
             .sortedBy { ProviderText.cleanCategory(it).lowercase() }
-            .toList()
-        if (rawCats.isEmpty()) {
+            .forEach { labels.add(ProviderText.cleanCategory(it)); keys.add(it) }
+        if (labels.size <= 1) {
             Toast.makeText(this, R.string.home_no_categories, Toast.LENGTH_SHORT).show()
             return
         }
-        val items = (listOf(getString(R.string.home_all_categories)) +
-            rawCats.map { ProviderText.cleanCategory(it) }).toTypedArray()
-        val current = selectedCategory(section)
-        val checked = if (current == null) 0 else rawCats.indexOf(current).let { if (it >= 0) it + 1 else 0 }
+        val checked = keys.indexOf(selectedCategory(section)).coerceAtLeast(0)
         AlertDialog.Builder(this, R.style.Theme_VistaCore_Dialog)
             .setTitle(R.string.home_pick_category)
-            .setSingleChoiceItems(items, checked) { dialog, which ->
-                val pick = if (which == 0) null else rawCats[which - 1]
-                when (section) {
-                    Section.LIVE -> liveCategory = pick
-                    Section.MOVIES -> moviesCategory = pick
-                    Section.SHOWS -> showsCategory = pick
-                }
+            .setSingleChoiceItems(labels.toTypedArray(), checked) { dialog, which ->
+                setSelectedCategory(section, keys[which])
                 dialog.dismiss()
                 rebuildSection(section)
             }
@@ -229,7 +265,7 @@ class HomeSimpleRowsActivity : BaseActivity() {
         row.adapter = HomeTileAdapter(tiles) { updatePreview(it) }
         val cat = selectedCategory(section)
         header.text = if (cat == null) getString(baseRes)
-                      else "${getString(baseRes)} · ${ProviderText.cleanCategory(cat)}"
+                      else "${getString(baseRes)} · ${categoryLabel(cat)}"
         // Land on the first filtered result (index 1) so the user sees the change.
         row.post { focusTileAt(row, if ((row.adapter?.itemCount ?: 0) > 1) 1 else 0) }
     }

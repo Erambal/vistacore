@@ -32,6 +32,8 @@
     <string name="home_categories">Categories</string>
     <string name="home_filter_by_category">Filter by category</string>
     <string name="home_all_categories">All Categories</string>
+    <string name="home_recents">Recents</string>
+    <string name="home_favorites">Favorites</string>
     <string name="home_pick_category">Choose a category</string>
     <string name="home_no_categories">No categories available</string>
     <string name="home_action_search">Search</string>

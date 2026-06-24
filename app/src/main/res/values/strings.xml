@@ -28,6 +28,7 @@
     <string name="home_lane_movies">Movies</string>
     <string name="home_lane_shows">TV Shows</string>
     <string name="home_press_ok_to_watch">Press OK to watch</string>
+    <string name="home_press_ok_live">Press OK to watch   ·   Hold OK to favorite ★</string>
     <string name="home_live_now">Live now</string>
     <string name="home_categories">Categories</string>
     <string name="home_filter_by_category">Filter by category</string>
@@ -36,6 +37,10 @@
     <string name="home_favorites">Favorites</string>
     <string name="home_pick_category">Choose a category</string>
     <string name="home_no_categories">No categories available</string>
+    <string name="home_add_favorite">★  Add to Favorites</string>
+    <string name="home_remove_favorite">★  Remove from Favorites</string>
+    <string name="home_added_favorite">Added to Favorites</string>
+    <string name="home_removed_favorite">Removed from Favorites</string>
     <string name="home_action_search">Search</string>
     <string name="home_action_help">Help</string>
     <string name="home_action_settings">Settings</string>

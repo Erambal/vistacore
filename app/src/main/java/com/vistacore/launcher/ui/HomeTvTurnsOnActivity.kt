@@ -67,6 +67,9 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
 
         ribbon.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
 
+        findViewById<Button>(R.id.tvon_btn_search).setOnClickListener {
+            startActivity(Intent(this, VoiceSearchActivity::class.java))
+        }
         findViewById<Button>(R.id.tvon_btn_movies).setOnClickListener {
             startActivity(Intent(this, VODBrowserActivity::class.java).apply {
                 putExtra(VODBrowserActivity.EXTRA_CONTENT_TYPE, VODBrowserActivity.TYPE_MOVIES)

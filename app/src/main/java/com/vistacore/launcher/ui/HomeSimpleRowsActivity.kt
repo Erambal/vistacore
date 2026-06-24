@@ -174,7 +174,7 @@ class HomeSimpleRowsActivity : BaseActivity() {
 
     private fun liveTiles(data: HomeData) =
         listOf(categoryTile(getString(R.string.home_lane_live), R.color.nf_accent_live) { showCategoryDialog(Section.LIVE) }) +
-            HomeTiles.live(this, filteredFor(Section.LIVE, data))
+            HomeTiles.live(this, filteredFor(Section.LIVE, data), onLongPress = { ch -> showLiveChannelMenu(ch) })
 
     private fun movieTiles(data: HomeData) =
         listOf(categoryTile(getString(R.string.home_lane_movies), R.color.nf_accent_movies) { showCategoryDialog(Section.MOVIES) }) +
@@ -255,6 +255,36 @@ class HomeSimpleRowsActivity : BaseActivity() {
             .show()
     }
 
+    /**
+     * Long-press OK on a Live tile: toggle it as a favorite. This is the only
+     * way to create favorites from this layout, so without it the "Favorites"
+     * entry never appears in the category dropdown (it shows only when non-empty).
+     */
+    private fun showLiveChannelMenu(channel: Channel) {
+        val favs = FavoritesManager(this)
+        val isFav = favs.isFavoriteChannel(channel.id)
+        val label = getString(if (isFav) R.string.home_remove_favorite else R.string.home_add_favorite)
+        AlertDialog.Builder(this, R.style.Theme_VistaCore_Dialog)
+            .setTitle(ProviderText.cleanName(channel.name))
+            .setItems(arrayOf(label)) { dialog, _ ->
+                favs.toggleFavoriteChannel(channel.id)
+                dialog.dismiss()
+                // If we just removed the last favorite while viewing Favorites,
+                // drop back to All so the row isn't left empty.
+                if (liveCategory == FILTER_FAVORITES &&
+                    favs.filterFavorites(homeData?.live ?: emptyList()).isEmpty()) {
+                    liveCategory = null
+                }
+                rebuildSection(Section.LIVE)
+                Toast.makeText(
+                    this,
+                    if (isFav) R.string.home_removed_favorite else R.string.home_added_favorite,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            .show()
+    }
+
     private fun rebuildSection(section: Section) {
         val data = homeData ?: return
         val (row, tiles, header, baseRes) = when (section) {
@@ -293,6 +323,12 @@ class HomeSimpleRowsActivity : BaseActivity() {
         title.text = tile.title
         subtitle.text = tile.subtitle
         prompt.visibility = if (tile.iconOnly) View.GONE else View.VISIBLE
+        // Live tiles can be favorited with a long-press; hint at it so the
+        // gesture (and the Favorites category it unlocks) is discoverable.
+        prompt.text = getString(
+            if (tile.category == getString(R.string.home_lane_live)) R.string.home_press_ok_live
+            else R.string.home_press_ok_to_watch
+        )
         backdrop.setBackgroundColor(
             androidx.core.content.ContextCompat.getColor(this, R.color.nf_surface)
         )

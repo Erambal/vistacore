@@ -78,6 +78,23 @@
         android:paddingEnd="48dp">
 
         <Button
+            android:id="@+id/tvon_btn_search"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:text="@string/home_action_search"
+            android:textSize="18sp"
+            android:textColor="@color/text_primary"
+            android:fontFamily="sans-serif-medium"
+            android:background="@drawable/home_tile_selector"
+            android:drawableStart="@drawable/ic_voice_search"
+            android:drawableTint="@color/text_primary"
+            android:drawablePadding="10dp"
+            android:paddingStart="22dp"
+            android:paddingEnd="24dp"
+            android:layout_marginEnd="14dp"
+            android:focusable="true" />
+
+        <Button
             android:id="@+id/tvon_btn_movies"
             android:layout_width="wrap_content"
             android:layout_height="56dp"

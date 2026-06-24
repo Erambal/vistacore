@@ -61,6 +61,7 @@ data class HomeTile(
     val cropToFill: Boolean,  // true for posters (fill+crop); false for logos
     val accentColorRes: Int,  // per-row accent (monogram block, no-art tiles)
     val open: () -> Unit,
+    val onLongPress: (() -> Unit)? = null,  // long-press OK (e.g. favorite a channel)
 )
 
 /** Build the tile groups shared by the home layouts. */
@@ -84,7 +85,12 @@ object HomeTiles {
         }
     }
 
-    fun live(activity: Activity, channels: List<Channel>, max: Int = 150): List<HomeTile> {
+    fun live(
+        activity: Activity,
+        channels: List<Channel>,
+        max: Int = 150,
+        onLongPress: ((Channel) -> Unit)? = null,
+    ): List<HomeTile> {
         val cat = activity.getString(R.string.home_lane_live)
         return channels.take(max).map { ch ->
             val epg = ContentCache.epgData
@@ -99,7 +105,8 @@ object HomeTiles {
                 iconOnly = false,
                 cropToFill = false,   // channel logos look best centered, not cropped
                 accentColorRes = R.color.nf_accent_live,
-                open = { ContentOpener.openLiveChannel(activity, ch) }
+                open = { ContentOpener.openLiveChannel(activity, ch) },
+                onLongPress = onLongPress?.let { cb -> { cb(ch) } }
             )
         }
     }
@@ -230,6 +237,9 @@ class HomeTileAdapter(
         }
 
         holder.itemView.setOnClickListener { tile.open() }
+        holder.itemView.setOnLongClickListener {
+            tile.onLongPress?.let { it(); true } ?: false
+        }
         holder.itemView.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) onFocus(tile) }
         // Row-boundary focus containment (don't let LEFT/RIGHT escape the row) is
         // handled centrally in HomeSimpleRowsActivity.dispatchKeyEvent — doing it

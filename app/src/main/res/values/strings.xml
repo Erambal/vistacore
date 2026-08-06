@@ -59,7 +59,14 @@
     <string name="settings_home_tv_turns_on">TV Turns On — opens straight into live TV</string>
     <string name="settings_home_spotlight">One at a Time — one big item, easiest to use</string>
     <string name="settings_home_simple_rows">Big Preview + Rows — Netflix style</string>
+    <string name="settings_home_favorites_grid">Favorites Grid — your starred channels as big squares</string>
     <string name="settings_applies_next_home">Applies the next time Home opens</string>
+    <string name="section_kids">Kids</string>
+    <string name="home_favorites_heading">YOUR FAVORITE CHANNELS</string>
+    <string name="channel_number_prefix">CH %1$d</string>
+    <string name="home_favorites_empty">No favorite channels yet.\nBrowse Live TV, press and hold OK on a channel, and choose “Add to Favorites.”</string>
+    <string name="home_favorites_browse_live">Browse Live TV</string>
+    <string name="home_favorites_add_more">＋ Add more</string>
     <string name="home_spotlight_hint">▲▼ Category     ◀▶ Browse     OK to watch</string>
     <string name="home_cat_menu">Menu</string>
 
@@ -130,4 +137,11 @@
     <string name="cd_poster">Poster</string>
     <string name="cd_source">Source</string>
     <string name="cd_lock">Locked</string>
+
+    <!-- Channel number entry -->
+    <string name="number_pad_no_channel">No channel %1$s</string>
+
+    <!-- First-run setup -->
+    <string name="setup_connect">Connect &amp; Download</string>
+    <string name="setup_connecting">Downloading…</string>
 </resources>

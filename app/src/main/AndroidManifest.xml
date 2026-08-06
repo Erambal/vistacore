@@ -71,9 +71,18 @@
         tools:targetApi="31">
 
         <!-- Splash Screen (entry point) -->
+        <!--
+            singleTask: this activity carries category HOME, so every HOME press delivers
+            a fresh MAIN intent. With the default "standard" launchMode that created a NEW
+            SplashActivity (plus a new home activity behind it) on the existing task every
+            single time, so the back stack and its retained bitmaps/players grew without
+            bound over a long uptime. singleTask reuses the existing task and clears back
+            to it instead.
+        -->
         <activity
             android:name=".ui.SplashActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.VistaCore.Player">
             <intent-filter>
@@ -123,6 +132,13 @@
         <!-- Home: Big Preview + Simple Rows -->
         <activity
             android:name=".ui.HomeSimpleRowsActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="keyboard|keyboardHidden|navigation" />
+
+        <!-- Home: Favorites Grid -->
+        <activity
+            android:name=".ui.HomeFavoritesGridActivity"
             android:exported="false"
             android:screenOrientation="sensorLandscape"
             android:configChanges="keyboard|keyboardHidden|navigation" />

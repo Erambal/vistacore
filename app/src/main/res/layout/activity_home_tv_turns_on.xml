@@ -25,7 +25,14 @@
         android:layout_gravity="bottom"
         android:background="@drawable/gradient_bottom_scrim" />
 
-    <!-- Top-left: what's playing now -->
+    <!--
+        Top-left: what's playing now.
+
+        Sits BELOW the top bar rather than beside it. tvon_topbar is a sibling with end
+        gravity, but it is wide enough that its left edge is only ~177dp from the start of
+        the screen — no usable width for a 34sp title, so long channel names were painted
+        underneath the buttons. Dropping below it gives the name the full screen width.
+    -->
     <LinearLayout
         android:id="@+id/tvon_info"
         android:layout_width="wrap_content"
@@ -34,7 +41,7 @@
         android:layout_gravity="top|start"
         android:paddingStart="48dp"
         android:paddingEnd="48dp"
-        android:paddingTop="32dp">
+        android:paddingTop="104dp">
 
         <TextView
             android:id="@+id/tvon_channel_number"
@@ -45,10 +52,18 @@
             android:fontFamily="sans-serif-medium"
             android:letterSpacing="0.1" />
 
+        <!--
+            maxWidth matters: this block and tvon_topbar are siblings in a FrameLayout
+            (start vs end gravity), so with wrap_content a long channel name grew straight
+            underneath the SEARCH/MOVIES/SETTINGS buttons and was painted over them.
+            maxLines/ellipsize alone could not help because wrap_content gave the view
+            unlimited width to grow into. Bounding it makes the ellipsis actually engage.
+        -->
         <TextView
             android:id="@+id/tvon_channel_name"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:maxWidth="1100dp"
             android:textSize="34sp"
             android:textColor="@color/text_primary"
             android:fontFamily="sans-serif-medium"
@@ -59,6 +74,7 @@
             android:id="@+id/tvon_now_playing"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:maxWidth="1100dp"
             android:textSize="18sp"
             android:textColor="@color/text_secondary"
             android:fontFamily="sans-serif"

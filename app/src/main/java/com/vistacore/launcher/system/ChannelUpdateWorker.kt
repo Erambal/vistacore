@@ -17,6 +17,8 @@ import com.vistacore.launcher.iptv.JellyfinClient
 import com.vistacore.launcher.iptv.M3UParser
 import com.vistacore.launcher.iptv.XtreamAuth
 import com.vistacore.launcher.iptv.XtreamClient
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -48,6 +50,46 @@ class ChannelUpdateWorker(
         private const val SERIES_CACHE_FILE = "series_cache.json"
 
         private val gson = Gson()
+
+        /** Default scope for [cacheChannels] — a caller that fetched the whole catalog. */
+        val ALL_CONTENT_TYPES: Set<com.vistacore.launcher.iptv.ContentType> =
+            com.vistacore.launcher.iptv.ContentType.values().toSet()
+
+        /**
+         * How many times to retry a refresh that came back completely empty before
+         * giving up. Bounded so a permanently-dead provider doesn't spin forever.
+         */
+        private const val MAX_EMPTY_RETRIES = 5
+
+        /**
+         * Minimum gap between two full catalog fetches.
+         *
+         * Nothing else throttles a *completed* fetch. [enqueueOneTime] uses
+         * `enqueueUniqueWork(KEEP)`, and KEEP only collapses work still in flight —
+         * the moment a run finishes, the next enqueue starts a fresh ~19 MB download.
+         *
+         * That is harmless while the caches fill. It stops being harmless when one
+         * content type's endpoint is failing: [attempt] drops a throwing type from
+         * `succeeded`, [cacheChannels] then refuses to write it, so that cache never
+         * refills. VODBrowserActivity sees an empty list, calls refreshNow, and the
+         * fetch pulls live + movies + series with no type scoping — so a Movies
+         * browser that needs *movies* re-downloads 42,737 series as collateral, the
+         * movies endpoint 504s again, and the next open repeats it. Observed on the
+         * box: three full series downloads in under four minutes.
+         *
+         * Persisted rather than a static field, because this launcher being killed
+         * and relaunched under memory pressure is the normal case on a 1.45 GB box —
+         * an in-memory cooldown would reset exactly when it is needed most.
+         */
+        private const val MIN_FETCH_INTERVAL_MS = 10 * 60 * 1000L
+        private const val KEY_LAST_FETCH_ATTEMPT = "last_fetch_attempt"
+        private const val KEY_LAST_FETCH_IDENTITY = "last_fetch_identity"
+
+        private val fetchMutex = Mutex()
+
+        /** Scope for callers that fetched live channels only. */
+        val LIVE_ONLY: Set<com.vistacore.launcher.iptv.ContentType> =
+            setOf(com.vistacore.launcher.iptv.ContentType.LIVE)
 
         fun schedule(context: Context, intervalHours: Long = 6) {
             val constraints = Constraints.Builder()
@@ -106,32 +148,87 @@ class ChannelUpdateWorker(
          * this shared path, Splash's first-run cache differs from what the
          * worker would have built (no Jellyfin merge, no Dispatcharr fallback).
          */
-        suspend fun fetchAllSources(context: Context): List<Channel> {
+        /**
+         * A catalog fetch plus the set of content types whose fetch actually *succeeded*.
+         *
+         * The distinction matters enormously on write. Every source below swallows its
+         * exceptions and substitutes `emptyList()`, which makes "the provider returned no
+         * movies" and "the movies request threw a 500" look identical — and the caller
+         * then persists that empty list as authoritative, deleting the user's whole movie
+         * library over one bad response. Observed in the wild: a box with 42,723 series
+         * cached and a movies cache of exactly 0.
+         *
+         * [succeeded] lets the caller write only what it genuinely knows about.
+         */
+        data class CatalogFetch(
+            val channels: List<Channel>,
+            val succeeded: Set<ContentType>,
+        )
+
+        /** Back-compat wrapper for callers that only need the merged list. */
+        suspend fun fetchAllSources(context: Context): List<Channel> =
+            fetchAllSourcesDetailed(context).channels
+
+        suspend fun fetchAllSourcesDetailed(context: Context): CatalogFetch {
             val prefs = PrefsManager(context)
-            if (!prefs.hasIptvConfig() && !prefs.hasJellyfinConfig()) return emptyList()
+            if (!prefs.hasIptvConfig() && !prefs.hasJellyfinConfig()) {
+                return CatalogFetch(emptyList(), emptySet())
+            }
+
+            val succeeded = mutableSetOf<ContentType>()
+
+            /** Run [block], recording [type] as authoritative only if it did not throw. */
+            suspend fun <T> attempt(
+                type: ContentType,
+                label: String,
+                block: suspend () -> List<T>
+            ): List<T> =
+                try {
+                    val result = block()
+                    succeeded.add(type)
+                    result
+                } catch (e: Exception) {
+                    Log.w(TAG, "$label fetch failed (${e.message}) — leaving its cache untouched")
+                    emptyList()
+                }
 
             val iptvChannels: List<Channel> = if (prefs.hasIptvConfig()) {
                 when (prefs.sourceType) {
-                    PrefsManager.SOURCE_M3U -> try { M3UParser().parse(prefs.m3uUrl) } catch (_: Exception) { emptyList() }
+                    PrefsManager.SOURCE_M3U -> {
+                        // An M3U playlist is a single document covering every type, so it
+                        // is all-or-nothing.
+                        try {
+                            val parsed = M3UParser().parse(prefs.m3uUrl)
+                            succeeded.addAll(ALL_CONTENT_TYPES)
+                            parsed
+                        } catch (e: Exception) {
+                            Log.w(TAG, "M3U fetch failed: ${e.message}")
+                            emptyList()
+                        }
+                    }
                     PrefsManager.SOURCE_XTREAM -> {
                         val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
                         val xc = XtreamClient(auth)
-                        val live = try { xc.getChannels() } catch (_: Exception) { emptyList() }
+                        val live = attempt(ContentType.LIVE, "Xtream live") { xc.getChannels() }
                         val dispatcharrKey = prefs.dispatcharrApiKey
                         val (movies, series) = if (dispatcharrKey.isNotBlank()) {
                             val dc = DispatcharrVodClient(prefs.xtreamServer, dispatcharrKey)
-                            val dcMovies = try { dc.getMovies() } catch (e: Exception) {
-                                Log.w(TAG, "Dispatcharr movies failed, falling back to Xtream: ${e.message}")
-                                try { xc.getMovies() } catch (_: Exception) { emptyList() }
+                            val dcMovies = attempt(ContentType.MOVIE, "Dispatcharr/Xtream movies") {
+                                try { dc.getMovies() } catch (e: Exception) {
+                                    Log.w(TAG, "Dispatcharr movies failed, falling back to Xtream: ${e.message}")
+                                    xc.getMovies() // may throw — that is the point
+                                }
                             }
-                            val dcSeries = try { dc.getSeries() } catch (e: Exception) {
-                                Log.w(TAG, "Dispatcharr series failed, falling back to Xtream: ${e.message}")
-                                try { xc.getSeries() } catch (_: Exception) { emptyList() }
+                            val dcSeries = attempt(ContentType.SERIES, "Dispatcharr/Xtream series") {
+                                try { dc.getSeries() } catch (e: Exception) {
+                                    Log.w(TAG, "Dispatcharr series failed, falling back to Xtream: ${e.message}")
+                                    xc.getSeries()
+                                }
                             }
                             dcMovies to dcSeries
                         } else {
-                            val xMovies = try { xc.getMovies() } catch (_: Exception) { emptyList() }
-                            val xSeries = try { xc.getSeries() } catch (_: Exception) { emptyList() }
+                            val xMovies = attempt(ContentType.MOVIE, "Xtream movies") { xc.getMovies() }
+                            val xSeries = attempt(ContentType.SERIES, "Xtream series") { xc.getSeries() }
                             xMovies to xSeries
                         }
                         live + movies + series
@@ -159,7 +256,87 @@ class ChannelUpdateWorker(
                 }
             } else emptyList()
 
-            return mergeWithJellyfinPreference(iptvChannels, jellyfinChannels)
+            return CatalogFetch(
+                mergeWithJellyfinPreference(iptvChannels, jellyfinChannels),
+                succeeded,
+            )
+        }
+
+        /**
+         * Guarded entry point for a full catalog fetch. Returns null when one ran
+         * recently enough that the on-disk caches are already as fresh as this call
+         * could make them.
+         *
+         * Every network sink funnels through [fetchAllSourcesDetailed]: this worker,
+         * Splash's cold-start fetch and Setup's Connect press. The latter two bypass
+         * WorkManager entirely, so no unique-work name can dedupe them against the
+         * worker — the mutex is the only thing that can. Guarding here rather than at
+         * each call site means a future caller cannot reintroduce the loop by
+         * forgetting to check.
+         *
+         * Deliberately memoizes nothing: holding 42,737 Channel objects in a static
+         * to avoid a re-read is the opposite of what a 1.45 GB box needs. Disk is
+         * already the store; this only rate-limits the network.
+         */
+        suspend fun fetchGuarded(context: Context, force: Boolean = false): CatalogFetch? {
+            val identity = PrefsManager(context).sourceIdentity()
+            if (!force && !isFetchDue(context, identity)) return null
+            return fetchMutex.withLock {
+                // Re-check under the lock: the caller we queued behind may have just
+                // finished the very fetch we were about to start.
+                if (!force && !isFetchDue(context, identity)) return@withLock null
+                // Arm the cooldown BEFORE the network work, not after. A fetch that
+                // takes 45s must not leave a 45s window in which every browser open
+                // starts another one.
+                context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE).edit()
+                    .putLong(KEY_LAST_FETCH_ATTEMPT, System.currentTimeMillis())
+                    .putString(KEY_LAST_FETCH_IDENTITY, identity)
+                    .apply()
+                fetchAllSourcesDetailed(context)
+            }
+        }
+
+        private fun isFetchDue(context: Context, identity: String): Boolean {
+            val cache = context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE)
+            return isFetchDue(
+                lastIdentity = cache.getString(KEY_LAST_FETCH_IDENTITY, null),
+                currentIdentity = identity,
+                lastAttemptMs = cache.getLong(KEY_LAST_FETCH_ATTEMPT, 0L),
+                nowMs = System.currentTimeMillis(),
+            )
+        }
+
+        /**
+         * Pure form of the cooldown decision, so the branches that can silently lock
+         * refreshes out for ten minutes are testable without a Context.
+         *
+         * A provider swap voids the cooldown outright — a catalog pulled 30 seconds
+         * ago belongs to a different account. A negative elapsed time means the clock
+         * moved backwards (NTP correcting a box that booted with a bogus RTC; this
+         * hardware does exactly that, and a stale WiFi-history record once made it
+         * read as March). Treat that as due rather than blocking refreshes until
+         * wall-clock catches up.
+         */
+        internal fun isFetchDue(
+            lastIdentity: String?,
+            currentIdentity: String,
+            lastAttemptMs: Long,
+            nowMs: Long,
+        ): Boolean {
+            if (lastIdentity != currentIdentity) return true
+            val since = nowMs - lastAttemptMs
+            return since !in 0 until MIN_FETCH_INTERVAL_MS
+        }
+
+        /** Exposed for tests that assert against the real cooldown window. */
+        internal val minFetchIntervalMs: Long get() = MIN_FETCH_INTERVAL_MS
+
+        /** Void the cooldown so the next attempt genuinely re-fetches. */
+        private fun clearFetchCooldown(context: Context) {
+            context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE).edit()
+                .remove(KEY_LAST_FETCH_ATTEMPT)
+                .remove(KEY_LAST_FETCH_IDENTITY)
+                .apply()
         }
 
         /**
@@ -347,50 +524,88 @@ class ChannelUpdateWorker(
 
         /**
          * Save channels to file cache — also splits into movies/series caches.
+         *
          * Empty fetches are refused: a transient provider outage can return
          * `[]` for every source, and writing that out would satisfy the
          * warm-path gate forever (cache files exist) while leaving the user
          * with a blank catalog. Returning early without touching disk leaves
          * the previous cache intact — or, on first run, leaves the system
          * in a "no cache yet" state that the bootstrap path retries.
+         *
+         * [authoritativeFor] declares which content types this caller actually fetched,
+         * and only those cache files are written. This matters because several callers
+         * fetch live channels ONLY (Xtream's `getChannels()` returns live streams) and
+         * previously handed that list to this whole-catalog API — which partitioned it,
+         * found movies and series empty, and overwrote both caches with empty files.
+         * A user who opened Live TV before the background worker had run lost their
+         * entire VOD library until the next successful full refresh.
+         *
+         * Note the [KEY_LAST_UPDATE] sentinel is bumped for any write, including a
+         * live-only one. That is intentional — it gates "how stale is the lineup", and
+         * the VOD paths already handle a missing movies/series cache independently.
          */
-        fun cacheChannels(context: Context, channels: List<Channel>) {
+        fun cacheChannels(
+            context: Context,
+            channels: List<Channel>,
+            authoritativeFor: Set<com.vistacore.launcher.iptv.ContentType> = ALL_CONTENT_TYPES
+        ) {
             if (channels.isEmpty()) {
                 Log.w(TAG, "Refusing to cache empty channel list — likely a transient outage")
                 return
             }
             try {
+                val types = com.vistacore.launcher.iptv.ContentType.values()
+                    .filter { it in authoritativeFor }
+
                 // Write main cache (live channels only — keeps file small)
                 val liveChannels = channels.filter { it.contentType == com.vistacore.launcher.iptv.ContentType.LIVE }
-                writeCacheFile(context, CACHE_FILE, liveChannels)
+                if (com.vistacore.launcher.iptv.ContentType.LIVE in authoritativeFor) {
+                    writeCacheFile(context, CACHE_FILE, liveChannels)
+                }
 
                 // Write separate movie and series caches
                 val movies = channels.filter { it.contentType == com.vistacore.launcher.iptv.ContentType.MOVIE }
-                writeCacheFile(context, MOVIES_CACHE_FILE, movies)
+                if (com.vistacore.launcher.iptv.ContentType.MOVIE in authoritativeFor) {
+                    writeCacheFile(context, MOVIES_CACHE_FILE, movies)
+                }
 
                 val series = channels.filter { it.contentType == com.vistacore.launcher.iptv.ContentType.SERIES }
-                writeCacheFile(context, SERIES_CACHE_FILE, series)
+                if (com.vistacore.launcher.iptv.ContentType.SERIES in authoritativeFor) {
+                    writeCacheFile(context, SERIES_CACHE_FILE, series)
+                }
+
+                // Preload rows and the show-name map are derived from movies/series, so
+                // only drop them when we actually rewrote that data. A live-only refresh
+                // that nulls them strands M3U series (showEpisodesIndex goes null and is
+                // never rebuilt until the app restarts).
+                val touchedVod =
+                    com.vistacore.launcher.iptv.ContentType.MOVIE in authoritativeFor ||
+                        com.vistacore.launcher.iptv.ContentType.SERIES in authoritativeFor
+
+                Log.d(TAG, "Cached ${if (types.isEmpty()) "nothing" else types.joinToString()} " +
+                    "(${liveChannels.size} live, ${movies.size} movies, ${series.size} series)")
 
                 context.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE)
                     .edit()
                     .putLong(KEY_LAST_UPDATE, System.currentTimeMillis())
                     .apply()
-                // Drop preload-derived rows so the next splash rebuilds them
-                // from the freshly-written disk cache. Without this, a
-                // background worker tick that updates the on-disk catalog
-                // is silently masked by stale Movies/Shows/Kids rows held
-                // in ContentCache from the previous splash pass. EPG is
-                // left intact — channel data updating doesn't invalidate
-                // the EPG.
-                com.vistacore.launcher.data.ContentCache.invalidatePreload()
-                // Also invalidate the persisted show-name map. It's keyed
-                // by channel id, so a same-sized refresh whose underlying
-                // titles changed (provider remapped IDs, episode renames,
-                // etc.) would otherwise produce wrong show grouping in
-                // the next splash. Cheap to recompute from the new series
-                // cache on next launch.
-                com.vistacore.launcher.data.ContentCache.deleteShowNameMap(context)
-                Log.d(TAG, "Cached ${liveChannels.size} live, ${movies.size} movies, ${series.size} series")
+                if (touchedVod) {
+                    // Drop preload-derived rows so the next splash rebuilds them
+                    // from the freshly-written disk cache. Without this, a
+                    // background worker tick that updates the on-disk catalog
+                    // is silently masked by stale Movies/Shows/Kids rows held
+                    // in ContentCache from the previous splash pass. EPG is
+                    // left intact — channel data updating doesn't invalidate
+                    // the EPG.
+                    com.vistacore.launcher.data.ContentCache.invalidatePreload()
+                    // Also invalidate the persisted show-name map. It's keyed
+                    // by channel id, so a same-sized refresh whose underlying
+                    // titles changed (provider remapped IDs, episode renames,
+                    // etc.) would otherwise produce wrong show grouping in
+                    // the next splash. Cheap to recompute from the new series
+                    // cache on next launch.
+                    com.vistacore.launcher.data.ContentCache.deleteShowNameMap(context)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to write channel cache", e)
             }
@@ -408,11 +623,39 @@ class ChannelUpdateWorker(
             return Result.success()
         }
         return try {
-            val merged = fetchAllSources(applicationContext)
-            cacheChannels(applicationContext, merged)
-            Log.d(TAG, "Channel update complete: ${merged.size} channels cached")
+            val fetch = fetchGuarded(applicationContext)
+            if (fetch == null) {
+                // Not a failure: a fetch landed inside the cooldown, so the caches are
+                // already as current as this run could make them. Returning retry()
+                // here would rebuild the exact loop the gate exists to break.
+                Log.d(TAG, "Refresh skipped — catalog fetched within the last ${MIN_FETCH_INTERVAL_MS / 60_000}m")
+                return Result.success()
+            }
+            val merged = fetch.channels
+            if (merged.isEmpty()) {
+                // fetchAllSources swallows per-source exceptions and substitutes
+                // emptyList(), so this try block essentially never throws — a totally
+                // unreachable provider used to be reported as success, cacheChannels
+                // correctly refused to write, and nothing ever retried. The user was left
+                // with an empty catalog and a scheduler that thought it had succeeded.
+                Log.w(TAG, "Channel update produced nothing (attempt $runAttemptCount) — retrying")
+                // Release the cooldown armed before the fetch. WorkManager retries
+                // with backoff measured in seconds, well inside MIN_FETCH_INTERVAL_MS,
+                // so leaving it set would make every retry return null and report
+                // success — turning a bounded retry into a silent give-up.
+                clearFetchCooldown(applicationContext)
+                return if (runAttemptCount < MAX_EMPTY_RETRIES) Result.retry() else Result.failure()
+            }
+            // Only rewrite the caches for types we actually managed to fetch. A movies
+            // endpoint that 500s must leave the existing movies cache alone, not replace
+            // it with an empty file.
+            cacheChannels(applicationContext, merged, fetch.succeeded)
+            Log.d(TAG, "Channel update complete: ${merged.size} channels cached (types: ${fetch.succeeded})")
             Result.success()
         } catch (e: Exception) {
+            // Same reasoning as the empty-result path: a retry must be able to
+            // actually re-fetch rather than bounce off its own cooldown.
+            clearFetchCooldown(applicationContext)
             Log.e(TAG, "Channel update failed: ${e.message}")
             Result.retry()
         }

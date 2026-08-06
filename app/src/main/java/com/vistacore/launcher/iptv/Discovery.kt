@@ -357,11 +357,29 @@ object KidsDiscovery {
     fun matchFranchise(item: Channel): Franchise? =
         FRANCHISES.firstOrNull { it.pattern.containsMatchIn(item.name) }
 
+    /**
+     * Every franchise pattern OR'd into one regex. [isKidsItem] only needs to know
+     * WHETHER any franchise matches, not which — and asking that with 31 separate
+     * regexes per item was the dominant cost of Splash preload: over an 80k-movie +
+     * 42k-series catalog that is ~4 million regex evaluations and measured 61 seconds
+     * on the 2 GB box, blowing the 25s preload budget on its own. One combined regex
+     * answers the same question in a single pass. matchFranchise still walks the list
+     * to name the specific franchise, but only for items already known to be kids.
+     *
+     * Each pattern is wrapped in a non-capturing group so alternation cannot let one
+     * franchise's trailing token (e.g. the negative lookahead on "cars") bleed into
+     * the next alternative.
+     */
+    private val ANY_FRANCHISE_RE: Regex by lazy {
+        Regex(FRANCHISES.joinToString("|") { "(?:${it.pattern.pattern})" }, RegexOption.IGNORE_CASE)
+    }
+
     /** Tighter kids classifier. Blocks adult tokens, requires franchise OR allowlist match. */
     fun isKidsItem(item: Channel): Boolean {
         val text = "${item.name} ${item.category}"
         if (BLOCK_RE.containsMatchIn(text)) return false
-        if (matchFranchise(item) != null) return true
+        // Franchise match is on the name only, matching matchFranchise's own scope.
+        if (ANY_FRANCHISE_RE.containsMatchIn(item.name)) return true
         return ALLOW_RE.containsMatchIn(text)
     }
 

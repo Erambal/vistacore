@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    One favourite channel as a square. The outer LinearLayout fills its grid cell
+    (GridLayoutManager sizes the cell to parentWidth/4); SquareFrameLayout forces the
+    art area to a 1:1 box; the name sits beneath it. focusable so the whole tile is one
+    D-pad target, and card_selector paints the focus highlight seniors rely on to see
+    where they are.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_margin="12dp"
+    android:padding="10dp"
+    android:background="@drawable/card_selector"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:clipChildren="false">
+
+    <com.vistacore.launcher.ui.SquareFrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <ImageView
+            android:id="@+id/fav_logo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter"
+            android:padding="18dp"
+            android:contentDescription="@string/home_lane_live" />
+
+        <TextView
+            android:id="@+id/fav_number"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:textSize="15sp"
+            android:textColor="@color/accent_gold"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.05"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp"
+            android:background="#AA000000" />
+    </com.vistacore.launcher.ui.SquareFrameLayout>
+
+    <TextView
+        android:id="@+id/fav_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textSize="19sp"
+        android:textColor="@color/text_primary"
+        android:fontFamily="sans-serif-medium" />
+
+</LinearLayout>

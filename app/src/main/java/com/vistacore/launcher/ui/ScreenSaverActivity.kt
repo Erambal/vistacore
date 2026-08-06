@@ -25,6 +25,8 @@ class ScreenSaverActivity : BaseActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var driftRunnable: Runnable? = null
+    private var driftX: ObjectAnimator? = null
+    private var driftY: ObjectAnimator? = null
 
     // Full-bleed wallpaper; no overscan inset.
     override fun appliesOverscanInsets(): Boolean = false
@@ -32,10 +34,15 @@ class ScreenSaverActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Build the UI programmatically for a clean fullscreen experience
+        // Build the UI programmatically for a clean fullscreen experience.
+        //
+        // Deliberately NOT keepScreenOn: this is the screen saver. Holding the screen
+        // awake here meant a TV left idle overnight never slept — the panel stayed lit
+        // and the whole home screen stayed resident behind this activity, which on a 2 GB
+        // box is exactly the memory that pushes it into swap thrashing. Letting the
+        // system display timeout run is the entire point of a screen saver.
         val root = FrameLayout(this).apply {
             setBackgroundColor(0xFF000000.toInt())
-            keepScreenOn = true
         }
 
         val clockContainer = createClockContainer()
@@ -124,12 +131,16 @@ class ScreenSaverActivity : BaseActivity() {
                     val targetX = random.nextFloat() * maxX
                     val targetY = random.nextFloat() * maxY
 
-                    ObjectAnimator.ofFloat(clockView, "translationX", targetX).apply {
+                    // Kept in fields so onDestroy can cancel them — otherwise a key press
+                    // mid-drift leaves two 20s animators running against a destroyed view.
+                    driftX?.cancel()
+                    driftY?.cancel()
+                    driftX = ObjectAnimator.ofFloat(clockView, "translationX", targetX).apply {
                         duration = 20000
                         interpolator = LinearInterpolator()
                         start()
                     }
-                    ObjectAnimator.ofFloat(clockView, "translationY", targetY).apply {
+                    driftY = ObjectAnimator.ofFloat(clockView, "translationY", targetY).apply {
                         duration = 20000
                         interpolator = LinearInterpolator()
                         start()
@@ -160,5 +171,9 @@ class ScreenSaverActivity : BaseActivity() {
     override fun onDestroy() {
         super.onDestroy()
         driftRunnable?.let { handler.removeCallbacks(it) }
+        driftX?.cancel()
+        driftY?.cancel()
+        driftX = null
+        driftY = null
     }
 }

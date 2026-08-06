@@ -46,7 +46,38 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
     private var controlsHidden = false
     private val handler = Handler(Looper.getMainLooper())
     private val hideControlsRunnable = Runnable { hideControls() }
-    private val HIDE_DELAY_MS = 6000L
+
+    /**
+     * How long the top bar + ribbon stay up with no input.
+     *
+     * 6s was too aggressive: hideControls() sets those views GONE without checking
+     * whether one of them holds focus, and Android drops focus when the focused view
+     * disappears — so a user reading the Movies/Shows/Settings buttons would find the
+     * whole bar vanish and their cursor gone. See also the focus guard in hideControls().
+     */
+    private val HIDE_DELAY_MS = 12000L
+
+    /**
+     * This layout is the home screen, but it extends the Live TV base — which pins
+     * FLAG_KEEP_SCREEN_ON for passive viewing. The other two home layouts arm a screen
+     * saver; this one never did, so the Settings screen-saver slider silently did nothing
+     * here and the panel stayed lit indefinitely with a live stream decoding behind it.
+     */
+    private var idleRunnable: Runnable? = null
+
+    private fun resetIdleTimer() {
+        idleRunnable?.let { handler.removeCallbacks(it) }
+        val timeout = prefs.screenSaverTimeout
+        if (timeout <= 0) return
+        idleRunnable = Runnable {
+            // Release the decoder before handing over — no point holding a hardware
+            // decoder and its buffer while a black screen saver is showing.
+            player?.pause()
+            startActivity(Intent(this, ScreenSaverActivity::class.java))
+        }
+        handler.postDelayed(idleRunnable!!, timeout * 60 * 1000L)
+    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,7 +96,7 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
         infoOverlay = findViewById(R.id.tvon_info)
         buffering = findViewById(R.id.tvon_buffering)
 
-        ribbon.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        ribbon.layoutManager = RibbonLayoutManager(this)
 
         findViewById<Button>(R.id.tvon_btn_search).setOnClickListener {
             startActivity(Intent(this, VoiceSearchActivity::class.java))
@@ -91,13 +122,21 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
         }
 
         setupPlayer(playerView)
-        // Show a buffering spinner over the video so a slow stream doesn't look frozen.
-        player?.addListener(object : Player.Listener {
+        loadChannels()
+    }
+
+    /**
+     * Show a buffering spinner over the video so a slow stream doesn't look
+     * frozen. Attached here (not in onCreate) so it's re-wired every time the
+     * base class rebuilds the player after a fullscreen handoff or pause/resume
+     * — otherwise the spinner silently stops working after the first rebuild.
+     */
+    override fun onPlayerBuilt(player: androidx.media3.exoplayer.ExoPlayer) {
+        player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering.visibility = if (state == Player.STATE_BUFFERING) View.VISIBLE else View.GONE
             }
         })
-        loadChannels()
     }
 
     // --- Auto-hiding on-screen controls (cable-box style OSD) ---
@@ -117,6 +156,16 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
 
     private fun hideControls() {
         handler.removeCallbacks(hideControlsRunnable)
+
+        // Never hide the thing the user is currently on. Setting a focused view GONE makes
+        // Android drop focus entirely, which left Movies/Shows/Apps/Settings unreachable
+        // for anyone who paused to read them — the cursor simply disappeared. If focus is
+        // up here, the user is still working; re-arm and try again later.
+        if (topbar.hasFocus() || controls.hasFocus()) {
+            handler.postDelayed(hideControlsRunnable, HIDE_DELAY_MS)
+            return
+        }
+
         controlsHidden = true
         topbar.visibility = View.GONE
         controls.visibility = View.GONE
@@ -181,6 +230,12 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
         currentChannel?.let { updateNowPlaying(it) }
     }
 
+    // This screen is the one most likely to sit untouched for hours, so the
+    // now-playing line advancing on its own matters most here.
+    override fun onEpgTick() {
+        currentChannel?.let { updateNowPlaying(it) }
+    }
+
     override fun onLoadingStateChanged(loading: Boolean) {
         loadingView.visibility = if (loading) View.VISIBLE else View.GONE
     }
@@ -191,7 +246,7 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
             onChannelMenu = { ch -> showChannelContextMenu(ch) },
             onClick = { ch -> if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch) }
         )
-        ribbon.adapter = ribbonAdapter
+        ribbon.setAdapterPreservingFocus(ribbonAdapter)
         if (displayedChannels.isEmpty()) {
             noResults.visibility = View.VISIBLE
             ribbon.visibility = View.GONE
@@ -210,6 +265,7 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
+            resetIdleTimer()
             if (controlsHidden) {
                 // First press just brings the OSD back (don't also move focus).
                 if (isRevealKey(event.keyCode)) {
@@ -226,7 +282,9 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
         when (keyCode) {
             KeyEvent.KEYCODE_BACK -> {
                 // It's the home screen — Back should not silently drop to the
-                // system launcher. Require a confirming second press.
+                // system launcher. When we ARE the launcher there is no target at
+                // all, so Back does nothing; otherwise require a confirming press.
+                if (isDefaultLauncher()) return true
                 if (backPressedOnce) { finish(); return true }
                 backPressedOnce = true
                 Toast.makeText(this, R.string.home_press_back_again, Toast.LENGTH_LONG).show()
@@ -235,8 +293,17 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
             }
             KeyEvent.KEYCODE_DPAD_UP -> {
                 val focused = currentFocus
-                val nothingAbove = focused == null || focused.focusSearch(View.FOCUS_UP) == null
-                if (nothingAbove) {
+                if (focused == null) {
+                    // Focus was lost (we just resumed from the player). Don't read a null
+                    // focus as "nothing above me, so go fullscreen" — that re-opened the
+                    // channel the user had just backed out of. Put the cursor back on the
+                    // ribbon and let the next press navigate normally.
+                    focusRibbonOnCurrent()
+                    return true
+                }
+                // Genuinely at the top with a real focused view and nothing above it:
+                // this is the "push up to watch" gesture.
+                if (focused.focusSearch(View.FOCUS_UP) == null) {
                     currentChannel?.let { goFullScreen(it) }
                     return true
                 }
@@ -259,6 +326,30 @@ class HomeTvTurnsOnActivity : BaseLiveTVActivity() {
             .setTitle(R.string.section_all_apps)
             .setItems(names) { _, which -> AppShortcuts.launch(this, apps[which]) }
             .show()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resetIdleTimer()
+        // Returning from the fullscreen player (or a browser) leaves this window with
+        // nothing focused — the player took focus and nothing hands it back. With focus
+        // null, the UP handler below treats "no view above" as "watch fullscreen", so the
+        // very next UP press bounces the user straight back into the channel they just
+        // left. Restore the ribbon highlight so focus is never null and the cursor is
+        // visible again. Guarded on hasFocus() so we never yank focus off a view the user
+        // is already on (e.g. a returning browser that restored its own focus).
+        ribbon.post { if (!hasWindowFocusOnAControl()) focusRibbonOnCurrent() }
+    }
+
+    /** True when focus is already on one of our controls, so onResume must not move it. */
+    private fun hasWindowFocusOnAControl(): Boolean =
+        ribbon.hasFocus() || topbar.hasFocus() || controls.hasFocus()
+
+    override fun onPause() {
+        super.onPause()
+        // Don't let the idle timer fire while we're off-screen — it would launch the
+        // screen saver on top of whatever the user actually opened.
+        idleRunnable?.let { handler.removeCallbacks(it) }
     }
 
     override fun onDestroy() {

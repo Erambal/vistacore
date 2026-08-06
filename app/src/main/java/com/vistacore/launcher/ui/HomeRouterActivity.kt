@@ -21,6 +21,7 @@ class HomeRouterActivity : AppCompatActivity() {
         val target: Class<*> = when (prefs.homeLayout) {
             PrefsManager.HOME_TV_TURNS_ON -> HomeTvTurnsOnActivity::class.java
             PrefsManager.HOME_SIMPLE_ROWS -> HomeSimpleRowsActivity::class.java
+            PrefsManager.HOME_FAVORITES_GRID -> HomeFavoritesGridActivity::class.java
             // Classic is the default and the fallback for any retired/unknown
             // value (e.g. an install that had three_lanes/spotlight saved).
             else -> MainActivity::class.java
@@ -28,7 +29,17 @@ class HomeRouterActivity : AppCompatActivity() {
 
         val forward = Intent(this, target).apply {
             intent.extras?.let { putExtras(it) }
-            addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            // CLEAR_TOP + SINGLE_TOP: reuse the home activity if it is already in the
+            // task and drop anything stacked above it, instead of pushing a second
+            // instance. Every HOME press routes through here, so without these flags a
+            // long-running box accumulates home activities (each holding its adapters,
+            // wallpaper bitmap and — for the TV Turns On layout — an ExoPlayer) until
+            // memory pressure starts killing things.
+            addFlags(
+                Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
         }
         startActivity(forward)
         finish()

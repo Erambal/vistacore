@@ -62,6 +62,9 @@ class IPTVPlayerActivity : BaseActivity() {
     override fun appliesOverscanInsets(): Boolean = false
 
     companion object {
+        /** Minimum gap between channel changes, to survive a held D-pad key. */
+        private const val CHANNEL_SURF_DEBOUNCE_MS = 350L
+
         const val EXTRA_STREAM_URL = "stream_url"
         const val EXTRA_CHANNEL_NAME = "channel_name"
         const val EXTRA_CHANNEL_LOGO = "channel_logo"
@@ -94,6 +97,22 @@ class IPTVPlayerActivity : BaseActivity() {
 
     private var rateLimitRetries = 0
     private var contentIncompatible = false
+
+    /**
+     * Self-healing driver for LIVE streams — reconnects on a stall/drop/PTS
+     * discontinuity instead of dead-ending on the HLS/DASH strategy fallback
+     * (which never applies to a raw .ts feed) or the error screen. Gated to
+     * live: VOD keeps the strategy-fallback + resume behavior.
+     */
+    private val liveRecovery by lazy {
+        LiveStreamRecovery(
+            handler = handler,
+            player = { player },
+            reconnect = { player?.let { playStream(it, streamUrl) } },
+            onGiveUp = { showError() },
+            tag = FREEZE_TAG,
+        )
+    }
 
     private lateinit var binding: ActivityIptvPlayerBinding
     private var player: ExoPlayer? = null
@@ -195,7 +214,11 @@ class IPTVPlayerActivity : BaseActivity() {
         binding.btnRetry.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
         binding.btnOpenExternal.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
 
-        loadChannelList()
+        // Live only. The channel list exists for channel up/down and the number pad,
+        // neither of which applies to a movie — and loading it JSON-parses the whole
+        // gzipped channel cache and then retains the LIVE subset in memory for the
+        // entire film. Pure waste on a 2 GB box.
+        if (!isVodMode) loadChannelList()
         setupPlayer()
         if (isVodMode) {
             setupScrubBar()
@@ -510,6 +533,11 @@ class IPTVPlayerActivity : BaseActivity() {
         currentStrategyIndex = 0
         rateLimitRetries = 0
         contentIncompatible = false
+        lastError = null
+        // Leaving the error state deliberately — re-arm showLoading().
+        errorShown = false
+        liveRecovery.reset()
+        if (!isVodMode) liveRecovery.start()
         binding.playerError.visibility = View.GONE
         player?.release()
         player = null
@@ -517,6 +545,10 @@ class IPTVPlayerActivity : BaseActivity() {
     }
 
     private fun setupPlayer() {
+        // Drop any previous heartbeat before allocating a new one below. setupPlayer runs
+        // on every retry and now on every resume, and each call used to post a fresh
+        // self-reposting 2s runnable without cancelling the old one.
+        freezeDiagRunnable?.let { handler.removeCallbacks(it) }
         showLoading(true)
 
         val selector = DefaultTrackSelector(this).also { ts ->
@@ -609,6 +641,7 @@ class IPTVPlayerActivity : BaseActivity() {
                         Player.STATE_READY -> {
                             showLoading(false)
                             rateLimitRetries = 0
+                            liveRecovery.onHealthy()
                             // Resume from saved position (only once)
                             if (!hasResumed) {
                                 hasResumed = true
@@ -689,6 +722,16 @@ class IPTVPlayerActivity : BaseActivity() {
                         }, RATE_LIMIT_RETRY_DELAY_MS)
                         return
                     }
+
+                    // Live feeds stall / drop / splice — reconnect the same
+                    // stream (with backoff) instead of falling through to the
+                    // HLS/DASH strategies, which don't apply to a raw .ts and
+                    // just land on the error screen. VOD keeps strategy fallback.
+                    if (!isVodMode && liveRecovery.onError(error)) {
+                        showLoading(true)
+                        return
+                    }
+
                     showLoading(false)
                     tryNextStrategy(exo)
                 }
@@ -736,13 +779,23 @@ class IPTVPlayerActivity : BaseActivity() {
                     } else {
                         if (stalls > 0) Log.d(FREEZE_TAG, "recovered after $stalls stall ticks")
                         stalls = 0
-                        Log.d(FREEZE_TAG, "hb pos=${pos}ms state=${p.playbackState} playing=${p.isPlaying} buffered=${p.bufferedPercentage}%")
+                        // Heartbeat is debug-only. The stall warning above always logs
+                        // (it is rare and diagnostic); this fires every 2s for the life
+                        // of playback and has no place in a release build.
+                        if (com.vistacore.launcher.BuildConfig.DEBUG) {
+                            Log.d(FREEZE_TAG, "hb pos=${pos}ms state=${p.playbackState} playing=${p.isPlaying} buffered=${p.bufferedPercentage}%")
+                        }
                     }
                     lastPos = pos
                     handler.postDelayed(this, 2_000)
                 }
             }
             handler.postDelayed(freezeDiagRunnable!!, 2_000)
+
+            // Live: run the self-healing watchdog that reconnects a frozen or
+            // stuck-buffering stream. VOD is left alone (a slow-buffering file
+            // must not be yanked back to the start).
+            if (!isVodMode) liveRecovery.start()
 
             playStream(exo, streamUrl)
         }
@@ -816,9 +869,17 @@ class IPTVPlayerActivity : BaseActivity() {
             binding.overlayChannelNumber.visibility = View.GONE
         }
         binding.overlayChannelName.text = channelName
+
+        // Cancel any fade queued by a previous channel change and reset alpha. Without
+        // this, changing channel twice in quick succession let the first change's fade
+        // fire against the second overlay — the new channel's name appeared and then
+        // vanished almost immediately, exactly when the user most needed to read it.
+        hideOverlayRunnable?.let { handler.removeCallbacks(it) }
+        binding.channelInfoOverlay.animate().cancel()
+        binding.channelInfoOverlay.alpha = 1f
         binding.channelInfoOverlay.visibility = View.VISIBLE
 
-        handler.postDelayed({
+        hideOverlayRunnable = Runnable {
             binding.channelInfoOverlay.animate()
                 .alpha(0f)
                 .setDuration(500)
@@ -827,10 +888,24 @@ class IPTVPlayerActivity : BaseActivity() {
                     binding.channelInfoOverlay.alpha = 1f
                 }
                 .start()
-        }, OVERLAY_DISPLAY_MS)
+        }
+        handler.postDelayed(hideOverlayRunnable!!, OVERLAY_DISPLAY_MS)
     }
 
+    private var hideOverlayRunnable: Runnable? = null
+
+    /**
+     * Set while the error screen (with its focused Retry button) is up. Guards against
+     * a late buffering event replacing an actionable error with a spinner that never
+     * resolves: after recovery gives up, the player is still attached to a starving
+     * source and will happily emit STATE_BUFFERING again, which used to call
+     * showLoading(true) and wipe the only control the user had.
+     */
+    private var errorShown = false
+
     private fun showLoading(show: Boolean) {
+        // Never paint over a live error screen.
+        if (errorShown) return
         binding.playerLoading.visibility = if (show) View.VISIBLE else View.GONE
         binding.playerError.visibility = View.GONE
     }
@@ -838,6 +913,7 @@ class IPTVPlayerActivity : BaseActivity() {
     private var lastError: PlaybackException? = null
 
     private fun showError() {
+        errorShown = true
         binding.playerLoading.visibility = View.GONE
         binding.playerError.visibility = View.VISIBLE
 
@@ -981,9 +1057,15 @@ class IPTVPlayerActivity : BaseActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (player?.isPlaying == true) {
-            enterPipMode()
-        }
+        // Deliberately NOT auto-entering PiP.
+        //
+        // VistaCore is itself the HOME app, so "leaving" almost always means the user
+        // pressed HOME to get *away* from this screen — usually because the stream is
+        // misbehaving. Auto-PiP pinned a control-less video window over the launcher and
+        // kept the decoder, the load-control buffer and the Wi-Fi lock alive indefinitely,
+        // with no obvious way for a non-technical user to close it.
+        //
+        // PiP is still available deliberately via the colour-button handler.
     }
 
     override fun onPictureInPictureModeChanged(
@@ -994,11 +1076,12 @@ class IPTVPlayerActivity : BaseActivity() {
         isInPipMode = isInPictureInPictureMode
 
         if (isInPipMode) {
-            binding.playerView.useController = false
             binding.channelInfoOverlay.visibility = View.GONE
-        } else {
-            binding.playerView.useController = true
         }
+        // media3's built-in controller stays off in both directions — the layout declares
+        // use_controller="false" because this activity supplies its own overlay, and
+        // re-enabling it on PiP exit left two controllers fighting for the same D-pad keys.
+        binding.playerView.useController = false
     }
 
     // --- Audio / Subtitle Track Pickers ---
@@ -1564,18 +1647,13 @@ class IPTVPlayerActivity : BaseActivity() {
         // Live TV mode key handling
         return when (keyCode) {
             KeyEvent.KEYCODE_BACK -> {
-                if (controlsVisible) {
-                    hideControls()
-                    true
-                } else if (!backPressedOnce) {
-                    backPressedOnce = true
-                    Toast.makeText(this, "Press back again to exit", Toast.LENGTH_LONG).show()
-                    handler.postDelayed({ backPressedOnce = false }, 3000)
-                    true
-                } else {
-                    finish()
-                    true
-                }
+                // Single Back leaves fullscreen, matching VOD mode and matching what Back
+                // does everywhere else. The old double-press guard made the first press
+                // appear to do nothing except flash a toast over moving video — easy to
+                // miss, and it read as an unresponsive remote. The browse screen behind
+                // is one press away, so an accidental exit costs nothing.
+                if (controlsVisible) hideControls() else finish()
+                true
             }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                 if (controlsVisible) {
@@ -1594,7 +1672,7 @@ class IPTVPlayerActivity : BaseActivity() {
             KeyEvent.KEYCODE_DPAD_UP -> {
                 if (controlsVisible) {
                     hideControls()
-                } else {
+                } else if (!isChannelSurfRepeat(event)) {
                     switchToNextChannel()
                 }
                 true
@@ -1602,7 +1680,7 @@ class IPTVPlayerActivity : BaseActivity() {
             KeyEvent.KEYCODE_DPAD_DOWN -> {
                 if (controlsVisible) {
                     hideControls()
-                } else {
+                } else if (!isChannelSurfRepeat(event)) {
                     switchToPreviousChannel()
                 }
                 true
@@ -1633,6 +1711,16 @@ class IPTVPlayerActivity : BaseActivity() {
         channelId = id
         rateLimitRetries = 0
         contentIncompatible = false
+        // Clear the previous channel's failure state. Without this, a stale lastError
+        // from a channel that 404'd could be attributed to the new one — including
+        // getting the new, healthy stream permanently blocklisted by DeadStreamManager.
+        lastError = null
+        errorShown = false
+        liveRecovery.reset()
+        // reset() only zeroes the counters; it does not restart a watchdog that already
+        // stopped. Without this, one channel exhausting its retries left every subsequent
+        // channel unprotected for the rest of the session.
+        if (!isVodMode) liveRecovery.start()
 
         if (id.isNotBlank()) recentChannels.addRecent(id)
 
@@ -1649,6 +1737,31 @@ class IPTVPlayerActivity : BaseActivity() {
     // brief home/back/dialog cycle.
     private var wasPlayingBeforeBackground: Boolean = true
 
+    private var lastChannelSurfMs = 0L
+
+    /**
+     * Swallow auto-repeat and rapid-fire channel changes.
+     *
+     * Holding DPAD_UP is a natural way to move several channels at once — there is no
+     * channel list in fullscreen. Android auto-repeats every ~20-50ms after the initial
+     * delay, so a two-second hold fired dozens of `switchStream` calls, each tearing down
+     * and re-preparing a stream. That is a fast route to being rate-limited (or banned) by
+     * the IPTV provider, and the picture never settles.
+     */
+    private fun isChannelSurfRepeat(event: KeyEvent?): Boolean {
+        if ((event?.repeatCount ?: 0) > 0) return true
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastChannelSurfMs < CHANNEL_SURF_DEBOUNCE_MS) return true
+        lastChannelSurfMs = now
+        return false
+    }
+
+    /** True when onPause released the player and onResume must rebuild it. */
+    private var needsPlayerRebuild = false
+
+    /** Whether the content-filter poll was running when we went off-screen. */
+    private var filterLoopWasRunning = false
+
     override fun onPause() {
         super.onPause()
         // Capture the user's intent (playWhenReady reflects user pause/play
@@ -1656,11 +1769,41 @@ class IPTVPlayerActivity : BaseActivity() {
         // not a user pause). Save position, then pause for lifecycle.
         wasPlayingBeforeBackground = player?.playWhenReady ?: true
         saveCurrentPosition()
-        if (!isInPipMode) player?.pause()
-        if (!isInPipMode) releasePlaybackWifiLock()
+
+        if (isInPipMode) return
+
+        releasePlaybackWifiLock()
+
+        // Stop everything that would otherwise keep running off-screen:
+        //
+        //  - liveRecovery kept reconnecting and *resuming playback* in the background,
+        //    so a user who pressed HOME to escape a bad stream had it start up again
+        //    behind the home screen.
+        //  - the 2s freeze-diagnostic heartbeat and the 150ms content-filter poll both
+        //    re-post themselves forever.
+        //  - the ExoPlayer itself pins a hardware decoder and its whole load-control
+        //    buffer. On a 2 GB box that is the memory that pushes it into swap.
+        //
+        // Mirrors what BaseLiveTVActivity already does in its own onPause. Rebuilt in
+        // onResume; setupPlayer() restores the saved position from watchHistory.
+        liveRecovery.stop()
+        freezeDiagRunnable?.let { handler.removeCallbacks(it) }
+        filterLoopWasRunning = filterEnabled && activeFilter != null
+        handler.removeCallbacks(filterCheckRunnable)
+
+        if (!isFinishing && player != null) {
+            player?.release()
+            player = null
+            needsPlayerRebuild = true
+        }
     }
 
     private fun saveCurrentPosition() {
+        // Live channels have no meaningful resume point. Most report no duration so they
+        // never got here, but timeshift/catch-up feeds do — and saving those put live
+        // channels into Continue Watching and made a rebuilt player seek into the middle
+        // of the buffer instead of resuming at the live edge.
+        if (!isVodMode) return
         val exo = player ?: return
         val pos = exo.currentPosition
         val dur = exo.duration
@@ -1673,6 +1816,19 @@ class IPTVPlayerActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         acquirePlaybackWifiLock()
+
+        if (needsPlayerRebuild) {
+            // onPause released the decoder and buffer. Rebuild; setupPlayer() seeks back
+            // to the saved position and restarts liveRecovery for live streams.
+            needsPlayerRebuild = false
+            setupPlayer()
+            if (filterLoopWasRunning) {
+                filterLoopWasRunning = false
+                handler.post(filterCheckRunnable)
+            }
+            return
+        }
+
         // Only auto-resume if the user wasn't paused at background time.
         // Otherwise a quick home-and-back cycle (or any incidental pause
         // — a system dialog, the screen saver warning) would override an
@@ -1682,6 +1838,7 @@ class IPTVPlayerActivity : BaseActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        liveRecovery.stop()
         scope.cancel()
         handler.removeCallbacksAndMessages(null)
         numberPad?.destroy()

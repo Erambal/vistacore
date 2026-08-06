@@ -26,7 +26,20 @@ class ChannelNumberPad(
     private val onChannelSelected: (Channel) -> Unit
 ) {
     companion object {
-        private const val AUTO_TUNE_DELAY_MS = 2500L
+        /**
+         * Idle time before the typed number tunes on its own.
+         *
+         * 2.5s was too short: an older user hunting for the next digit on a small remote
+         * routinely takes longer, and the timer would fire mid-entry — tuning to channel
+         * "2" while they were still reaching for the "0" of 207, then starting a fresh
+         * entry with the digits they pressed next. Pressing OK still tunes immediately,
+         * so fast users are not slowed down by the longer window.
+         */
+        private const val AUTO_TUNE_DELAY_MS = 6000L
+
+        /** How long the "no such channel" message stays up before the overlay closes. */
+        private const val NO_MATCH_MESSAGE_MS = 2000L
+
         private const val MAX_DIGITS = 4
     }
 
@@ -159,14 +172,20 @@ class ChannelNumberPad(
     }
 
     private fun tuneToChannel() {
-        val num = currentInput.toString().toIntOrNull()
+        val typed = currentInput.toString()
+        val num = typed.toIntOrNull()
         val match = if (num != null) channels.find { it.number == num } else null
 
         if (match != null) {
             onChannelSelected(match)
+            hideOverlay()
+            return
         }
 
-        hideOverlay()
+        // No such channel. Previously the overlay just vanished and nothing happened,
+        // which reads as "the remote is broken" — say what went wrong, then close.
+        channelPreview?.text = context.getString(R.string.number_pad_no_channel, typed)
+        handler.postDelayed({ hideOverlay() }, NO_MATCH_MESSAGE_MS)
     }
 
     private fun hideOverlay() {

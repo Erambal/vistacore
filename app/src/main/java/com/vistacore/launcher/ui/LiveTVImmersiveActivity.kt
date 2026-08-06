@@ -57,7 +57,7 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
         loadingView = findViewById(R.id.imm_loading)
         noResultsText = findViewById(R.id.imm_no_results_text)
 
-        channelRibbon.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        channelRibbon.layoutManager = RibbonLayoutManager(this)
 
         channelSearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -115,6 +115,10 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
         currentChannel?.let { updateNowPlaying(it) }
     }
 
+    override fun onEpgTick() {
+        currentChannel?.let { updateNowPlaying(it) }
+    }
+
     override fun onLoadingStateChanged(loading: Boolean) {
         loadingView.visibility = if (loading) View.VISIBLE else View.GONE
     }
@@ -127,7 +131,7 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }
         )
-        channelRibbon.adapter = ribbonAdapter
+        channelRibbon.setAdapterPreservingFocus(ribbonAdapter)
 
         val q = channelSearch.text?.toString()?.trim().orEmpty()
         if (displayedChannels.isEmpty() && q.isNotEmpty()) {
@@ -155,14 +159,22 @@ class LiveTVImmersiveActivity : BaseLiveTVActivity() {
                 // are navigated normally. Once focus reaches the topmost row of
                 // controls, the next UP press triggers fullscreen.
                 val focused = currentFocus
-                val nothingAbove = focused == null || focused.focusSearch(View.FOCUS_UP) == null
-                if (nothingAbove) {
+                // `focused == null` used to count as "nothing above", so any moment where
+                // focus had been dropped (an adapter swap, a dismissed overlay) turned a
+                // harmless UP press into a silent jump to fullscreen. Treat no-focus as a
+                // reason to restore focus, not as a gesture.
+                if (focused == null) {
+                    channelRibbon.requestFocus()
+                    true
+                } else if (focused.focusSearch(View.FOCUS_UP) == null) {
                     currentChannel?.let { goFullScreen(it) }
                     true
                 } else super.onKeyDown(keyCode, event)
             }
             KeyEvent.KEYCODE_MENU -> {
-                showNumberPadOverlay()
+                // Android repeats ACTION_DOWN while a key is held; without this a held
+                // MENU stacked several number-pad dialogs, each needing its own Back.
+                if ((event?.repeatCount ?: 0) == 0) showNumberPadOverlay()
                 true
             }
             else -> super.onKeyDown(keyCode, event)

@@ -27,6 +27,29 @@ object ContentCache {
     var epgData: EpgData? = null
     var epgLoadTime: Long = 0
 
+    /** How long a loaded guide stays usable before it should be refetched. */
+    const val EPG_TTL_MS = 30 * 60 * 1000L
+
+    /**
+     * Hard ceiling on serving a stale guide when a refresh fails. Past this we'd rather
+     * show nothing than yesterday's listings — a wrong "now playing" is worse than a blank
+     * one, especially for live sports.
+     */
+    const val EPG_MAX_STALE_MS = 6 * 60 * 60 * 1000L
+
+    val epgAgeMs: Long
+        get() = if (epgLoadTime <= 0L) Long.MAX_VALUE else System.currentTimeMillis() - epgLoadTime
+
+    /** Guide is present and within its normal TTL — safe to use without refetching. */
+    fun isEpgFresh(): Boolean = epgData != null && epgAgeMs < EPG_TTL_MS
+
+    /**
+     * Guide is old but still worth showing as a fallback when a refresh fails.
+     * A launcher process can stay resident for days, so age must be checked explicitly —
+     * a non-null `epgData` says nothing about whether it's current.
+     */
+    fun epgUsableAsFallback(): EpgData? = epgData?.takeIf { epgAgeMs < EPG_MAX_STALE_MS }
+
     fun clear() {
         invalidatePreload()
         epgData = null

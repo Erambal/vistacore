@@ -15,9 +15,33 @@ import kotlinx.coroutines.*
 
 class SetupActivity : BaseActivity() {
 
+    companion object {
+        /** Ceiling on the first-run catalog fetch. Matches SplashActivity's budget. */
+        private const val SETUP_FETCH_TIMEOUT_MS = 45_000L
+    }
+
     private lateinit var binding: ActivitySetupBinding
     private lateinit var prefs: PrefsManager
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    /**
+     * Back on the setup wizard used to finish the activity, emptying the HOME task — the
+     * system then re-fired the HOME intent, Splash saw setup was still incomplete and
+     * launched setup again. An endless Splash→Setup loop with no way out. Consume Back
+     * instead; "Skip for Now" is the deliberate exit.
+     */
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+            Toast.makeText(
+                this,
+                "Finish setup, or choose \"Skip for Now\" to do this later",
+                Toast.LENGTH_LONG
+            ).show()
+            binding.setupBtnSkip.requestFocus()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,7 +120,20 @@ class SetupActivity : BaseActivity() {
         hadConfigBefore = hasConfigNow
     }
 
+    /** A fetch is in flight — used instead of disabling (and de-focusing) the buttons. */
+    private var isConnecting = false
+
+    private fun endConnecting() {
+        isConnecting = false
+        binding.setupBtnConnect.text = getString(R.string.setup_connect)
+        binding.setupProgress.visibility = View.GONE
+        binding.setupBtnConnect.isEnabled = true
+        binding.setupBtnSkip.isEnabled = true
+    }
+
     private fun startSetup() {
+        if (isConnecting) return // ignore repeat presses instead of disabling the button
+
         // Save credentials
         val isM3u = binding.setupRadioM3u.isChecked
         if (isM3u) {
@@ -120,9 +157,12 @@ class SetupActivity : BaseActivity() {
         }
         prefs.epgUrl = binding.setupEpgUrl.text.toString().trim()
 
-        // Disable inputs
-        binding.setupBtnConnect.isEnabled = false
-        binding.setupBtnSkip.isEnabled = false
+        // Keep the buttons focusable while working. Disabling the button that currently
+        // holds focus makes Android drop focus and re-assign it to the first control in
+        // the ScrollView, which scrolls the progress text off-screen and leaves the user
+        // looking at the top of the form with no idea anything is happening.
+        isConnecting = true
+        binding.setupBtnConnect.text = getString(R.string.setup_connecting)
         binding.setupProgress.visibility = View.VISIBLE
         binding.setupStatus.visibility = View.VISIBLE
 
@@ -139,8 +179,18 @@ class SetupActivity : BaseActivity() {
                 // this, the first-run catalog differs from every later
                 // refresh until the next worker tick corrects it.
                 updateProgress("Loading content…", 30)
-                val allChannels = withContext(Dispatchers.IO) {
-                    ChannelUpdateWorker.fetchAllSources(this@SetupActivity)
+                // Bounded, mirroring SplashActivity's budget. A wrong hostname or a
+                // black-holed server would otherwise leave first-run sitting on a
+                // spinner forever with both buttons dead.
+                val allChannels = withTimeoutOrNull(SETUP_FETCH_TIMEOUT_MS) {
+                    withContext(Dispatchers.IO) {
+                        ChannelUpdateWorker.fetchAllSources(this@SetupActivity)
+                    }
+                } ?: run {
+                    updateProgress("Server didn't respond. Check the address and try again.", 0)
+                    endConnecting()
+                    binding.setupBtnConnect.requestFocus()
+                    return@launch
                 }
 
                 val live = allChannels.count { it.contentType == ContentType.LIVE }
@@ -148,9 +198,16 @@ class SetupActivity : BaseActivity() {
                 val series = allChannels.count { it.contentType == ContentType.SERIES }
 
                 if (live == 0 && movies == 0 && series == 0) {
-                    updateProgress("No channels found. Check your URL.", 0)
-                    binding.setupBtnConnect.isEnabled = true
-                    binding.setupBtnSkip.isEnabled = true
+                    updateProgress("No channels found. Check your URL and press Connect again.", 0)
+                    endConnecting()
+                    // Mirror the error path: put focus somewhere actionable, otherwise
+                    // this branch left the screen with nothing focused at all.
+                    binding.setupBtnConnect.requestFocus()
+                    Toast.makeText(
+                        this@SetupActivity,
+                        "No channels found — check your details and try again",
+                        Toast.LENGTH_LONG
+                    ).show()
                     return@launch
                 }
 
@@ -191,8 +248,7 @@ class SetupActivity : BaseActivity() {
             } catch (e: Exception) {
                 val detail = e.cause?.message ?: e.message ?: "Unknown error"
                 updateProgress("Connection failed: $detail", 0)
-                binding.setupBtnConnect.isEnabled = true
-                binding.setupBtnSkip.isEnabled = true
+                endConnecting()
                 // Focus the Connect button so seniors know to press it again
                 binding.setupBtnConnect.requestFocus()
                 Toast.makeText(this@SetupActivity,

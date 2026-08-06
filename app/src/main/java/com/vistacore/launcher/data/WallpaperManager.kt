@@ -19,6 +19,7 @@ import java.io.FileOutputStream
 class WallpaperManager(private val context: Context) {
 
     companion object {
+        private const val TAG = "WallpaperManager"
         private const val PREFS_NAME = "vistacore_wallpaper"
         private const val KEY_WALLPAPER_TYPE = "wallpaper_type"
         private const val KEY_WALLPAPER_PRESET = "wallpaper_preset"
@@ -30,6 +31,25 @@ class WallpaperManager(private val context: Context) {
         const val TYPE_PRESET = 0
         const val TYPE_CUSTOM = 1
         const val TYPE_IMAGE = 2
+
+        /**
+         * Largest power-of-two subsample that still fully covers the target box.
+         * BitmapFactory only honours powers of two, so this returns the biggest one
+         * that does not undershoot 1920x1080 — undershooting would upscale and look
+         * soft on a TV.
+         *
+         * On the companion (not the instance) so it is testable without a Context:
+         * this arithmetic is what stands between the launcher and a 160 MB
+         * allocation, and it should not be verified only by reading it.
+         */
+        internal fun sampleSizeFor(width: Int, height: Int, targetW: Int, targetH: Int): Int {
+            if (width <= 0 || height <= 0 || targetW <= 0 || targetH <= 0) return 1
+            var sample = 1
+            while (width / (sample * 2) >= targetW && height / (sample * 2) >= targetH) {
+                sample *= 2
+            }
+            return sample
+        }
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -117,6 +137,10 @@ class WallpaperManager(private val context: Context) {
      * Apply the current wallpaper to a view.
      */
     fun applyWallpaper(rootView: View) {
+        // Kept deliberately: which branch runs decides whether this screen costs a
+        // few hundred bytes (gradient) or a multi-megabyte bitmap decode, and that
+        // is not knowable from outside the app on a non-debuggable release build.
+        android.util.Log.d(TAG, "applyWallpaper type=$wallpaperType imagePreset=$imagePresetIndex")
         when (wallpaperType) {
             TYPE_PRESET -> {
                 val preset = presets.getOrElse(presetIndex) { presets[0] }
@@ -158,17 +182,51 @@ class WallpaperManager(private val context: Context) {
 
     /**
      * Load a bitmap from the assets folder, scaled to TV resolution.
+     *
+     * Decodes in two passes. The shipped assets are full-resolution stock photos —
+     * sunflower.jpg is 8192x5122, which as ARGB_8888 is a *160 MB single native
+     * allocation* on a box with 1.4 GB of RAM. The old one-pass decodeStream did
+     * exactly that, then handed the result to scaleBitmap, which allocated the
+     * 1920x1080 copy while the giant source was still live (~168 MB peak) and left
+     * the source for the GC. Because applyWallpaper runs on every MainActivity
+     * onResume, that spike recurred for the whole process lifetime and is what grew
+     * the native heap arena to ~297 MB — of which 252 MB then sat free-but-mapped
+     * and got swapped to zram.
+     *
+     * RGB_565 because these are opaque photos rendered behind a dim scrim
+     * (applyWallpaper sets a foreground overlay), so the alpha channel is unused and
+     * the banding is invisible at TV viewing distance. Halves the result again.
      */
     fun loadAssetBitmap(assetPath: String): Bitmap? {
         return try {
-            val inputStream = context.assets.open(assetPath)
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream.close()
-            if (bitmap != null) scaleBitmap(bitmap, 1920, 1080) else null
-        } catch (_: Exception) {
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.assets.open(assetPath).use { BitmapFactory.decodeStream(it, null, opts) }
+            if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
+
+            opts.inSampleSize = sampleSizeFor(opts.outWidth, opts.outHeight, 1920, 1080)
+            opts.inPreferredConfig = Bitmap.Config.RGB_565
+            opts.inJustDecodeBounds = false
+
+            val decoded = context.assets.open(assetPath).use {
+                BitmapFactory.decodeStream(it, null, opts)
+            } ?: return null
+            android.util.Log.d(
+                TAG,
+                "decoded $assetPath ${opts.outWidth}x${opts.outHeight} sample=${opts.inSampleSize}" +
+                    " -> ${decoded.width}x${decoded.height} (${decoded.byteCount / 1024}KB)"
+            )
+            scaleBitmap(decoded, 1920, 1080)
+        } catch (_: Throwable) {
+            // Throwable, not Exception: a large decode fails with OutOfMemoryError,
+            // which is an Error. Catching only Exception let it escape into
+            // MainActivity.onResume — which has no handler — and crashed the
+            // launcher instead of falling back to the gradient branch.
             null
         }
     }
+
+    private fun sampleSizeFor(width: Int, height: Int, targetW: Int, targetH: Int): Int =
+        Companion.sampleSizeFor(width, height, targetW, targetH)
 
     /**
      * Load a thumbnail from assets (smaller for the picker grid).
@@ -200,11 +258,21 @@ class WallpaperManager(private val context: Context) {
      */
     fun saveCustomWallpaper(uri: Uri): Boolean {
         return try {
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return false
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream.close()
+            // Bounds pass first: this URI is whatever the user picked, and a photo
+            // straight off a phone camera is routinely 12-50 MP — decoding it whole
+            // is a 48-200 MB allocation that can OOM the launcher outright.
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, opts)
+            } ?: return false
+            if (opts.outWidth <= 0 || opts.outHeight <= 0) return false
 
-            if (bitmap == null) return false
+            opts.inSampleSize = sampleSizeFor(opts.outWidth, opts.outHeight, 1920, 1080)
+            opts.inJustDecodeBounds = false
+
+            val bitmap = context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, opts)
+            } ?: return false
 
             val scaled = scaleBitmap(bitmap, 1920, 1080)
 
@@ -212,10 +280,11 @@ class WallpaperManager(private val context: Context) {
             FileOutputStream(file).use { out ->
                 scaled.compress(Bitmap.CompressFormat.JPEG, 90, out)
             }
+            scaled.recycle()
 
             wallpaperType = TYPE_CUSTOM
             true
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             false
         }
     }
@@ -226,7 +295,21 @@ class WallpaperManager(private val context: Context) {
     fun loadCustomWallpaper(): Bitmap? {
         val file = File(context.filesDir, CUSTOM_WALLPAPER_FILE)
         if (!file.exists()) return null
-        return BitmapFactory.decodeFile(file.absolutePath)
+        return try {
+            // We write this file at 1920x1080, but a file saved by an older build
+            // predates that guarantee — so bounds-check rather than trust it. RGB_565
+            // for the same reason as the asset path: opaque photo behind a dim scrim.
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, opts)
+            if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
+
+            opts.inSampleSize = sampleSizeFor(opts.outWidth, opts.outHeight, 1920, 1080)
+            opts.inPreferredConfig = Bitmap.Config.RGB_565
+            opts.inJustDecodeBounds = false
+            BitmapFactory.decodeFile(file.absolutePath, opts)
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     fun hasCustomWallpaper(): Boolean {
@@ -248,7 +331,14 @@ class WallpaperManager(private val context: Context) {
         val newWidth = (width * ratio).toInt()
         val newHeight = (height * ratio).toInt()
 
-        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+        val scaled = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+        // Free the source now rather than waiting for a GC pass. Both bitmaps are
+        // live across createScaledBitmap, so back-to-back onResume calls could
+        // otherwise hold two full-size sources at once. createScaledBitmap returns
+        // the same instance when no scaling is needed — recycling that would hand
+        // back an unusable bitmap.
+        if (scaled !== bitmap) bitmap.recycle()
+        return scaled
     }
 }
 

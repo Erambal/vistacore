@@ -732,9 +732,35 @@ class VODBrowserActivity : BaseActivity() {
         binding.netflixEmpty.visibility = View.VISIBLE
     }
 
+    /** True when onStop paused the banner and onStart should resume it. */
+    private var bannerWasRotating = false
+
+    override fun onStop() {
+        super.onStop()
+        // This activity had no onPause/onStop at all: the banner kept cycling every 10s
+        // while off-screen, and each tick rebound the banner ViewHolder — which autoplays
+        // a YouTube trailer in a WebView. So starting a movie left a second video
+        // decoding behind the player, on a box that is already RAM-tight.
+        bannerWasRotating = bannerRunnable != null
+        bannerRunnable?.let { handler.removeCallbacks(it) }
+        stopBannerTrailer()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (bannerWasRotating && bannerItems.size > 1) startBannerRotation()
+    }
+
+    /** Stop whatever the banner ViewHolder is currently playing, if it is attached. */
+    private fun stopBannerTrailer() {
+        val vh = binding.netflixList.findViewHolderForAdapterPosition(0)
+        (vh as? NetflixAdapter.BannerVH)?.stopTrailer()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         bannerRunnable?.let { handler.removeCallbacks(it) }
+        stopBannerTrailer()
         scope.cancel()
     }
 }
@@ -805,6 +831,13 @@ class NetflixAdapter(
         }
     }
 
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        super.onViewRecycled(holder)
+        // The banner holds a WebView playing a trailer; recycling it without stopping
+        // leaves audio/video decoding for a view that is no longer on screen.
+        (holder as? BannerVH)?.stopTrailer()
+    }
+
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
             is NetflixRow.Banner -> (holder as BannerVH).bind(currentBanner ?: row.item)
@@ -833,6 +866,17 @@ class NetflixAdapter(
         )
         private var trailerJob: kotlinx.coroutines.Job? = null
         private var boundItemId: String = ""
+
+        /**
+         * Stop playback and cancel any pending lookup. Called when the activity leaves the
+         * foreground — otherwise the muted trailer keeps decoding behind whatever the user
+         * opened next.
+         */
+        fun stopTrailer() {
+            trailerJob?.cancel()
+            TrailerPlayer.stop(trailer)
+            trailer.visibility = View.GONE
+        }
 
         init {
             // Configure the trailer WebView once; we'll load URLs into it as

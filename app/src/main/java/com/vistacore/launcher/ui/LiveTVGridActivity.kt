@@ -118,6 +118,13 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
         currentChannel?.let { updatePreview(it) }
     }
 
+    override fun onEpgTick() {
+        currentChannel?.let { updatePreview(it) }
+        // refreshGrid() rebuilds the adapter — skip it while the grid holds focus so
+        // the user's cursor and scroll position survive the roll-over.
+        if (!channelGrid.hasFocus()) refreshGrid()
+    }
+
     override fun onLoadingStateChanged(loading: Boolean) {
         loadingView.visibility = if (loading) View.VISIBLE else View.GONE
     }
@@ -135,7 +142,7 @@ class LiveTVGridActivity : BaseLiveTVActivity() {
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }
         )
-        channelGrid.adapter = gridAdapter
+        channelGrid.setAdapterPreservingFocus(gridAdapter)
 
         val q = channelSearch.text?.toString()?.trim().orEmpty()
         if (displayedChannels.isEmpty() && q.isNotEmpty()) {

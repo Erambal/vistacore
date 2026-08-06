@@ -24,6 +24,7 @@ import com.vistacore.launcher.apps.AppLauncher
 import com.vistacore.launcher.data.FavoritesManager
 import com.vistacore.launcher.data.PrefsManager
 import com.vistacore.launcher.data.RecentChannelsManager
+import com.vistacore.launcher.data.SportsCache
 import com.vistacore.launcher.data.WallpaperManager
 import com.vistacore.launcher.databinding.ActivityMainBinding
 import com.vistacore.launcher.iptv.*
@@ -158,6 +159,18 @@ class MainActivity : BaseActivity() {
 
     private var screenSaverWarningRunnable: Runnable? = null
 
+    /**
+     * Reset the idle timer on EVERY key, not just the ones that reach onKeyDown.
+     *
+     * Activity.onKeyDown only fires for keys no focused view consumed — and RecyclerView
+     * rows consume all the D-pad keys. So a user actively arrowing through their channels
+     * looked completely idle to the screen saver, which then ambushed them mid-browse.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) resetScreenSaverTimer()
+        return super.dispatchKeyEvent(event)
+    }
+
     private fun resetScreenSaverTimer() {
         cancelScreenSaverTimer()
         val timeout = prefs.screenSaverTimeout
@@ -185,6 +198,10 @@ class MainActivity : BaseActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         resetScreenSaverTimer()
         if (keyCode == KeyEvent.KEYCODE_BACK) {
+            // When VistaCore is the launcher there is nowhere to exit to — finishing
+            // leaves the user staring at a black screen. Back reflexively means "go
+            // back" to most people, so swallow it rather than punishing the reflex.
+            if (isDefaultLauncher()) return true
             if (backPressedOnce) {
                 finish()
                 return true
@@ -221,11 +238,19 @@ class MainActivity : BaseActivity() {
 
         binding.appsRow.apply {
             layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false)
-            adapter = AppCardAdapter(apps) { onAppClicked(it) }
             clipChildren = false
             clipToPadding = false
-            // Auto-focus the first app card so remote navigation works immediately
-            post { findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() }
+            setAdapterPreservingFocus(AppCardAdapter(apps) { onAppClicked(it) })
+            // Auto-focus the first app card so remote navigation works immediately —
+            // but only on a genuinely cold screen. setupAppCards() runs on every resume,
+            // and unconditionally grabbing card 0 yanked the cursor back to the top row
+            // from wherever the user actually was (e.g. Favourite Channels) every time
+            // they came back from watching something.
+            post {
+                if (currentFocus == null) {
+                    findViewHolderForAdapterPosition(0)?.itemView?.requestFocus()
+                }
+            }
         }
     }
 
@@ -302,7 +327,14 @@ class MainActivity : BaseActivity() {
                             }
                             if (allChannels.isNotEmpty()) {
                                 withContext(Dispatchers.IO) {
-                                    ChannelUpdateWorker.cacheChannels(this@MainActivity, allChannels)
+                                    // Xtream getChannels() is LIVE-only — see BaseLiveTVActivity.
+                                    ChannelUpdateWorker.cacheChannels(
+                                        this@MainActivity,
+                                        allChannels,
+                                        if (prefs.sourceType == PrefsManager.SOURCE_XTREAM)
+                                            ChannelUpdateWorker.LIVE_ONLY
+                                        else ChannelUpdateWorker.ALL_CONTENT_TYPES
+                                    )
                                 }
                                 android.widget.Toast.makeText(this@MainActivity, "Downloaded ${allChannels.size} items", android.widget.Toast.LENGTH_SHORT).show()
                             }
@@ -359,7 +391,12 @@ class MainActivity : BaseActivity() {
             data
         } catch (e: Exception) {
             Log.e("MainActivity", "EPG parse failed", e)
-            cachedEpgData
+            // Fall back to the last good guide, but only while it's still plausibly
+            // accurate. Serving an unbounded-age guide is how "now playing" ends up
+            // showing a game that finished yesterday.
+            com.vistacore.launcher.data.ContentCache.epgUsableAsFallback() ?: cachedEpgData?.takeIf {
+                (System.currentTimeMillis() - epgLastLoadTime) < com.vistacore.launcher.data.ContentCache.EPG_MAX_STALE_MS
+            }
         }
     }
 
@@ -462,8 +499,12 @@ class MainActivity : BaseActivity() {
 
         scope.launch {
             try {
+                // Memoised: loadUpcomingGames runs on every onResume, and each call used
+                // to build a fresh SportsDataManager (new OkHttpClient + SSLContext) and
+                // fire up to five parallel HTTPS requests to ESPN. Coming back from a
+                // single show could mean dozens of scoreboard fetches an hour.
                 val games = withContext(Dispatchers.IO) {
-                    SportsDataManager().getUpcomingGames(enabledSports)
+                    SportsCache.get(enabledSports)
                 }
 
                 binding.gamesLoading.visibility = View.GONE
@@ -475,7 +516,7 @@ class MainActivity : BaseActivity() {
                     binding.gamesRow.layoutManager = LinearLayoutManager(
                         this@MainActivity, LinearLayoutManager.HORIZONTAL, false
                     )
-                    binding.gamesRow.adapter = UpcomingGameAdapter(games)
+                    binding.gamesRow.setAdapterPreservingFocus(UpcomingGameAdapter(games))
                 }
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to load games", e)
@@ -924,29 +965,43 @@ class UpcomingGameAdapter(
 
         holder.itemView.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
 
+        val awayShort = game.awayTeam.split(" ").lastOrNull() ?: game.awayTeam
+        val homeShort = game.homeTeam.split(" ").lastOrNull() ?: game.homeTeam
+
+        // Press = watch it. We hand Live TV the broadcast network and the team names so it
+        // can resolve the actual channel, instead of a concatenated "Away Home" string that
+        // no channel or program title ever contains.
         holder.itemView.setOnClickListener { view ->
             val context = view.context
-            val awayShort = game.awayTeam.split(" ").lastOrNull() ?: game.awayTeam
-            val homeShort = game.homeTeam.split(" ").lastOrNull() ?: game.homeTeam
-            val searchQuery = "$awayShort $homeShort"
+            val intent = Intent(context, LiveTVActivity::class.java).apply {
+                putExtra(BaseLiveTVActivity.EXTRA_GAME_BROADCAST, game.broadcast)
+                putExtra(BaseLiveTVActivity.EXTRA_GAME_TEAMS, arrayOf(game.awayTeam, game.homeTeam))
+                putExtra(BaseLiveTVActivity.EXTRA_SPORTS_MODE, true)
+            }
+            context.startActivity(intent)
+        }
 
-            val options = arrayOf("Search Live TV", "Open ESPN")
+        // Long-press keeps the old escape hatch without putting a menu in the way of
+        // the common case.
+        holder.itemView.setOnLongClickListener { view ->
+            val context = view.context
             AlertDialog.Builder(context, R.style.Theme_VistaCore_Dialog)
                 .setTitle("$awayShort vs $homeShort")
-                .setItems(options) { _, which ->
+                .setItems(arrayOf("Watch on Live TV", "Browse all sports", "Open ESPN")) { _, which ->
                     when (which) {
-                        0 -> {
-                            val intent = Intent(context, LiveTVActivity::class.java).apply {
-                                putExtra(LiveTVActivity.EXTRA_SEARCH_QUERY, searchQuery)
-                            }
-                            context.startActivity(intent)
-                        }
-                        1 -> {
-                            AppLauncher.launchApp(context, AppId.ESPN)
-                        }
+                        0 -> context.startActivity(Intent(context, LiveTVActivity::class.java).apply {
+                            putExtra(BaseLiveTVActivity.EXTRA_GAME_BROADCAST, game.broadcast)
+                            putExtra(BaseLiveTVActivity.EXTRA_GAME_TEAMS, arrayOf(game.awayTeam, game.homeTeam))
+                            putExtra(BaseLiveTVActivity.EXTRA_SPORTS_MODE, true)
+                        })
+                        1 -> context.startActivity(Intent(context, LiveTVActivity::class.java).apply {
+                            putExtra(BaseLiveTVActivity.EXTRA_SPORTS_MODE, true)
+                        })
+                        2 -> AppLauncher.launchApp(context, AppId.ESPN)
                     }
                 }
                 .show()
+            true
         }
     }
 

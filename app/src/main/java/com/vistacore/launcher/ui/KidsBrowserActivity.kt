@@ -255,8 +255,14 @@ class KidsBrowserActivity : BaseActivity() {
 
     private fun loadContent() {
         // Try the preloaded ContentCache first for instant display.
-        if (ContentCache.kidsItems != null && ContentCache.kidsItems!!.isNotEmpty()) {
-            val filtered = filterToKids(ContentCache.kidsItems!!)
+        // Read the global once into a local: kidsItems is a var on an object
+        // singleton that SettingsActivity nulls when preload settings change, so
+        // the old null-check-then-!! pattern was three independent reads with a
+        // window between them. One read means the check and the use can't
+        // disagree.
+        val kids = ContentCache.kidsItems
+        if (!kids.isNullOrEmpty()) {
+            val filtered = filterToKids(kids)
             kidsShowIndex = ContentCache.kidsShowIndex
                 ?: filtered
                     .filter { it.contentType == ContentType.SERIES }
@@ -547,7 +553,30 @@ class KidsBrowserActivity : BaseActivity() {
         }
     }
 
+    /** Upper bound on how long the double-open guard can stay armed. */
+    private val ITEM_OPEN_GUARD_TIMEOUT_MS = 15_000L
+
+    /** Guards against a second OK press while an episode fetch is still running. */
+    private var itemOpenInFlight = false
+
+    /**
+     * Failsafe release for [itemOpenInFlight]. onResume clears it in the normal case
+     * (returning from the screen we opened), but a fetch that fails without navigating
+     * anywhere would otherwise leave the guard stuck and every poster dead until the user
+     * left and came back.
+     */
+    private val clearItemGuard = Runnable { itemOpenInFlight = false }
+
     fun onItemClicked(item: Channel) {
+        // The "Loading…" panel is not clickable or focusable, so the posters underneath
+        // stayed live during a multi-second series fetch. A second press — entirely
+        // natural when nothing appears to be happening — stacked another detail screen,
+        // sometimes for a different show than the one that eventually opened.
+        if (itemOpenInFlight) return
+        itemOpenInFlight = true
+        handler.removeCallbacks(clearItemGuard)
+        handler.postDelayed(clearItemGuard, ITEM_OPEN_GUARD_TIMEOUT_MS)
+
         // Continue Watching tiles carry the real playable URL — resume directly.
         if (item.id.startsWith(Discovery.CW_RESUME_PREFIX)) {
             resumeFromHistory(item)
@@ -678,6 +707,13 @@ class KidsBrowserActivity : BaseActivity() {
         emptyView.text = "No kids content for this age band.\nTry switching to All Ages."
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Returning from a detail/player screen — re-arm item opening.
+        handler.removeCallbacks(clearItemGuard)
+        itemOpenInFlight = false
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
@@ -756,6 +792,10 @@ class KidsPosterAdapter(
     inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val image: ImageView = itemView.findViewById(R.id.poster_image)
         val title: TextView = itemView.findViewById(R.id.poster_title)
+        // The shared poster layout already carries this; Kids just never bound it, so
+        // its shelves had NO focus indicator at all — the user navigated blind, with no
+        // way to tell what OK would open.
+        val focusBorder: View = itemView.findViewById(R.id.poster_focus_border)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -786,8 +826,12 @@ class KidsPosterAdapter(
             holder.image.setImageResource(R.drawable.ic_movies)
             holder.image.scaleType = ImageView.ScaleType.CENTER
         }
+        holder.focusBorder.visibility = if (holder.itemView.hasFocus()) View.VISIBLE else View.GONE
         holder.itemView.setOnClickListener { activity.onItemClicked(item) }
-        holder.itemView.setOnFocusChangeListener { v, f -> MainActivity.animateFocus(v, f) }
+        holder.itemView.setOnFocusChangeListener { v, f ->
+            holder.focusBorder.visibility = if (f) View.VISIBLE else View.GONE
+            MainActivity.animateFocus(v, f)
+        }
     }
 
     override fun getItemCount() = items.size

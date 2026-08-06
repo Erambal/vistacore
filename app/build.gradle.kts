@@ -25,8 +25,8 @@ android {
         applicationId = "com.vistacore.launcher"
         minSdk = 21
         targetSdk = 34
-        versionCode = 74
-        versionName = "1.9.0"
+        versionCode = 75
+        versionName = "1.9.1"
 
         // TMDB proxy base — same Worker that serves the web app. The Worker's
         // `/api/tmdb` endpoint attaches TMDB_KEY server-side so the APK ships
@@ -136,4 +136,7 @@ dependencies {
 
     // WorkManager for background channel updates
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // Unit tests (JVM only — not packaged into the APK)
+    testImplementation("junit:junit:4.13.2")
 }

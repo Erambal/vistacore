@@ -36,7 +36,10 @@ class EpgParser {
     }
 
     suspend fun parse(url: String): EpgData = withContext(Dispatchers.IO) {
-        Log.d(TAG, "Loading EPG from: $url")
+        // Path only — the default EPG URL is synthesised as
+        // "$server/xmltv.php?username=…&password=…", so logging the full URL wrote the
+        // user's IPTV credentials into logcat on every guide load.
+        Log.d(TAG, "Loading EPG from: ${url.substringBefore('?')}")
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", "VistaCore/1.0")
@@ -191,34 +194,56 @@ data class EpgData(
     val channels: Map<String, EpgChannel>,
     val programs: List<EpgProgram>
 ) {
+    /**
+     * channelId → that channel's programs, start-ordered.
+     *
+     * Built once on first use. Without it every lookup is a linear scan of the whole
+     * program list, and adapters call getNowPlaying() per row — so a large lineup turns
+     * list binding into O(channels × programs). Not part of the data-class identity
+     * since it's derived purely from [programs].
+     */
+    private val byChannel: Map<String, List<EpgProgram>> by lazy {
+        programs.groupBy { it.channelId }
+            .mapValues { (_, list) -> list.sortedBy { it.startTime } }
+    }
+
     fun getNowPlaying(channelId: String): EpgProgram? {
         val now = Date()
-        return programs.firstOrNull { program ->
-            program.channelId == channelId &&
-                    program.startTime <= now &&
-                    program.endTime > now
+        return byChannel[channelId]?.firstOrNull { program ->
+            program.startTime <= now && program.endTime > now
         }
+    }
+
+    /**
+     * When the current program on any of [channelIds] next ends — i.e. the soonest moment
+     * this guide's "now playing" text goes stale. Null when nothing is airing.
+     */
+    fun nextProgramBoundary(channelIds: Collection<String>): Date? {
+        val now = Date()
+        return channelIds
+            .asSequence()
+            .mapNotNull { id ->
+                byChannel[id]?.firstOrNull { it.startTime <= now && it.endTime > now }?.endTime
+            }
+            .minOrNull()
     }
 
     fun getUpcoming(channelId: String, hours: Int = 6): List<EpgProgram> {
         val now = Date()
         val cutoff = Date(now.time + hours * 3600000L)
-        return programs.filter { program ->
-            program.channelId == channelId &&
-                    program.startTime >= now &&
-                    program.startTime <= cutoff
-        }.sortedBy { it.startTime }
+        // Already start-ordered by the index, so no re-sort needed.
+        return byChannel[channelId].orEmpty().filter { program ->
+            program.startTime >= now && program.startTime <= cutoff
+        }
     }
 
     fun getTodaySchedule(channelId: String): List<EpgProgram> {
         val now = Date()
         val startOfDay = Date(now.time - (now.time % 86400000))
         val endOfDay = Date(startOfDay.time + 86400000)
-        return programs.filter { program ->
-            program.channelId == channelId &&
-                    program.endTime > startOfDay &&
-                    program.startTime < endOfDay
-        }.sortedBy { it.startTime }
+        return byChannel[channelId].orEmpty().filter { program ->
+            program.endTime > startOfDay && program.startTime < endOfDay
+        }
     }
 }
 

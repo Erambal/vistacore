@@ -104,6 +104,13 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
         currentChannel?.let { updateProgramInfo(it) }
     }
 
+    override fun onEpgTick() {
+        currentChannel?.let { updateProgramInfo(it) }
+        // This layout leans hardest on now-playing text, but refreshList() replaces the
+        // adapter — so hold off while the list has focus.
+        if (!channelList.hasFocus()) refreshList()
+    }
+
     override fun onLoadingStateChanged(loading: Boolean) {
         loadingView.visibility = if (loading) View.VISIBLE else View.GONE
     }
@@ -116,7 +123,7 @@ class LiveTVEpgActivity : BaseLiveTVActivity() {
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }
         )
-        channelList.adapter = epgAdapter
+        channelList.setAdapterPreservingFocus(epgAdapter)
 
         val q = channelSearch.text?.toString()?.trim().orEmpty()
         if (displayedChannels.isEmpty() && q.isNotEmpty()) {

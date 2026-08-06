@@ -154,7 +154,8 @@ class SportsDataManager {
                     val statusState = statusType?.get("state")?.asString ?: "pre"
 
                     val dateStr = comp.get("date")?.asString ?: event.get("date")?.asString ?: ""
-                    val startTime = parseEspnDate(dateStr)
+                    // Drop games we can't place in time rather than inventing a start.
+                    val startTime = parseEspnDate(dateStr) ?: continue
 
                     val venue = comp.getAsJsonObject("venue")?.get("fullName")?.asString ?: ""
 
@@ -190,13 +191,34 @@ class SportsDataManager {
         return games
     }
 
-    private fun parseEspnDate(dateStr: String): Date {
-        return try {
-            val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm'Z'", Locale.US)
-            fmt.timeZone = TimeZone.getTimeZone("UTC")
-            fmt.parse(dateStr) ?: Date()
-        } catch (_: Exception) {
-            Date()
+    /**
+     * Parse an ESPN scoreboard timestamp.
+     *
+     * Returns null on failure rather than `Date()`. Falling back to "now" made an
+     * unparseable game look like it was starting this instant — so it sorted to the top
+     * of the row and displayed a start time that was simply wrong. A game we cannot place
+     * in time is better dropped than shown with a fabricated one.
+     *
+     * ESPN is not consistent about seconds, so both shapes are accepted.
+     */
+    private fun parseEspnDate(dateStr: String): Date? {
+        for (pattern in ESPN_DATE_PATTERNS) {
+            try {
+                val fmt = SimpleDateFormat(pattern, Locale.US)
+                fmt.timeZone = TimeZone.getTimeZone("UTC")
+                fmt.isLenient = false
+                fmt.parse(dateStr)?.let { return it }
+            } catch (_: Exception) {
+                // try the next pattern
+            }
         }
+        return null
+    }
+
+    private companion object {
+        val ESPN_DATE_PATTERNS = listOf(
+            "yyyy-MM-dd'T'HH:mm'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        )
     }
 }

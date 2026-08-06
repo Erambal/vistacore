@@ -355,6 +355,9 @@ class HomeSimpleRowsActivity : BaseActivity() {
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
+            // Row views consume the D-pad keys, so onKeyDown never sees them and the idle
+            // timer would never reset while the user was actively browsing.
+            resetScreenSaverTimer()
             val rows = listOf(continueRow, liveRow, moviesRow, showsRow, appsRow)
             val focusedRow = rows.firstOrNull { it.hasFocus() }
             when (event.keyCode) {
@@ -420,6 +423,8 @@ class HomeSimpleRowsActivity : BaseActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         resetScreenSaverTimer()
         if (keyCode == KeyEvent.KEYCODE_BACK) {
+            // See MainActivity: no exit target when we are the launcher.
+            if (isDefaultLauncher()) return true
             if (backPressedOnce) { finish(); return true }
             backPressedOnce = true
             Toast.makeText(this, R.string.home_press_back_again, Toast.LENGTH_LONG).show()

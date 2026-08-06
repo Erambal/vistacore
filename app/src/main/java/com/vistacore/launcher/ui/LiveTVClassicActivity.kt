@@ -106,12 +106,26 @@ class LiveTVClassicActivity : BaseLiveTVActivity() {
         currentChannel?.let { updateEpgStrip(it) }
     }
 
+    override fun onEpgTick() {
+        // The strip is safe to update at any time — it holds no focus.
+        currentChannel?.let { updateEpgStrip(it) }
+        // updateChannelList() swaps in a new adapter, which drops D-pad focus and
+        // scroll position. Only do it while the user isn't in the list.
+        if (!binding.channelList.hasFocus()) updateChannelList()
+    }
+
     override fun onLoadingStateChanged(loading: Boolean) {
         binding.livetvLoading.visibility = if (loading) View.VISIBLE else View.GONE
     }
 
     private fun updateChannelList() {
-        binding.channelCountLabel.text = "${displayedChannels.size} ch"
+        // When a search had to look beyond the selected category to find anything, say so
+        // — otherwise the list shows channels the category button claims aren't there.
+        binding.channelCountLabel.text = if (searchEscapedCategory) {
+            "${displayedChannels.size} ch · all"
+        } else {
+            "${displayedChannels.size} ch"
+        }
         channelAdapter = LiveChannelAdapter(
             displayedChannels, epgData, prefs.showEpgInChannelList, currentChannel, favoritesManager,
             onChannelMenu = { ch -> showChannelContextMenu(ch) },
@@ -119,7 +133,7 @@ class LiveTVClassicActivity : BaseLiveTVActivity() {
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }
         )
-        binding.channelList.adapter = channelAdapter
+        binding.channelList.setAdapterPreservingFocus(channelAdapter)
 
         val searchQuery = binding.channelSearch.text?.toString()?.trim() ?: ""
         if (displayedChannels.isEmpty() && searchQuery.isNotEmpty()) {

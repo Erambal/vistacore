@@ -16,6 +16,8 @@ import com.bumptech.glide.Glide
 import com.vistacore.launcher.R
 import com.vistacore.launcher.apps.AppId
 import com.vistacore.launcher.apps.AppLauncher
+import com.vistacore.launcher.data.ChannelSearch
+import com.vistacore.launcher.data.ContentCache
 import com.vistacore.launcher.data.PrefsManager
 import com.vistacore.launcher.databinding.ActivityVoiceSearchBinding
 import com.vistacore.launcher.iptv.*
@@ -131,12 +133,20 @@ class VoiceSearchActivity : BaseActivity() {
         }
         searchJob?.cancel()
         searchJob = scope.launch {
-            val results = withContext(Dispatchers.IO) {
+            val deduped = withContext(Dispatchers.IO) {
                 val q = query.lowercase()
 
-                // Simple, direct name search — exact substring match, scored by relevance
-                allContent
-                    .filter { it.name.lowercase().contains(q) }
+                // Live channels go through the shared matcher so category and guide data
+                // count too — a name-only search could never satisfy "mariners",
+                // "baseball" or "sports", since no channel is literally named that.
+                val epg = ContentCache.epgUsableAsFallback()
+                val liveMatches = ChannelSearch.searchChannels(
+                    allContent.filter { it.contentType == ContentType.LIVE }, query, epg
+                )
+
+                // VOD stays a name search — there is no guide for it.
+                val vodMatches = allContent
+                    .filter { it.contentType != ContentType.LIVE && it.name.lowercase().contains(q) }
                     .sortedByDescending { item ->
                         val nameLower = item.name.lowercase()
                         when {
@@ -145,28 +155,39 @@ class VoiceSearchActivity : BaseActivity() {
                             else -> 50 // Contains
                         }
                     }
-                    .take(50) // Cap results for performance
-            }
 
-            // Deduplicate shows — only show one entry per show title
-            val seen = mutableSetOf<String>()
-            val deduped = results.filter { ch ->
-                if (ch.contentType == ContentType.SERIES) {
-                    val showName = extractShowName(ch.name)
-                    seen.add(showName)
-                } else true
+                // Deduplicate BEFORE capping. Capping first meant one long-running series
+                // ("Law & Order" — every episode is its own entry) filled all 50 slots
+                // and hid every other match behind episodes of a single show.
+                val seen = mutableSetOf<String>()
+                (liveMatches + vodMatches)
+                    .filter { ch ->
+                        if (ch.contentType == ContentType.SERIES) {
+                            seen.add(extractShowName(ch.name))
+                        } else true
+                    }
+                    .take(50)
             }
 
             if (deduped.isEmpty()) {
                 binding.searchResults.visibility = View.GONE
                 binding.noResults.visibility = View.VISIBLE
-                binding.noResults.text = "No results for \"$query\""
+                // "No results" is only true if we actually have something to search.
+                // On a cold or freshly-cleared box allContent is empty, and reporting
+                // "no results" for every query made the box look permanently broken.
+                binding.noResults.text = if (allContent.isEmpty()) {
+                    "Your channel list hasn't finished downloading yet. Try again in a minute."
+                } else {
+                    "No results for \"$query\""
+                }
                 binding.resultsCount.text = ""
             } else {
                 binding.noResults.visibility = View.GONE
                 binding.searchResults.visibility = View.VISIBLE
                 binding.resultsCount.text = "${deduped.size} result${if (deduped.size != 1) "s" else ""}"
-                binding.searchResults.adapter = SearchAdapter(deduped) { onResultClicked(it) }
+                binding.searchResults.setAdapterPreservingFocus(
+                    SearchAdapter(deduped) { onResultClicked(it) }
+                )
             }
         }
     }

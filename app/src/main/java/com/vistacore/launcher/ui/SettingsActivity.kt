@@ -197,6 +197,14 @@ class SettingsActivity : BaseActivity() {
         ) {
             val current = currentFocus
             val panel = binding.contentPanel
+            // Controls that use LEFT/RIGHT themselves must keep it. A SeekBar has no
+            // focusable to its left, so the redirect below stole every LEFT press —
+            // making the screen-saver slider one-way (it could be raised but never
+            // lowered, so the screen saver could not be turned off). Text fields have the
+            // same problem: LEFT is how you move the cursor back through what you typed.
+            if (current is android.widget.SeekBar || current is android.widget.EditText) {
+                return super.dispatchKeyEvent(event)
+            }
             if (current != null && isDescendantOf(current, panel)) {
                 val leftInPanel = FocusFinder.getInstance()
                     .findNextFocus(panel, current, View.FOCUS_LEFT)
@@ -360,7 +368,8 @@ class SettingsActivity : BaseActivity() {
         val layouts = listOf(
             PrefsManager.HOME_CLASSIC to getString(R.string.settings_home_classic),
             PrefsManager.HOME_SIMPLE_ROWS to getString(R.string.settings_home_simple_rows),
-            PrefsManager.HOME_TV_TURNS_ON to getString(R.string.settings_home_tv_turns_on)
+            PrefsManager.HOME_TV_TURNS_ON to getString(R.string.settings_home_tv_turns_on),
+            PrefsManager.HOME_FAVORITES_GRID to getString(R.string.settings_home_favorites_grid)
         )
 
         fun labelFor(key: String) =
@@ -1074,6 +1083,9 @@ class SettingsActivity : BaseActivity() {
             if (binding.cbHockey.isChecked) selected.add("hockey")
             if (binding.cbSoccer.isChecked) selected.add("soccer")
             prefs.sportsTypes = selected
+            // The scoreboard memo is keyed by the enabled set; drop it so the home screen
+            // reflects the change immediately instead of after the TTL.
+            com.vistacore.launcher.data.SportsCache.invalidate()
         }
 
         binding.cbBasketball.setOnCheckedChangeListener(listener)

@@ -76,6 +76,7 @@ class PrefsManager(context: Context) {
         const val HOME_CLASSIC = "classic"
         const val HOME_TV_TURNS_ON = "tv_turns_on"
         const val HOME_SIMPLE_ROWS = "simple_rows"
+        const val HOME_FAVORITES_GRID = "favorites_grid"
 
         const val SOURCE_M3U = 0
         const val SOURCE_XTREAM = 1

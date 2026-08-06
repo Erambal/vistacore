@@ -16,6 +16,16 @@ import java.util.concurrent.TimeUnit
 
 class XtreamClient(private val auth: XtreamAuth) {
 
+    companion object {
+        /**
+         * How many channels get a per-channel EPG request when the bulk
+         * `get_simple_data_table` endpoint is unavailable. One request each, so this is a
+         * politeness cap on the provider's panel — see getEpg() for how the channels that
+         * fill it are chosen.
+         */
+        const val EPG_PER_CHANNEL_LIMIT = 300
+    }
+
     private val client = TlsCompat.applyTrustAll(OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS))
@@ -88,11 +98,45 @@ class XtreamClient(private val auth: XtreamAuth) {
     suspend fun getMovies(): List<Channel> = withContext(Dispatchers.IO) {
         val categories = fetchVodCategories()
         val categoryMap = categories.associate { it.category_id to it.category_name }
-
-        val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_vod_streams"
-        val body = fetchWithClient(vodClient, url)
         val type = object : TypeToken<List<XtreamVodStream>>() {}.type
-        val streams: List<XtreamVodStream> = gson.fromJson(body, type) ?: emptyList()
+
+        // Try the bulk endpoint first — one request instead of hundreds. But on large
+        // catalogs some panels (Dispatcharr's XC API here) can't generate the full VOD
+        // list inside the gateway's timeout and return a 504 after ~30s. Verified
+        // against the live provider: bulk 504s every time, while every per-category
+        // request answers in ~0.4s. This is the same failure get_series already works
+        // around below; get_vod_streams needed the same treatment.
+        val bulkUrl = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_vod_streams"
+        val bulkList: List<XtreamVodStream> = try {
+            gson.fromJson(fetchWithClient(vodClient, bulkUrl), type) ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+
+        // A healthy bulk response averages well over one title per category. Anything
+        // below that is a partial or a timed-out response, so rebuild it per category.
+        val streams: List<XtreamVodStream> = if (bulkList.size >= categories.size) {
+            Log.d("XtreamClient", "getMovies: bulk returned ${bulkList.size} — using bulk")
+            bulkList
+        } else {
+            Log.d("XtreamClient", "getMovies: bulk returned ${bulkList.size} (< ${categories.size} categories) — fetching per category")
+            val semaphore = Semaphore(5)
+            coroutineScope {
+                categories.map { cat ->
+                    async {
+                        semaphore.withPermit {
+                            try {
+                                val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_vod_streams&category_id=${cat.category_id}"
+                                gson.fromJson<List<XtreamVodStream>>(fetchWithClient(vodClient, url), type) ?: emptyList()
+                            } catch (_: Exception) { emptyList() }
+                        }
+                    }
+                }.awaitAll()
+            }.flatten().let { combined ->
+                // A movie can appear in more than one category on some panels; key on
+                // stream_id so it is not listed twice.
+                val seen = mutableSetOf<Int>()
+                combined.filter { seen.add(it.stream_id) }
+            }.also { Log.d("XtreamClient", "getMovies: per-category total = ${it.size}") }
+        }
 
         streams
             .filter { vod ->
@@ -278,19 +322,28 @@ class XtreamClient(private val auth: XtreamAuth) {
         fetchSeriesCategories().size
     }
 
-    private fun fetchVodCategories(): List<XtreamCategory> {
-        val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_vod_categories"
+    /**
+     * Categories are cosmetic — they only supply display labels, and every caller already
+     * falls back to "Uncategorized" for an unknown id. Many panels rate-limit or 500 on
+     * the category endpoints while serving the stream lists perfectly well, and letting
+     * that throw discarded the *entire* movie or series catalog over a missing label.
+     * Fail soft: no categories just means everything lands in Uncategorized.
+     */
+    private fun fetchCategoriesOrEmpty(action: String): List<XtreamCategory> = try {
+        val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=$action"
         val body = fetch(url)
         val type = object : TypeToken<List<XtreamCategory>>() {}.type
-        return gson.fromJson(body, type) ?: emptyList()
+        gson.fromJson<List<XtreamCategory>>(body, type) ?: emptyList()
+    } catch (e: Exception) {
+        Log.w("XtreamClient", "$action failed (${e.message}) — continuing without labels")
+        emptyList()
     }
 
-    private fun fetchSeriesCategories(): List<XtreamCategory> {
-        val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_series_categories"
-        val body = fetch(url)
-        val type = object : TypeToken<List<XtreamCategory>>() {}.type
-        return gson.fromJson(body, type) ?: emptyList()
-    }
+    private fun fetchVodCategories(): List<XtreamCategory> =
+        fetchCategoriesOrEmpty("get_vod_categories")
+
+    private fun fetchSeriesCategories(): List<XtreamCategory> =
+        fetchCategoriesOrEmpty("get_series_categories")
 
     /**
      * Get channels grouped by category.
@@ -305,18 +358,18 @@ class XtreamClient(private val auth: XtreamAuth) {
      * Returns EpgData with programs indexed by stream_id.
      * This is more reliable than xmltv.php which many providers disable.
      */
-    suspend fun getEpg(channels: List<Channel>): EpgData = withContext(Dispatchers.IO) {
+    suspend fun getEpg(
+        channels: List<Channel>,
+        priorityChannelIds: Collection<String> = emptyList()
+    ): EpgData = withContext(Dispatchers.IO) {
         val allPrograms = mutableListOf<EpgProgram>()
         val epgChannels = mutableMapOf<String, EpgChannel>()
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).apply {
-            timeZone = java.util.TimeZone.getTimeZone("UTC")
-        }
 
         // Xtream get_simple_data_table returns ALL EPG data — try it first
         try {
             val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_simple_data_table&stream_id=all"
             val body = fetchWithClient(vodClient, url)
-            val parsed = parseXtreamEpgResponse(body, sdf)
+            val parsed = parseXtreamEpgResponse(body)
             if (parsed.programs.isNotEmpty()) {
                 Log.d("XtreamClient", "get_simple_data_table returned ${parsed.programs.size} programs")
                 return@withContext parsed
@@ -329,8 +382,43 @@ class XtreamClient(private val auth: XtreamAuth) {
         val semaphore = kotlinx.coroutines.sync.Semaphore(10)
         val liveChannels = channels.filter { it.contentType == ContentType.LIVE && it.epgId.isNotBlank() }
         Log.d("XtreamClient", "Per-channel EPG: ${channels.size} total channels, ${liveChannels.size} live with epgId")
-        // Only fetch EPG for first 200 channels to avoid hammering the server
-        val batch = liveChannels.take(200)
+
+        // We still cap the number of per-channel requests to avoid hammering the panel,
+        // but WHICH channels make the cut matters more than the cap itself. Taking the
+        // first N in raw provider order meant sports networks deeper in the lineup got no
+        // guide data at all — and the guide is exactly how "where is the game" gets
+        // answered. Sports first, then the caller's priority ids (favourites/recents),
+        // then everything else until the budget runs out.
+        //
+        // Sports detection here uses the channel's own category/name only; there is no
+        // EPG yet to consult, which is the whole point of this call.
+        // Favourites/recents come FIRST, not second. Observed on a real 3,155-channel
+        // lineup: over 300 channels match as sports, so a strict sports-first sort filled
+        // the entire budget with sports and the channels the user actually watches got no
+        // guide at all. The priority set is small (a handful of favourites plus at most
+        // ten recents), so putting it first costs sports almost nothing.
+        val priorityIds = priorityChannelIds.toSet()
+        val batch = liveChannels
+            .sortedBy { channel ->
+                when {
+                    channel.id in priorityIds || channel.epgId in priorityIds -> 0
+                    com.vistacore.launcher.data.SportsMode.isSportsChannel(channel, null) -> 1
+                    else -> 2
+                }
+            }
+            .take(EPG_PER_CHANNEL_LIMIT)
+
+        if (liveChannels.size > EPG_PER_CHANNEL_LIMIT) {
+            val sportsCovered = batch.count {
+                com.vistacore.launcher.data.SportsMode.isSportsChannel(it, null)
+            }
+            val priorityCovered = batch.count { it.id in priorityIds || it.epgId in priorityIds }
+            Log.d(
+                "XtreamClient",
+                "EPG budget ${EPG_PER_CHANNEL_LIMIT}/${liveChannels.size}: " +
+                    "$priorityCovered favourite/recent, $sportsCovered sports"
+            )
+        }
 
         var successCount = 0
         var failCount = 0
@@ -343,7 +431,7 @@ class XtreamClient(private val auth: XtreamAuth) {
                             val streamId = channel.id.removePrefix("xt_")
                             val url = "${auth.baseUrl}?username=${auth.username}&password=${auth.password}&action=get_short_epg&stream_id=$streamId&limit=6"
                             val body = fetch(url)
-                            val parsed = parseXtreamEpgResponse(body, sdf)
+                            val parsed = parseXtreamEpgResponse(body)
                             synchronized(allPrograms) {
                                 // Map programs to use the channel's epgId for consistency
                                 for (p in parsed.programs) {
@@ -366,11 +454,68 @@ class XtreamClient(private val auth: XtreamAuth) {
         EpgData(epgChannels, allPrograms)
     }
 
-    private fun parseXtreamEpgResponse(json: String, sdf: java.text.SimpleDateFormat): EpgData {
+    /**
+     * Xtream *often* base64-encodes EPG titles/descriptions, but not always. Decoding
+     * unconditionally is unsafe: a plain title like "NCAA" is itself valid base64 and
+     * decodes to binary garbage. Only accept a decode that yields sane printable text.
+     */
+    private fun maybeBase64(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return raw
+        // Anything outside the base64 alphabet means it was never encoded.
+        if (!trimmed.all { it.isLetterOrDigit() || it == '+' || it == '/' || it == '=' }) return raw
+        if (trimmed.length % 4 != 0) return raw
+        return try {
+            val decoded = String(
+                android.util.Base64.decode(trimmed, android.util.Base64.DEFAULT),
+                Charsets.UTF_8
+            )
+            val printable = decoded.isNotBlank() && decoded.none {
+                it.isISOControl() && it != '\n' && it != '\r' && it != '\t'
+            } && decoded.none { it == '�' }
+            if (printable) decoded else raw
+        } catch (_: Exception) {
+            raw
+        }
+    }
+
+    /**
+     * Read a program boundary from an Xtream EPG listing.
+     *
+     * Prefers the unix-epoch fields (`start_timestamp` / `stop_timestamp`), which are
+     * unambiguous. The formatted `start` / `end` strings are only a fallback: Xtream emits
+     * those in the *panel server's* timezone, which we have no way to know, so parsing them
+     * as UTC skews every listing by the panel's offset and makes getNowPlaying() return a
+     * program that already aired. Only fall back when the epoch fields are absent.
+     */
+    private fun readEpgTime(
+        obj: com.google.gson.JsonObject,
+        epochKeys: List<String>,
+        stringKeys: List<String>,
+        sdf: java.text.SimpleDateFormat
+    ): java.util.Date? {
+        for (key in epochKeys) {
+            val secs = obj.get(key)?.takeIf { !it.isJsonNull }?.asString?.trim()?.toLongOrNull()
+            if (secs != null && secs > 0) return java.util.Date(secs * 1000L)
+        }
+        for (key in stringKeys) {
+            val raw = obj.get(key)?.takeIf { !it.isJsonNull }?.asString ?: continue
+            val parsed = try { sdf.parse(raw) } catch (_: Exception) { null }
+            if (parsed != null) return parsed
+        }
+        return null
+    }
+
+    private fun parseXtreamEpgResponse(json: String): EpgData {
         val channels = mutableMapOf<String, EpgChannel>()
         val programs = mutableListOf<EpgProgram>()
         val now = System.currentTimeMillis()
         val cutoff = now - 2 * 3600000L // 2 hours ago
+        // Built per call, not shared: getEpg() fans this out across 10 coroutines and
+        // SimpleDateFormat is not thread-safe — a shared instance silently corrupts parses.
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
 
         try {
             val root = com.google.gson.JsonParser.parseString(json).asJsonObject
@@ -379,18 +524,10 @@ class XtreamClient(private val auth: XtreamAuth) {
             for (elem in listings) {
                 val obj = elem.asJsonObject
                 val channelId = obj.get("epg_id")?.asString ?: obj.get("stream_id")?.asString ?: continue
-                val title = obj.get("title")?.asString?.let {
-                    // Xtream often base64-encodes titles
-                    try { String(android.util.Base64.decode(it, android.util.Base64.DEFAULT)) } catch (_: Exception) { it }
-                } ?: continue
-                val desc = obj.get("description")?.asString?.let {
-                    try { String(android.util.Base64.decode(it, android.util.Base64.DEFAULT)) } catch (_: Exception) { it }
-                } ?: ""
-                val startStr = obj.get("start")?.asString ?: continue
-                val endStr = obj.get("end")?.asString ?: obj.get("stop")?.asString ?: continue
-
-                val start = try { sdf.parse(startStr) } catch (_: Exception) { null } ?: continue
-                val end = try { sdf.parse(endStr) } catch (_: Exception) { null } ?: continue
+                val title = obj.get("title")?.asString?.let { maybeBase64(it) } ?: continue
+                val desc = obj.get("description")?.asString?.let { maybeBase64(it) } ?: ""
+                val start = readEpgTime(obj, listOf("start_timestamp"), listOf("start"), sdf) ?: continue
+                val end = readEpgTime(obj, listOf("stop_timestamp", "end_timestamp"), listOf("end", "stop"), sdf) ?: continue
 
                 if (end.time < cutoff) continue
 

@@ -41,6 +41,16 @@ object ProviderText {
 
     // Decorative codepoints: modifier/superscript letters, super/subscript
     // digits, and '#' border characters.
+    // Per-event channels on this feed carry raw scheduling data in the NAME:
+    //   "Mets x Padres start:2026-06-06 02:40:00 stop:2026-06-06 09:53:20"
+    // which is unreadable on a TV, overflows the title area, and buries the only
+    // part that matters (the matchup) behind 40 characters of timestamp. Strip the
+    // trailing start:/stop: block wherever it appears.
+    private val reStartStopSuffix = Regex(
+        """\s*\bstart:\s*\S+(?:[ T]\S+)?(?:\s*\bstop:\s*\S+(?:[ T]\S+)?)?\s*$""",
+        RegexOption.IGNORE_CASE
+    )
+
     private val reDecorations = Regex("[#\\u02B0-\\u02FF\\u1D00-\\u1DBF\\u2070-\\u209F]")
     private val reVip = Regex("""\bVIP\b""", RegexOption.IGNORE_CASE)
     private val reDirecTv = Regex("""DIREC\s*TV""", RegexOption.IGNORE_CASE)
@@ -68,9 +78,12 @@ object ProviderText {
      */
     fun cleanName(raw: String): String {
         val cleaned = tidy(stripLeadingTags(raw))
+        if (cleaned.isNotBlank()) return cleaned
         // Bare-tag entries ("NHL LIVE|", "MLB 17 |") would clean to nothing —
-        // keep the tag text instead of showing a blank name.
-        return if (cleaned.isBlank()) tidy(raw) else cleaned
+        // keep the tag text instead of showing a blank name. tidy() strips the
+        // schedule block too, so an entry that is ONLY a schedule block needs the
+        // untouched original as a last resort rather than rendering empty.
+        return tidy(raw).ifBlank { raw.trim() }
     }
 
     /** Peel a region prefix (possibly with a "(ESPN+ 001)" feed id) then any
@@ -114,7 +127,8 @@ object ProviderText {
 
     /** Shared finishing pass: DirecTV fix, decorations/VIP removal, casing. */
     private fun tidy(input: String): String {
-        var s = reDirecTv.replace(input, "DirecTV")
+        var s = reStartStopSuffix.replace(input, "")
+        s = reDirecTv.replace(s, "DirecTV")
         s = reDecorations.replace(s, " ")
         s = reVip.replace(s, " ")
         s = reMultiSpace.replace(s, " ").trim()

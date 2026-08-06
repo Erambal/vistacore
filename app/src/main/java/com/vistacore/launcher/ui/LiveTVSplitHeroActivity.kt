@@ -49,7 +49,7 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
         loadingView = findViewById(R.id.sh_loading)
         noResultsText = findViewById(R.id.sh_no_results_text)
 
-        channelRibbon.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        channelRibbon.layoutManager = RibbonLayoutManager(this)
 
         channelSearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -108,6 +108,10 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
         currentChannel?.let { updateNow(it) }
     }
 
+    override fun onEpgTick() {
+        currentChannel?.let { updateNow(it) }
+    }
+
     override fun onLoadingStateChanged(loading: Boolean) {
         loadingView.visibility = if (loading) View.VISIBLE else View.GONE
     }
@@ -120,7 +124,7 @@ class LiveTVSplitHeroActivity : BaseLiveTVActivity() {
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }
         )
-        channelRibbon.adapter = ribbonAdapter
+        channelRibbon.setAdapterPreservingFocus(ribbonAdapter)
 
         val q = channelSearch.text?.toString()?.trim().orEmpty()
         if (displayedChannels.isEmpty() && q.isNotEmpty()) {

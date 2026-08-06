@@ -118,7 +118,14 @@ class IPTVBrowserActivity : BaseActivity() {
             try {
                 allChannels = fetchChannelsFromNetwork()
                 withContext(Dispatchers.IO) {
-                    ChannelUpdateWorker.cacheChannels(this@IPTVBrowserActivity, allChannels)
+                    // Xtream getChannels() is LIVE-only — see BaseLiveTVActivity.
+                    ChannelUpdateWorker.cacheChannels(
+                        this@IPTVBrowserActivity,
+                        allChannels,
+                        if (prefs.sourceType == PrefsManager.SOURCE_XTREAM)
+                            ChannelUpdateWorker.LIVE_ONLY
+                        else ChannelUpdateWorker.ALL_CONTENT_TYPES
+                    )
                 }
                 populateUI()
                 showLoading(false)
@@ -207,11 +214,13 @@ class IPTVBrowserActivity : BaseActivity() {
     private fun showChannels(channels: List<Channel>) {
         binding.channelCount.text = "${channels.size} channel${if (channels.size != 1) "s" else ""}"
 
-        binding.channelsList.adapter = ChannelAdapter(
-            channels = channels,
-            epgData = epgData,
-            favoritesManager = favoritesManager,
-            onClick = { channel -> launchPlayer(channel) }
+        binding.channelsList.setAdapterPreservingFocus(
+            ChannelAdapter(
+                channels = channels,
+                epgData = epgData,
+                favoritesManager = favoritesManager,
+                onClick = { channel -> launchPlayer(channel) }
+            )
         )
         binding.emptyState.visibility = View.GONE
         binding.channelsList.visibility = View.VISIBLE

@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Favourites-grid home. A row of big destination buttons (Search / Movies / TV Shows /
+    Kids) sits above a 4-column grid of the user's favourited Live TV channels as squares.
+    Built for a senior who wants their handful of channels one click away, not buried in a
+    guide.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingStart="48dp"
+        android:paddingEnd="48dp"
+        android:paddingTop="40dp"
+        android:paddingBottom="32dp">
+
+        <!-- Top destinations -->
+        <LinearLayout
+            android:id="@+id/fav_topbar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/fav_btn_search"
+                android:layout_width="wrap_content"
+                android:layout_height="60dp"
+                android:text="@string/home_action_search"
+                android:textSize="19sp"
+                android:textColor="@color/text_primary"
+                android:fontFamily="sans-serif-medium"
+                android:background="@drawable/home_tile_selector"
+                android:drawableStart="@drawable/ic_voice_search"
+                android:drawableTint="@color/text_primary"
+                android:drawablePadding="10dp"
+                android:paddingStart="26dp"
+                android:paddingEnd="28dp"
+                android:layout_marginEnd="16dp"
+                android:focusable="true" />
+
+            <Button
+                android:id="@+id/fav_btn_movies"
+                android:layout_width="wrap_content"
+                android:layout_height="60dp"
+                android:text="@string/home_lane_movies"
+                android:textSize="19sp"
+                android:textColor="@color/text_primary"
+                android:fontFamily="sans-serif-medium"
+                android:background="@drawable/home_tile_selector"
+                android:paddingStart="28dp"
+                android:paddingEnd="28dp"
+                android:layout_marginEnd="16dp"
+                android:focusable="true" />
+
+            <Button
+                android:id="@+id/fav_btn_shows"
+                android:layout_width="wrap_content"
+                android:layout_height="60dp"
+                android:text="@string/home_lane_shows"
+                android:textSize="19sp"
+                android:textColor="@color/text_primary"
+                android:fontFamily="sans-serif-medium"
+                android:background="@drawable/home_tile_selector"
+                android:paddingStart="28dp"
+                android:paddingEnd="28dp"
+                android:layout_marginEnd="16dp"
+                android:focusable="true" />
+
+            <Button
+                android:id="@+id/fav_btn_kids"
+                android:layout_width="wrap_content"
+                android:layout_height="60dp"
+                android:text="@string/section_kids"
+                android:textSize="19sp"
+                android:textColor="@color/text_primary"
+                android:fontFamily="sans-serif-medium"
+                android:background="@drawable/home_tile_selector"
+                android:paddingStart="28dp"
+                android:paddingEnd="28dp"
+                android:focusable="true" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/fav_heading"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:text="@string/home_favorites_heading"
+            android:textSize="16sp"
+            android:textColor="@color/text_secondary"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.08" />
+
+        <!-- Favourite channels, 4 across -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/fav_grid"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="12dp"
+            android:clipToPadding="false"
+            android:paddingBottom="24dp" />
+
+        <!-- Empty state doubles as the way in: with no favourites there is no Live TV
+             button up top (by design), so this whole card is focusable and opens the
+             live channel list, where a long-press adds favourites. -->
+        <LinearLayout
+            android:id="@+id/fav_empty"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="@string/home_favorites_empty"
+                android:textSize="20sp"
+                android:textColor="@color/text_hint"
+                android:fontFamily="sans-serif-light"
+                android:lineSpacingExtra="6dp" />
+
+            <Button
+                android:id="@+id/fav_empty_browse"
+                android:layout_width="wrap_content"
+                android:layout_height="64dp"
+                android:layout_marginTop="32dp"
+                android:text="@string/home_favorites_browse_live"
+                android:textSize="20sp"
+                android:textColor="@color/text_primary"
+                android:fontFamily="sans-serif-medium"
+                android:background="@drawable/home_tile_selector"
+                android:paddingStart="36dp"
+                android:paddingEnd="36dp"
+                android:focusable="true" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/fav_loading"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/background_dark"
+        android:visibility="gone">
+
+        <com.vistacore.launcher.ui.BouncingDotsView
+            android:layout_width="120dp"
+            android:layout_height="56dp"
+            android:layout_gravity="center" />
+    </FrameLayout>
+
+</FrameLayout>

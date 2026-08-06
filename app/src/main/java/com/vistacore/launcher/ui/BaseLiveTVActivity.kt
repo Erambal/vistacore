@@ -3,6 +3,8 @@ package com.vistacore.launcher.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import androidx.media3.common.MediaItem
@@ -19,6 +21,8 @@ import com.vistacore.launcher.data.ContentCache
 import com.vistacore.launcher.data.FavoritesManager
 import com.vistacore.launcher.data.PrefsManager
 import com.vistacore.launcher.data.RecentChannelsManager
+import com.vistacore.launcher.data.ChannelSearch
+import com.vistacore.launcher.data.SportsMode
 import com.vistacore.launcher.iptv.*
 import com.vistacore.launcher.system.ChannelUpdateWorker
 import kotlinx.coroutines.*
@@ -47,9 +51,25 @@ abstract class BaseLiveTVActivity : BaseActivity() {
     protected var player: ExoPlayer? = null
     /** Last PlayerView the preview was attached to. Stored so the base
      *  class can rebuild the player on its own when it had to be released
-     *  for a fullscreen handoff (see goFullScreen / onResume). */
+     *  for a fullscreen handoff or a pause (see goFullScreen / onPause / onResume). */
     private var attachedPlayerView: PlayerView? = null
-    private var releasedForFullscreen = false
+    /** The preview player was released (fullscreen handoff or pause) and must
+     *  be rebuilt + re-tuned on the next onResume. */
+    private var needsRebuild = false
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    /** Self-healing driver for the live preview — reconnects on stalls/drops
+     *  instead of leaving the picture frozen until the user re-enters the app. */
+    private val recovery by lazy {
+        LiveStreamRecovery(
+            handler = handler,
+            player = { player },
+            reconnect = { reprepareCurrentStream() },
+            onGiveUp = { onLivePlaybackGaveUp() },
+            tag = TAG,
+        )
+    }
 
     protected var allChannels: List<Channel> = emptyList()
     protected var categoryChannels: List<Channel> = emptyList()
@@ -60,9 +80,23 @@ abstract class BaseLiveTVActivity : BaseActivity() {
 
     companion object {
         const val EXTRA_SEARCH_QUERY = "extra_search_query"
+
+        /** Network carrying a game, e.g. "ROOT SPORTS NW" — from the ESPN scoreboard. */
+        const val EXTRA_GAME_BROADCAST = "extra_game_broadcast"
+
+        /** Team names for the game, used to match a program title when the network doesn't resolve. */
+        const val EXTRA_GAME_TEAMS = "extra_game_teams"
+
+        /** Open straight into the Sports category. */
+        const val EXTRA_SPORTS_MODE = "extra_sports_mode"
         const val CATEGORY_ALL = "All"
         const val CATEGORY_RECENT = "Recent"
         const val CATEGORY_FAVORITES = "Favorites"
+        const val CATEGORY_SPORTS = SportsMode.CATEGORY_SPORTS
+
+        /** Idle pause before typed channel digits tune on their own. */
+        private const val NUMBER_ENTRY_IDLE_MS = 6000L
+
         private const val TAG = "LiveTV"
     }
 
@@ -78,6 +112,12 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         prefs = PrefsManager(this)
         recents = RecentChannelsManager(this)
+        // Live TV is watched passively — a senior won't touch the remote for a
+        // whole show. Without this the Google TV system screensaver (daydream)
+        // takes over after ~10 min of no input and kills playback, even mid-show
+        // and even while a stall is recovering. The fullscreen player already
+        // holds this; every live layout needs it too.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     /**
@@ -109,11 +149,45 @@ abstract class BaseLiveTVActivity : BaseActivity() {
             .build().also { exo ->
                 playerView.player = exo
                 exo.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_READY) recovery.onHealthy()
+                    }
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e(TAG, "Player error: ${error.message}")
+                        // Live feeds stall / drop / splice constantly. Reconnect
+                        // instead of freezing until the user leaves the app. When
+                        // the failure is permanent this just logs (returns false).
+                        recovery.onError(error)
                     }
                 })
             }
+        player?.let { onPlayerBuilt(it) }
+        recovery.start()
+    }
+
+    /**
+     * Called every time a fresh ExoPlayer is built — the initial setup and every
+     * rebuild after a fullscreen handoff or a pause/resume. Subclasses attach
+     * per-player listeners here (not in onCreate) so they survive a rebuild.
+     */
+    protected open fun onPlayerBuilt(player: ExoPlayer) {}
+
+    /** Rebuild the current channel's media source and reconnect from the live edge. */
+    private fun reprepareCurrentStream() {
+        val exo = player ?: return
+        val ch = currentChannel ?: return
+        exo.setMediaSource(buildMediaSource(ch.streamUrl))
+        exo.prepare()
+        exo.playWhenReady = true
+    }
+
+    /** The live feed failed to recover after repeated reconnects. */
+    protected open fun onLivePlaybackGaveUp() {
+        android.widget.Toast.makeText(
+            this,
+            "This channel keeps dropping. Try another, or check back shortly.",
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
     }
 
     /** Load channels (cache first, then network). Triggers onChannelsLoaded and loadEpg. */
@@ -142,7 +216,17 @@ abstract class BaseLiveTVActivity : BaseActivity() {
                     }
                     if (downloaded.isNotEmpty()) {
                         withContext(Dispatchers.IO) {
-                            ChannelUpdateWorker.cacheChannels(this@BaseLiveTVActivity, downloaded)
+                            // Xtream's getChannels() returns LIVE streams only, so this
+                            // call is not authoritative for movies/series — caching it as
+                            // a full catalog would overwrite both with empty files. M3U
+                            // playlists do carry VOD, so those stay full-scope.
+                            ChannelUpdateWorker.cacheChannels(
+                                this@BaseLiveTVActivity,
+                                downloaded,
+                                if (prefs.sourceType == PrefsManager.SOURCE_XTREAM)
+                                    ChannelUpdateWorker.LIVE_ONLY
+                                else ChannelUpdateWorker.ALL_CONTENT_TYPES
+                            )
                         }
                         downloaded.filter { it.contentType == ContentType.LIVE }
                     } else emptyList()
@@ -154,8 +238,20 @@ abstract class BaseLiveTVActivity : BaseActivity() {
 
             if (loadedChannels.isNotEmpty()) {
                 allChannels = loadedChannels.sortedBy { it.number }
-                selectedCategory = initialCategory()
+
+                pendingGameBroadcast = intent.getStringExtra(EXTRA_GAME_BROADCAST)?.trim() ?: ""
+                pendingGameTeams = intent.getStringArrayExtra(EXTRA_GAME_TEAMS)?.toList() ?: emptyList()
+                val wantsSports = intent.getBooleanExtra(EXTRA_SPORTS_MODE, false) ||
+                    pendingGameBroadcast.isNotBlank() || pendingGameTeams.isNotEmpty()
+
+                selectedCategory =
+                    if (wantsSports && SportsMode.sportsChannels(allChannels, epgData).isNotEmpty()) {
+                        CATEGORY_SPORTS
+                    } else {
+                        initialCategory()
+                    }
                 categoryChannels = channelsForCategory(selectedCategory)
+
                 // Apply any live search the user has already typed while we
                 // were loading, plus any pending query from the launcher.
                 val pending = intent.getStringExtra(EXTRA_SEARCH_QUERY)?.trim() ?: ""
@@ -165,10 +261,18 @@ abstract class BaseLiveTVActivity : BaseActivity() {
                 onChannelsLoaded()
                 onCategoriesChanged(buildCategories())
 
-                if (pending.isNotBlank() && displayedChannels.isNotEmpty()) {
-                    tuneToChannel(displayedChannels.first())
-                } else if (query.isBlank()) {
-                    tuneToChannel(categoryChannels.firstOrNull() ?: allChannels.first())
+                // A game launch resolves to a specific channel when we can identify the
+                // network. Only fall back to first-match / first-channel behaviour when
+                // it doesn't, so we never silently tune to something unrelated.
+                val tunedToGame = tryResolvePendingGame()
+                if (!tunedToGame) {
+                    if (pending.isNotBlank() && displayedChannels.isNotEmpty()) {
+                        tuneToChannel(displayedChannels.first())
+                    } else if (query.isBlank() && !wantsSports) {
+                        tuneToChannel(categoryChannels.firstOrNull() ?: allChannels.first())
+                    } else if (query.isBlank() && displayedChannels.isNotEmpty()) {
+                        tuneToChannel(displayedChannels.first())
+                    }
                 }
 
                 loadEpg()
@@ -183,12 +287,62 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         }
     }
 
+    // --- Game launch (from the home screen's upcoming-games row) ---
+
+    private var pendingGameBroadcast: String = ""
+    private var pendingGameTeams: List<String> = emptyList()
+    private var pendingGameHandled = false
+
+    /**
+     * Try to tune directly to the channel carrying the launched game.
+     *
+     * Runs twice: once as soon as channels load (network-name matching works without a
+     * guide) and again after the EPG arrives (team-name matching needs program titles).
+     * Returns true once it has tuned, so callers can skip their default tuning.
+     */
+    private fun tryResolvePendingGame(): Boolean {
+        if (pendingGameHandled) return false
+        if (pendingGameBroadcast.isBlank() && pendingGameTeams.isEmpty()) return false
+        if (allChannels.isEmpty()) return false
+
+        val match = SportsMode.findChannelForBroadcast(pendingGameBroadcast, allChannels, epgData)
+            ?: pendingGameTeams.firstNotNullOfOrNull { team ->
+                val nickname = team.split(" ").lastOrNull()?.lowercase()
+                if (nickname == null || nickname.length < 3) null
+                else allChannels.firstOrNull { channel ->
+                    val epg = epgData ?: return@firstOrNull false
+                    val key = channel.epgId.ifBlank { channel.id }
+                    val title = (epg.getNowPlaying(key) ?: epg.getNowPlaying(channel.name))?.title
+                    title?.lowercase()?.contains(nickname) == true
+                }
+            }
+
+        if (match != null) {
+            pendingGameHandled = true
+            tuneToChannel(match)
+            return true
+        }
+
+        // Couldn't identify a channel. Leave the user in the Sports category filtered by
+        // the most useful term we have — far better than the "no channels matching" dead
+        // end a concatenated "Away Home" query produces.
+        if (epgData != null) {
+            pendingGameHandled = true
+            val fallbackTerm = pendingGameBroadcast.takeIf { it.isNotBlank() }
+                ?: pendingGameTeams.firstOrNull()?.split(" ")?.lastOrNull()
+            if (!fallbackTerm.isNullOrBlank()) filterChannels(fallbackTerm)
+        }
+        return false
+    }
+
     private fun loadEpg() {
         val cachedEpg = ContentCache.epgData
-        val epgAge = System.currentTimeMillis() - ContentCache.epgLoadTime
-        if (cachedEpg != null && cachedEpg.programs.isNotEmpty() && epgAge < 30 * 60 * 1000L) {
+        if (cachedEpg != null && cachedEpg.programs.isNotEmpty() && ContentCache.isEpgFresh()) {
             epgData = cachedEpg
+            refreshDerivedCategoryViews()
+            tryResolvePendingGame()
             onEpgLoaded()
+            scheduleEpgTick()
             return
         }
 
@@ -199,7 +353,11 @@ abstract class BaseLiveTVActivity : BaseActivity() {
                         try {
                             val auth = XtreamAuth(prefs.xtreamServer, prefs.xtreamUsername, prefs.xtreamPassword)
                             val xc = XtreamClient(auth)
-                            val epg = xc.getEpg(allChannels)
+                            // Favourites and recents are what this user actually watches,
+                            // so they get guide coverage right after sports.
+                            val priority = favoritesManager.filterFavorites(allChannels)
+                                .map { it.id } + recents.getRecentChannels(allChannels).map { it.id }
+                            val epg = xc.getEpg(allChannels, priority)
                             if (epg.programs.isNotEmpty()) return@withContext epg
                         } catch (e: Exception) {
                             Log.w(TAG, "Xtream native EPG failed: ${e.message}")
@@ -219,33 +377,48 @@ abstract class BaseLiveTVActivity : BaseActivity() {
                     ContentCache.epgData = loaded
                     ContentCache.epgLoadTime = System.currentTimeMillis()
                     Log.d(TAG, "EPG loaded: ${loaded.programs.size} programs")
+                    // Sports detection leans on program titles, so the Sports category
+                    // can appear (or grow) only once the guide lands.
+                    refreshDerivedCategoryViews()
+                    // Team-name matching needs program titles, so retry now.
+                    tryResolvePendingGame()
                 }
                 onEpgLoaded()
+                scheduleEpgTick()
             } catch (e: Exception) {
                 Log.e(TAG, "EPG load failed", e)
             }
         }
     }
 
+    /**
+     * True when the last [filterChannels] call had to look outside the selected category
+     * to find anything. Variants can surface this so the user understands why results
+     * from "All" are showing while the category button still says "Recent".
+     */
+    protected var searchEscapedCategory: Boolean = false
+        private set
+
     protected fun filterChannels(query: String) {
-        val base = categoryChannels
-        displayedChannels = if (query.isBlank()) {
-            base
+        if (query.isBlank()) {
+            searchEscapedCategory = false
+            displayedChannels = categoryChannels
+            onDisplayedChannelsChanged()
+            return
+        }
+
+        // Search the selected category first, but fall back to the whole lineup rather
+        // than reporting "no matches". The default landing category is Recent (10
+        // channels), so a category-scoped search told users a channel they own does not
+        // exist — the single most confusing failure in the app.
+        val inCategory = ChannelSearch.searchChannels(categoryChannels, query, epgData)
+        displayedChannels = if (inCategory.isNotEmpty()) {
+            searchEscapedCategory = false
+            inCategory
         } else {
-            val asNum = query.toIntOrNull()
-            if (asNum != null) {
-                base.filter { it.number.toString().startsWith(query) }
-            } else {
-                base.filter { channel ->
-                    channel.name.contains(query, ignoreCase = true) ||
-                        channel.category.contains(query, ignoreCase = true) ||
-                        (epgData?.let { epg ->
-                            val epgKey = channel.epgId.ifBlank { channel.id }
-                            val now = epg.getNowPlaying(epgKey) ?: epg.getNowPlaying(channel.name)
-                            now?.title?.contains(query, ignoreCase = true) == true
-                        } ?: false)
-                }
-            }
+            val everywhere = ChannelSearch.searchChannels(allChannels, query, epgData)
+            searchEscapedCategory = everywhere.isNotEmpty()
+            everywhere
         }
         onDisplayedChannelsChanged()
     }
@@ -263,6 +436,7 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         CATEGORY_ALL -> allChannels
         CATEGORY_RECENT -> recents.getRecentChannels(allChannels)
         CATEGORY_FAVORITES -> favoritesManager.filterFavorites(allChannels)
+        CATEGORY_SPORTS -> SportsMode.sportsChannels(allChannels, epgData)
         else -> allChannels.filter { it.category == name }
     }
 
@@ -291,6 +465,10 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         val cats = mutableListOf<String>()
         if (recents.getRecentChannels(allChannels).isNotEmpty()) cats.add(CATEGORY_RECENT)
         if (favoritesManager.filterFavorites(allChannels).isNotEmpty()) cats.add(CATEGORY_FAVORITES)
+        // Sports sits above All and above the provider's own categories: it's the one
+        // people hunt for, and provider category names are inconsistent enough that
+        // finding sports by browsing them is unreliable.
+        if (SportsMode.sportsChannels(allChannels, epgData).isNotEmpty()) cats.add(CATEGORY_SPORTS)
         cats.add(CATEGORY_ALL)
         allChannels.map { it.category }.distinct().sorted().forEach { cats.add(it) }
         return cats
@@ -306,6 +484,8 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         refreshDerivedCategoryViews()
 
         player?.let { exo ->
+            // Fresh channel — start the reconnect budget over.
+            recovery.reset()
             val source = buildMediaSource(channel.streamUrl)
             exo.setMediaSource(source)
             exo.prepare()
@@ -341,7 +521,8 @@ abstract class BaseLiveTVActivity : BaseActivity() {
                 categoryChannels = allChannels
                 filterChannels(currentSearchQuery())
             }
-            selectedCategory == CATEGORY_RECENT || selectedCategory == CATEGORY_FAVORITES -> {
+            selectedCategory == CATEGORY_RECENT || selectedCategory == CATEGORY_FAVORITES ||
+                selectedCategory == CATEGORY_SPORTS -> {
                 categoryChannels = channelsForCategory(selectedCategory)
                 filterChannels(currentSearchQuery())
             }
@@ -369,9 +550,10 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         // the preview alive (even paused) makes fullscreen fall back to
         // a software decoder and stutter. The preview gets rebuilt in
         // onResume when the user returns from fullscreen.
+        recovery.stop()
         player?.release()
         player = null
-        releasedForFullscreen = true
+        needsRebuild = true
 
         val intent = Intent(this, IPTVPlayerActivity::class.java).apply {
             putExtra(IPTVPlayerActivity.EXTRA_STREAM_URL, channel.streamUrl)
@@ -447,9 +629,12 @@ abstract class BaseLiveTVActivity : BaseActivity() {
             }
         }
 
+        // "Go" is the primary, deliberate commit path. Previously the ONLY way to submit
+        // was the idle timer, so a user who typed slowly had no way to say "I'm done".
         val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Go to Channel")
             .setView(input)
+            .setPositiveButton("Go", null) // click wired after show() so it can stay open
             .setNegativeButton("Cancel", null)
             .create()
 
@@ -469,23 +654,32 @@ abstract class BaseLiveTVActivity : BaseActivity() {
 
         input.setOnEditorActionListener { _, _, _ -> submit(); true }
 
-        // Auto-submit after 2s of no further typing — matches the cable-box
-        // pattern where you key in 5-0-2 and the box just tunes a moment
-        // later. Reset the timer on every change so fast typists aren't
-        // cut off mid-number.
+        // Auto-submit after an idle pause — matches the cable-box pattern where you key in
+        // 5-0-2 and the box just tunes a moment later. The window is generous because
+        // D-padding across a leanback soft keyboard from '5' to '0' takes an older user
+        // well over two seconds, and firing early tuned them to the wrong channel and
+        // closed the dialog. "Go" exists for anyone who does not want to wait.
         val autoSubmit = Runnable { submit() }
+        fun rearmAutoSubmit() {
+            input.removeCallbacks(autoSubmit)
+            if (input.text.isNotEmpty()) input.postDelayed(autoSubmit, NUMBER_ENTRY_IDLE_MS)
+        }
         input.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) {
-                input.removeCallbacks(autoSubmit)
-                if (!s.isNullOrEmpty()) input.postDelayed(autoSubmit, 2000)
-            }
+            override fun afterTextChanged(s: android.text.Editable?) = rearmAutoSubmit()
         })
-        if (prefill.isNotEmpty()) input.postDelayed(autoSubmit, 2000)
+        if (prefill.isNotEmpty()) input.postDelayed(autoSubmit, NUMBER_ENTRY_IDLE_MS)
         dialog.setOnDismissListener { input.removeCallbacks(autoSubmit) }
 
         dialog.show()
+        // Wired after show() so a failed submit leaves the dialog open (the builder's
+        // own click listener always dismisses).
+        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+            ?.setOnClickListener {
+                input.removeCallbacks(autoSubmit)
+                if (!submit()) rearmAutoSubmit()
+            }
         input.requestFocus()
         input.postDelayed({
             val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
@@ -493,29 +687,103 @@ abstract class BaseLiveTVActivity : BaseActivity() {
         }, 200)
     }
 
+    // --- Guide roll-over ---
+    //
+    // A guide bound once at load time keeps showing the previous program forever. These
+    // screens routinely sit open for hours, so "now playing" has to advance on its own.
+    //
+    // Ticks are scheduled at the actual next program boundary rather than on a blind
+    // interval — the guide only changes when a program ends, so polling every minute
+    // would be ~30 wasted wakeups per useful one on a box that's already RAM-tight.
+
+    /** Never tick faster than this, even if timestamps say a program ends immediately. */
+    private val minEpgTickMs = 20_000L
+
+    /** Re-check at least this often so we recover if the schedule shifts underneath us. */
+    private val maxEpgTickMs = 10 * 60_000L
+
+    private val epgTickRunnable = Runnable {
+        onEpgTick()
+        scheduleEpgTick()
+    }
+
+    private fun scheduleEpgTick() {
+        handler.removeCallbacks(epgTickRunnable)
+        val epg = epgData ?: return
+        if (isFinishing || isDestroyed) return
+
+        val keys = buildList {
+            currentChannel?.let { add(it.epgId.ifBlank { it.id }) }
+            displayedChannels.forEach { add(it.epgId.ifBlank { it.id }) }
+        }
+        val boundary = epg.nextProgramBoundary(keys)?.time
+        val delay = if (boundary == null) {
+            maxEpgTickMs
+        } else {
+            // +1s so we land just past the boundary, not exactly on it.
+            (boundary - System.currentTimeMillis() + 1000L).coerceIn(minEpgTickMs, maxEpgTickMs)
+        }
+        handler.postDelayed(epgTickRunnable, delay)
+    }
+
+    /**
+     * A program boundary passed — refresh anything showing "now playing".
+     *
+     * Subclasses must not rebuild focusable lists unconditionally here: every layout's
+     * list refresh swaps in a fresh adapter, which resets D-pad focus and scroll
+     * position. Update the detail/strip views always, and only rebuild the list when it
+     * doesn't currently hold focus (i.e. the user isn't browsing it).
+     */
+    protected open fun onEpgTick() {}
+
     override fun onPause() {
         super.onPause()
-        player?.pause()
+        handler.removeCallbacks(epgTickRunnable)
         releasePlaybackWifiLock()
+        // Release the decoder + buffer while we're off-screen so a 2 GB box
+        // isn't pinning a paused stream's hardware decoder and tens of MB of
+        // buffer while the user is in another app/screen — that memory is what
+        // gets the box swap-thrashing. Rebuilt + re-tuned in onResume. Skip when
+        // finishing (onDestroy handles that) or when goFullScreen already
+        // released for the handoff.
+        if (!isFinishing && player != null) {
+            recovery.stop()
+            player?.release()
+            player = null
+            needsRebuild = true
+        } else {
+            player?.pause()
+        }
     }
 
     override fun onResume() {
         super.onResume()
         acquirePlaybackWifiLock()
-        // Coming back from a fullscreen handoff: the preview player was
-        // released to free the hardware decoder. Rebuild it now and tune
+        // Coming back from a fullscreen handoff or a pause: the preview player
+        // was released to free the hardware decoder. Rebuild it now and tune
         // back to whatever the user had selected.
-        if (releasedForFullscreen && player == null) {
-            releasedForFullscreen = false
+        if (needsRebuild && player == null) {
+            needsRebuild = false
             attachedPlayerView?.let { setupPlayer(it) }
             currentChannel?.let { tuneToChannel(it) }
         } else {
             player?.play()
         }
+
+        // Time passed while we were away, so the guide is almost certainly behind.
+        // Refresh what's on now, and refetch outright if the data itself has expired.
+        // Returning to the screen is the safe moment to do this — the user isn't
+        // mid-browse, so a full rebind can't yank focus out from under them.
+        if (epgData != null) {
+            onEpgTick()
+            if (!ContentCache.isEpgFresh()) loadEpg() else scheduleEpgTick()
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        recovery.stop()
+        handler.removeCallbacksAndMessages(null)
         player?.release()
         player = null
         scope.cancel()

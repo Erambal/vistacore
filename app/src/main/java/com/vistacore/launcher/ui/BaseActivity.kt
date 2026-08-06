@@ -17,6 +17,24 @@ import java.util.Locale
 open class BaseActivity : AppCompatActivity() {
 
     /**
+     * True when VistaCore is the device's resolved HOME activity.
+     *
+     * This decides whether "exit" is a coherent action at all. When VistaCore *is* the
+     * launcher there is nowhere to exit to — finishing the home activity drops the user
+     * onto a black screen or whatever the system falls back to, with no way back except
+     * the physical HOME button. When it is not the launcher, exiting legitimately returns
+     * to the real one.
+     */
+    protected fun isDefaultLauncher(): Boolean = try {
+        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        packageManager
+            .resolveActivity(home, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo?.packageName == packageName
+    } catch (_: Exception) {
+        false
+    }
+
+    /**
      * Whether this activity should permit portrait rotation on tablets /
      * phones. Default: true everywhere except TVs (which have no sensor)
      * and the video player (locks landscape so 16:9 fills the screen).

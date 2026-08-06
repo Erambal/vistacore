@@ -39,6 +39,12 @@ class SplashActivity : BaseActivity() {
 
     companion object {
         private const val TAG = "Splash"
+
+        /**
+         * Ceiling on the warm-path preload. It is a nice-to-have (it makes Live TV and
+         * Movies open instantly), so it must never be able to hold the launcher hostage.
+         */
+        private const val PRELOAD_TIMEOUT_MS = 25_000L
         private const val MIN_SPLASH_MS = 2000L
 
         private val splashBackgrounds = intArrayOf(
@@ -107,6 +113,13 @@ class SplashActivity : BaseActivity() {
     private var keyPressAcknowledged = false
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // BACK must always get through. This is the launcher's HOME entry point, so if
+        // loading ever wedges, swallowing BACK too leaves the user with a dead screen and
+        // a dead remote — nothing short of pulling the power recovers it. Letting BACK
+        // out is the only escape hatch that does not depend on our own code working.
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            return super.onKeyDown(keyCode, event)
+        }
         if (!keyPressAcknowledged && !isFinishing) {
             keyPressAcknowledged = true
             Toast.makeText(this, "Loading in progress — please wait", Toast.LENGTH_SHORT).show()
@@ -389,7 +402,15 @@ class SplashActivity : BaseActivity() {
                             }
                         }
 
-                        preloadContent()
+                        // Bounded: preloadContent ends in an EPG fetch with no timeout of
+                        // its own, and the 45s budget below only covers the *cold* fetch
+                        // path. An unresponsive provider here would otherwise hang the
+                        // splash forever. The preload is an optimisation — going to the
+                        // home screen without it is always better than not going at all.
+                        val preloaded = withTimeoutOrNull(PRELOAD_TIMEOUT_MS) { preloadContent() }
+                        if (preloaded == null) {
+                            Log.w(TAG, "Preload timed out after ${PRELOAD_TIMEOUT_MS}ms — continuing to home")
+                        }
                         tickerJob.cancel()
                     }
                     updateStatus("Showtime!", 100)
@@ -527,9 +548,16 @@ class SplashActivity : BaseActivity() {
     private suspend fun preloadContent(): Unit = withContext(Dispatchers.IO) {
         val loadPrefs = PrefsManager(this@SplashActivity)
         val tracker = com.vistacore.launcher.data.UsageTracker(this@SplashActivity)
+        // Phase timing: preload keeps timing out at 25s and the culprit is not obvious
+        // from the outside — disk parse of large caches vs. a network EPG fetch look
+        // identical in a stopwatch. Log each phase's elapsed ms so the budget can be
+        // attributed to real work rather than guessed at.
+        val t0 = android.os.SystemClock.elapsedRealtime()
+        fun mark(phase: String) = Log.d(TAG, "preload timing: $phase at +${android.os.SystemClock.elapsedRealtime() - t0}ms")
         try {
             // Movies
             val movies = if (loadPrefs.loadMoviesEnabled) ChannelUpdateWorker.getCachedMovies(this@SplashActivity) else null
+            mark("movies parsed (${movies?.size ?: 0})")
             if (movies != null && movies.isNotEmpty()) {
                 ContentCache.movieItems = movies
                 val rows = mutableListOf<NetflixRow>()
@@ -547,11 +575,13 @@ class SplashActivity : BaseActivity() {
                 }
                 ContentCache.movieRows = rows
             }
+            mark("movie rows built")
 
             withContext(Dispatchers.Main) { updateStatus("Movies ready, loading shows…", 50) }
 
             // Shows
             val series = if (loadPrefs.loadShowsEnabled) ChannelUpdateWorker.getCachedSeries(this@SplashActivity) else null
+            mark("series parsed (${series?.size ?: 0})")
             if (series != null && series.isNotEmpty()) {
                 ContentCache.showItems = series
 
@@ -597,68 +627,32 @@ class SplashActivity : BaseActivity() {
                 }
                 ContentCache.showRows = rows
             }
+            mark("show rows + index built")
 
             withContext(Dispatchers.Main) { updateStatus("Shows ready, loading kids…", 70) }
 
-            // Kids
-            if (!loadPrefs.loadKidsEnabled) {
-                // Skip kids preload
-            } else {
-            // Use the same classifier the runtime Kids browser uses
-            // (KidsDiscovery.isKidsItem). The previous exact-category
-            // allowlist was strictly narrower — it accepted only items
-            // whose category was exactly "animation", "family", or
-            // "kids", so franchise-matched titles (Bluey, Paw Patrol,
-            // etc.) parked under any other category never made it into
-            // ContentCache.kidsItems. That left the user with a
-            // smaller catalog when Splash preload had run and a larger
-            // one on cold launches without preload.
-            fun isKids(ch: Channel) = KidsDiscovery.isKidsItem(ch)
-
-            // Read movies + series from disk independently of the
-            // Movies/Shows preload toggles. The kids switch is its own
-            // setting — turning Movies preload off shouldn't strip
-            // cartoons out of Kids. We reuse the already-loaded movies
-            // and series lists when those toggles were on, and read
-            // from disk otherwise so Kids gets the full catalog regardless.
-            val kidsMovieSource = movies ?: ChannelUpdateWorker.getCachedMovies(this@SplashActivity) ?: emptyList()
-            val kidsSeriesSource = series ?: ChannelUpdateWorker.getCachedSeries(this@SplashActivity) ?: emptyList()
-            val kidsMovies = kidsMovieSource.filter { isKids(it) }
-            val kidsSeries = kidsSeriesSource.filter { isKids(it) }
-            val kidsLive = ChannelUpdateWorker.getCachedChannels(this@SplashActivity)?.filter { isKids(it) } ?: emptyList()
-            val allKids = kidsMovies + kidsSeries + kidsLive
-
-            if (allKids.isNotEmpty()) {
-                ContentCache.kidsItems = allKids
-                ContentCache.kidsShowIndex = kidsSeries.groupBy { extractShowName(it.name) }
-
-                val kidsRows = mutableListOf<NetflixRow>()
-                val kidsBannerPool = kidsMovies.take(200)
-                val kidsPosters = kidsBannerPool.filter { it.logoUrl.isNotBlank() }.shuffled().take(5)
-                if (kidsPosters.isNotEmpty()) kidsRows.add(NetflixRow.Banner(kidsPosters.first()))
-
-                if (kidsLive.isNotEmpty()) kidsRows.add(NetflixRow.CategoryRow("Kids Live TV", kidsLive.take(30)))
-
-                val kidMovieGroups = kidsMovies.groupBy { it.category }
-                for ((cat, items) in kidMovieGroups.entries.sortedByDescending { it.value.size }.take(15)) {
-                    kidsRows.add(NetflixRow.CategoryRow(cat, items))
+            // Kids classification is deliberately OFF the blocking path. It scans the
+            // entire catalog through KidsDiscovery.isKidsItem — 78k movies + 42k series +
+            // 3k live — and even after collapsing the franchise match into one regex that
+            // measured ~35s on the 2 GB box, which on its own blew the 25s preload budget
+            // and left every cold start stalling on the splash screen. The home screen
+            // never shows kids rows (Kids is its own browser), so there is no reason to
+            // make home wait for it. Fire it on an app-scoped coroutine that is NOT a
+            // child of preloadContent's timeout scope, so the splash timeout cannot
+            // cancel it and it keeps populating ContentCache.kidsItems/kidsRows while the
+            // user is already on the home screen. If Kids is opened before it finishes,
+            // KidsBrowserActivity falls back to its own filterToKids.
+            if (loadPrefs.loadKidsEnabled) {
+                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                    buildKidsCache(movies, series)
                 }
-
-                val uniqueKidsShows = run {
-                    val seen = mutableSetOf<String>()
-                    kidsSeries.filter { seen.add(extractShowName(it.name)) }
-                }
-                val kidShowGroups = uniqueKidsShows.groupBy { it.category }
-                for ((cat, items) in kidShowGroups.entries.sortedByDescending { it.value.size }.take(10)) {
-                    kidsRows.add(NetflixRow.CategoryRow("$cat (Shows)", items))
-                }
-
-                ContentCache.kidsRows = kidsRows
             }
-            } // end kids else
+            mark("kids launched (background)")
 
-            // Preload EPG so Live TV has it instantly
-            if (ContentCache.epgData == null) {
+            // Preload EPG so Live TV has it instantly.
+            // Age-checked, not just null-checked: this process survives for days on a TV,
+            // so a non-null guide can easily be yesterday's.
+            if (!ContentCache.isEpgFresh()) {
                 withContext(Dispatchers.Main) { updateStatus("Loading TV guide…", 90) }
 
                 val liveChannels = ChannelUpdateWorker.getCachedChannels(this@SplashActivity) ?: emptyList()
@@ -717,6 +711,7 @@ class SplashActivity : BaseActivity() {
                 }
             }
 
+            mark("EPG done (${ContentCache.epgData?.programs?.size ?: 0} programs)")
             Log.d(TAG, "Preloaded: ${ContentCache.movieRows?.size ?: 0} movie rows, ${ContentCache.showRows?.size ?: 0} show rows, ${ContentCache.kidsRows?.size ?: 0} kids rows, epg=${ContentCache.epgData != null}")
             // Mark the cache as ready so the next launch's warm-path gate
             // doesn't re-run preloadContent. We set this even when some
@@ -753,6 +748,63 @@ class SplashActivity : BaseActivity() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Preload failed", e)
+        }
+    }
+
+    /**
+     * Build ContentCache.kidsItems/kidsShowIndex/kidsRows by classifying the whole
+     * catalog. Runs off the splash critical path (see the call site) because on the
+     * 2 GB box this scan is ~35s and the home screen does not use its output.
+     *
+     * [preloadMovies]/[preloadSeries] are the already-parsed lists when the Movies/Shows
+     * preload toggles were on; null means read from disk. The Kids switch is independent
+     * of those toggles, so Kids gets the full catalog either way.
+     */
+    private suspend fun buildKidsCache(
+        preloadMovies: List<Channel>?,
+        preloadSeries: List<Channel>?,
+    ) = withContext(Dispatchers.IO) {
+        val kt0 = android.os.SystemClock.elapsedRealtime()
+        try {
+            fun isKids(ch: Channel) = KidsDiscovery.isKidsItem(ch)
+
+            val kidsMovieSource = preloadMovies ?: ChannelUpdateWorker.getCachedMovies(this@SplashActivity) ?: emptyList()
+            val kidsSeriesSource = preloadSeries ?: ChannelUpdateWorker.getCachedSeries(this@SplashActivity) ?: emptyList()
+            val kidsMovies = kidsMovieSource.filter { isKids(it) }
+            val kidsSeries = kidsSeriesSource.filter { isKids(it) }
+            val kidsLive = ChannelUpdateWorker.getCachedChannels(this@SplashActivity)?.filter { isKids(it) } ?: emptyList()
+            val allKids = kidsMovies + kidsSeries + kidsLive
+
+            if (allKids.isNotEmpty()) {
+                ContentCache.kidsItems = allKids
+                ContentCache.kidsShowIndex = kidsSeries.groupBy { extractShowName(it.name) }
+
+                val kidsRows = mutableListOf<NetflixRow>()
+                val kidsBannerPool = kidsMovies.take(200)
+                val kidsPosters = kidsBannerPool.filter { it.logoUrl.isNotBlank() }.shuffled().take(5)
+                if (kidsPosters.isNotEmpty()) kidsRows.add(NetflixRow.Banner(kidsPosters.first()))
+
+                if (kidsLive.isNotEmpty()) kidsRows.add(NetflixRow.CategoryRow("Kids Live TV", kidsLive.take(30)))
+
+                val kidMovieGroups = kidsMovies.groupBy { it.category }
+                for ((cat, items) in kidMovieGroups.entries.sortedByDescending { it.value.size }.take(15)) {
+                    kidsRows.add(NetflixRow.CategoryRow(cat, items))
+                }
+
+                val uniqueKidsShows = run {
+                    val seen = mutableSetOf<String>()
+                    kidsSeries.filter { seen.add(extractShowName(it.name)) }
+                }
+                val kidShowGroups = uniqueKidsShows.groupBy { it.category }
+                for ((cat, items) in kidShowGroups.entries.sortedByDescending { it.value.size }.take(10)) {
+                    kidsRows.add(NetflixRow.CategoryRow("$cat (Shows)", items))
+                }
+
+                ContentCache.kidsRows = kidsRows
+            }
+            Log.d(TAG, "Kids cache built in background (+${android.os.SystemClock.elapsedRealtime() - kt0}ms): ${allKids.size} items, ${ContentCache.kidsRows?.size ?: 0} rows")
+        } catch (e: Exception) {
+            Log.w(TAG, "Background kids build failed: ${e.message}")
         }
     }
 

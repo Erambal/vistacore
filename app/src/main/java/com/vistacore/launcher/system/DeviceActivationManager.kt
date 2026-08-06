@@ -11,14 +11,16 @@ import java.net.URL
 
 /**
  * Checks device activation status against the admin server.
- * If the server is unreachable, uses a cached result with a 7-day grace period.
+ * Fails open on any server or network problem — only an explicit `active: false`
+ * response locks the device. See [DeviceActivationManager.isDeviceActive].
  */
 class DeviceActivationManager(private val context: Context) {
 
     private val prefs = PrefsManager(context)
 
     companion object {
-        private const val GRACE_PERIOD_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
+        // No grace period any more: unreachable always fails open, so there is nothing
+        // to expire. See isDeviceActive().
         private const val CONNECT_TIMEOUT = 8_000
         private const val READ_TIMEOUT = 8_000
     }
@@ -31,12 +33,19 @@ class DeviceActivationManager(private val context: Context) {
     /**
      * Check activation status. Returns true if the device is allowed to run.
      *
-     * Logic:
-     * 1. Hit the server — if it responds, cache the result and return it.
-     * 2. If the server is unreachable, use the cached result if it's within
-     *    the grace period. After the grace period expires, return false.
-     * 3. On very first launch (no cached result, no server configured),
-     *    default to active so the app isn't locked out of the box.
+     * Only an explicit `active: false` from the server ever locks the device.
+     *
+     * Every other outcome fails OPEN — unreachable host, DNS failure, expired cert,
+     * timeout, non-200. This is deliberate: the lock screen is an inescapable dead end
+     * (Back is a no-op and Retry cannot succeed without the server), and the people
+     * using this launcher cannot diagnose or work around it. A lapsed domain, an ISP
+     * outage, or a moved router must never be able to brick a TV in someone's house.
+     * `checkServer` already failed open on a non-200 (see below); this makes the
+     * transport-failure path agree with it.
+     *
+     * Consequence worth knowing: a deactivated device that never reaches the server
+     * again keeps working. That is the intended trade — losing a revocation is
+     * recoverable, bricking a senior's television is not.
      */
     suspend fun isDeviceActive(): Boolean {
         val serverUrl = prefs.activationServer.trimEnd('/')
@@ -50,17 +59,9 @@ class DeviceActivationManager(private val context: Context) {
             prefs.activationLastCheck = System.currentTimeMillis()
             active
         } catch (_: Exception) {
-            // Server unreachable — use cached result within grace period
-            val lastCheck = prefs.activationLastCheck
-            if (lastCheck == 0L) {
-                // Never checked before — allow (first launch, server might not exist yet)
-                true
-            } else if (System.currentTimeMillis() - lastCheck < GRACE_PERIOD_MS) {
-                prefs.deviceActiveCached
-            } else {
-                // Grace period expired, server still unreachable — lock
-                false
-            }
+            // Server unreachable. Never lock on this — we cannot tell "revoked" from
+            // "the internet is down", and only one of those should stop playback.
+            true
         }
     }
 

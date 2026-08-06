@@ -100,10 +100,9 @@ class EpgGuideActivity : BaseActivity() {
                 // Filter to live channels only
                 channels = channels.filter { it.contentType == ContentType.LIVE }
 
-                // Use cached EPG if available and recent (< 30 min old)
+                // Use cached EPG if available and still within its TTL
                 val cachedEpg = com.vistacore.launcher.data.ContentCache.epgData
-                val epgAge = System.currentTimeMillis() - com.vistacore.launcher.data.ContentCache.epgLoadTime
-                if (cachedEpg != null && cachedEpg.programs.isNotEmpty() && epgAge < 30 * 60 * 1000L) {
+                if (cachedEpg != null && cachedEpg.programs.isNotEmpty() && com.vistacore.launcher.data.ContentCache.isEpgFresh()) {
                     epgData = cachedEpg
                     android.util.Log.d("EpgGuide", "Using cached EPG: ${cachedEpg.channels.size} channels, ${cachedEpg.programs.size} programs")
                 } else {

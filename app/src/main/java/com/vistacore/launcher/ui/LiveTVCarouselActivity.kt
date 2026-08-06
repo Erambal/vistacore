@@ -114,6 +114,11 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
         currentChannel?.let { updateHeroSubtitle(it) }
     }
 
+    // Hero subtitle only — no focusable list is rebuilt, so this is always safe.
+    override fun onEpgTick() {
+        currentChannel?.let { updateHeroSubtitle(it) }
+    }
+
     override fun onLoadingStateChanged(loading: Boolean) {
         loadingView.visibility = if (loading) View.VISIBLE else View.GONE
     }
@@ -154,7 +159,7 @@ class LiveTVCarouselActivity : BaseLiveTVActivity() {
                 if (ch.id == currentChannel?.id) goFullScreen(ch) else tuneToChannel(ch)
             }
         )
-        rowsList.adapter = rowsAdapter
+        rowsList.setAdapterPreservingFocus(rowsAdapter)
 
         val q = channelSearch.text?.toString()?.trim().orEmpty()
         if (displayedChannels.isEmpty() && q.isNotEmpty()) {

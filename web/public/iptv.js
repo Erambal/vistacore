@@ -170,6 +170,7 @@ class IPTVService {
     this.xtream = null; // { server, username, password }
     this.m3uUrl = null;
     this._loaded = false;
+    this._partial = false; // true when some catalog sections failed to load
     this._listeners = [];
   }
 
@@ -221,7 +222,14 @@ class IPTVService {
   }
 
   // ─── Xtream API helpers (proxied through worker) ───
-  _xtreamApi(action, params = {}) {
+  // Statuses worth retrying. Xtream panels sit behind nginx/Cloudflare and
+  // routinely answer 504/502 when their PHP backend is busy — especially on
+  // the heavy get_vod_streams / get_series actions. An auth error (401/403)
+  // or a bad request won't fix itself, so those fail immediately.
+  static TRANSIENT_STATUS = new Set([408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
+  static RETRY_DELAYS_MS = [1000, 3000, 7000];
+
+  async _xtreamApi(action, params = {}) {
     const url = new URL('/api/xtream', location.origin);
     url.searchParams.set('server', this.xtream.server);
     url.searchParams.set('username', this.xtream.username);
@@ -230,11 +238,28 @@ class IPTVService {
     for (const [k, v] of Object.entries(params)) {
       url.searchParams.set(k, v);
     }
-    return fetch(url.toString())
-      .then(r => {
-        if (!r.ok) throw new Error(`API error: ${r.status}`);
-        return r.json();
-      });
+
+    const delays = IPTVService.RETRY_DELAYS_MS;
+    let lastErr;
+    for (let attempt = 0; attempt <= delays.length; attempt++) {
+      try {
+        const r = await fetch(url.toString());
+        if (!r.ok) {
+          const err = new Error(`API error: ${r.status}${action ? ` (${action})` : ''}`);
+          err.status = r.status;
+          throw err;
+        }
+        return await r.json();
+      } catch (err) {
+        lastErr = err;
+        // No status = network drop or a non-JSON body (providers love serving
+        // HTML error pages) — both worth another try.
+        const retriable = err.status == null || IPTVService.TRANSIENT_STATUS.has(err.status);
+        if (!retriable || attempt === delays.length) break;
+        await new Promise(res => setTimeout(res, delays[attempt]));
+      }
+    }
+    throw lastErr;
   }
 
   // ─── Stream URLs ───
@@ -377,9 +402,9 @@ class IPTVService {
   async loadAll(opts = {}) {
     const { forceRefresh = false } = opts;
     this.emit('loading', { phase: 'Starting...' });
+    const key = this._cacheKey();
 
     try {
-      const key = this._cacheKey();
       const cached = (key && !forceRefresh) ? await CatalogCache.get(key) : null;
 
       if (cached) {
@@ -400,30 +425,60 @@ class IPTVService {
       }
 
       // No cache (or forced) — do a full network load.
+      this._partial = false;
       if (this.xtream)      await this._loadXtream();
       else if (this.m3uUrl) await this._loadM3U();
       else throw new Error('No IPTV source configured');
 
       this._loaded = true;
-      if (key) await CatalogCache.put(key, this._snapshot());
+      // Never persist a partial catalog — it would pin the gaps in place for
+      // the whole cache TTL. Keep the degraded view to this session only.
+      if (key && !this._partial) await CatalogCache.put(key, this._snapshot());
 
       this.emit('loaded', {
         channels:  this.channels.length,
         movies:    this.movies.length,
         series:    this.series.length,
         fromCache: false,
+        partial:   this._partial,
       });
     } catch (err) {
+      // Network load failed outright. Fall back to whatever we have cached —
+      // even if it's expired — rather than leaving the user with a dead app.
+      const fallback = key ? await CatalogCache.get(key) : null;
+      if (fallback) {
+        console.warn('Catalog load failed, serving cached copy:', err.message);
+        this._hydrate(fallback.data);
+        this._loaded = true;
+        this.emit('loaded', {
+          channels:  this.channels.length,
+          movies:    this.movies.length,
+          series:    this.series.length,
+          fromCache: true,
+          stale:     true,
+          ageHours:  (Date.now() - fallback.savedAt) / 3600000,
+        });
+        return;
+      }
       this.emit('error', err);
       throw err;
     }
   }
 
   async _backgroundRefresh(key) {
+    // We're already showing a complete cached catalog. A partial reload would
+    // silently delete sections from a working session, so keep a copy and roll
+    // back unless the refresh comes back whole.
+    const previous = this._snapshot();
     try {
+      this._partial = false;
       if (this.xtream)      await this._loadXtream();
       else if (this.m3uUrl) await this._loadM3U();
       else return;
+      if (this._partial) {
+        this._hydrate(previous);
+        return;
+      }
       await CatalogCache.put(key, this._snapshot());
       this.emit('refreshed', {
         channels: this.channels.length,
@@ -431,13 +486,15 @@ class IPTVService {
         series:   this.series.length,
       });
     } catch (err) {
+      this._hydrate(previous);
       console.warn('Background catalog refresh failed:', err);
     }
   }
 
   async refreshCatalog() {
-    const key = this._cacheKey();
-    if (key) await CatalogCache.delete(key);
+    // Don't delete the cache up front — if the refresh fails, that was the only
+    // working catalog we had. loadAll overwrites it on success and falls back
+    // to it on failure.
     return this.loadAll({ forceRefresh: true });
   }
 
@@ -448,9 +505,11 @@ class IPTVService {
     const auth = await this._xtreamApi(null);
     if (!auth.user_info) throw new Error('Authentication failed');
 
-    // Load categories + streams in parallel
+    // Load categories + streams in parallel. Settle each independently rather
+    // than Promise.all — one timed-out section (usually movies or series, the
+    // biggest payloads) shouldn't throw away the five that came back fine.
     this.emit('loading', { phase: 'Loading channels...' });
-    const [liveCats, liveStreams, vodCats, vodStreams, seriesCats, seriesData] = await Promise.all([
+    const results = await Promise.allSettled([
       this._xtreamApi('get_live_categories'),
       this._xtreamApi('get_live_streams'),
       this._xtreamApi('get_vod_categories'),
@@ -458,6 +517,28 @@ class IPTVService {
       this._xtreamApi('get_series_categories'),
       this._xtreamApi('get_series'),
     ]);
+
+    const failures = [];
+    const settled = (i, label) => {
+      const r = results[i];
+      if (r.status === 'fulfilled') return r.value;
+      failures.push(`${label} (${(r.reason && r.reason.message) || r.reason})`);
+      return null;
+    };
+
+    const liveCats    = settled(0, 'live categories');
+    const liveStreams = settled(1, 'channels');
+    const vodCats     = settled(2, 'movie categories');
+    const vodStreams  = settled(3, 'movies');
+    const seriesCats  = settled(4, 'series categories');
+    const seriesData  = settled(5, 'series');
+
+    // Only give up if there's genuinely nothing to show.
+    if (!liveStreams && !vodStreams && !seriesData) {
+      throw new Error(`Provider unavailable — failed to load ${failures.join(', ')}`);
+    }
+    this._partial = failures.length > 0;
+    if (this._partial) console.warn('Partial catalog load — failed:', failures.join(', '));
 
     // Parse live channels
     this.categories = (liveCats || []).map(c => ({
@@ -532,7 +613,8 @@ class IPTVService {
       };
     });
 
-    this.emit('loading', { phase: `Loaded ${this.channels.length} channels, ${this.movies.length} movies, ${this.series.length} series` });
+    const summary = `Loaded ${this.channels.length} channels, ${this.movies.length} movies, ${this.series.length} series`;
+    this.emit('loading', { phase: this._partial ? `${summary} (some sections unavailable)` : summary });
   }
 
   // ─── Load Series Info (seasons/episodes) ───

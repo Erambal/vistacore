@@ -8,3 +8,9 @@ directory = "./public"
 [vars]
 GOOGLE_CLIENT_ID = "899707943405-6au2o5b11pke3ttm9o7lraddbsc7v0g9.apps.googleusercontent.com"
 # ALLOWED_EMAILS = "you@example.com,family@example.com"  # uncomment to restrict access
+
+# Per-account settings sync. Also requires the SESSION_SECRET secret:
+#   npx wrangler secret put SESSION_SECRET
+[[kv_namespaces]]
+binding = "SETTINGS"
+id = "cad913872911404e8fe6c2a224cf6f06"

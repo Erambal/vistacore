@@ -45,6 +45,12 @@ Thumbs.db
 # Cloudflare Worker web app
 web/node_modules/
 web/.wrangler/
+# Local secrets for `wrangler dev` (SESSION_SECRET etc.) — never commit.
+web/.dev.vars
+
+# Build artifacts — regenerable, don't track.
+/m3/
+/transcoder.zip
 
 # Local VPS deploy helpers — contain hardcoded credentials, never commit.
 server/remote_exec.py

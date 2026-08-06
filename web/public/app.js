@@ -30,6 +30,9 @@ function isLoggedIn() { return localStorage.getItem('vc_user') !== null; }
 
 function logout() {
   localStorage.removeItem('vc_user');
+  // Settings belong to the account, not the device — they're restored from the
+  // server on next sign-in, so don't leave them for whoever logs in next.
+  localStorage.removeItem('vc_settings');
   if (window.google && google.accounts && google.accounts.id) {
     google.accounts.id.disableAutoSelect();
   }
@@ -38,7 +41,12 @@ function logout() {
 
 function currentUser() {
   const r = localStorage.getItem('vc_user');
-  return r ? JSON.parse(r) : null;
+  try { return r ? JSON.parse(r) : null; } catch { return null; }
+}
+
+function authToken() {
+  const u = currentUser();
+  return (u && u.token) || '';
 }
 
 let _googleClientId = null;
@@ -126,7 +134,12 @@ async function handleGoogleCredential(response) {
       email: user.email,
       name: user.name,
       picture: user.picture,
+      sub: user.sub,
+      token: user.token || '',
     }));
+    // Pull this account's saved settings before the dashboard builds, so a
+    // fresh device comes up already configured instead of empty.
+    await pullRemoteSettings();
     showScreen('dashboard');
   } catch (err) {
     errEl.textContent = 'Sign-in failed: ' + err.message;
@@ -336,7 +349,9 @@ async function initDashboard() {
   // Build apps row
   buildAppsRow();
 
-  // Load settings and IPTV data
+  // Load settings and IPTV data. On a device that has nothing configured yet
+  // (stay-signed-in on a new browser), try the account's synced copy first.
+  if (!hasLocalSettings()) await pullRemoteSettings();
   loadSettings();
   await loadIPTVData();
 
@@ -2032,6 +2047,49 @@ function getSettings() {
   try { return JSON.parse(localStorage.getItem('vc_settings') || '{}'); } catch { return {}; }
 }
 
+function hasLocalSettings() {
+  const s = getSettings();
+  return !!(s.xtreamServer || s.m3u);
+}
+
+/* ─── Settings sync (per Google account, stored in Worker KV) ───
+   Every call degrades quietly: if sync isn't configured or the network is
+   down, the app carries on with device-local settings. */
+async function pullRemoteSettings() {
+  const token = authToken();
+  if (!token) return false;
+  try {
+    const resp = await fetch('/api/settings', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    if (!data.settings) return false;
+    localStorage.setItem('vc_settings', JSON.stringify(data.settings));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function pushRemoteSettings(settings) {
+  const token = authToken();
+  if (!token) return false;
+  try {
+    const resp = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ settings }),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
 function loadSettings() {
   const s = getSettings();
   if (s.m3u) document.getElementById('setting-m3u').value = s.m3u;
@@ -2054,7 +2112,7 @@ document.getElementById('settings-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) e.currentTarget.hidden = true;
 });
 
-document.getElementById('btn-save-settings').addEventListener('click', () => {
+document.getElementById('btn-save-settings').addEventListener('click', async () => {
   const settings = {
     m3u: document.getElementById('setting-m3u').value,
     epg: document.getElementById('setting-epg').value,
@@ -2067,6 +2125,12 @@ document.getElementById('btn-save-settings').addEventListener('click', () => {
   };
   localStorage.setItem('vc_settings', JSON.stringify(settings));
   document.getElementById('settings-modal').hidden = true;
+
+  // Mirror to the account so other devices pick these up. Local save already
+  // happened, so a sync failure is a warning, not an error.
+  if (authToken() && !(await pushRemoteSettings(settings))) {
+    toast("Saved on this device, but couldn't sync to your account", true);
+  }
 
   // Re-init with new settings — tear down existing players so their
   // keydown listeners and DOM don't leak into the fresh instances.

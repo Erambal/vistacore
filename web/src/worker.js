@@ -7,7 +7,7 @@
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
   'Access-Control-Allow-Headers': '*',
 };
 
@@ -40,6 +40,7 @@ async function handleApi(url, request, env) {
 
   if (path === '/api/config')        return handleConfig(env);
   if (path === '/api/auth/google')   return handleGoogleAuth(request, env);
+  if (path === '/api/settings')      return handleSettings(request, env);
   if (path === '/api/xtream')        return handleXtream(url);
   if (path === '/api/m3u')           return handleM3U(url);
   if (path === '/api/epg')           return handleEpg(url);
@@ -87,7 +88,101 @@ async function handleTmdb(url, env) {
 async function handleConfig(env) {
   return jsonResponse({
     googleClientId: (env && env.GOOGLE_CLIENT_ID) || '',
+    settingsSync: !!(env && env.SETTINGS && env.SESSION_SECRET),
   });
+}
+
+/* ─── Session tokens ───
+   Google ID tokens expire after ~1 hour, which is useless for "stay signed in".
+   So on successful Google verification we mint our own token — the account's
+   subject ID plus an expiry, signed with HMAC-SHA256 — and verify that on
+   settings requests. The client never gets to assert who it is. */
+const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+function b64urlEncode(bytes) {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlDecode(str) {
+  const pad = str.length % 4 ? '='.repeat(4 - (str.length % 4)) : '';
+  const bin = atob(str.replace(/-/g, '+').replace(/_/g, '/') + pad);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function hmacKey(secret) {
+  return crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify']
+  );
+}
+
+async function mintSession(env, payload) {
+  const body = b64urlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+  const sig = await crypto.subtle.sign(
+    'HMAC', await hmacKey(env.SESSION_SECRET), new TextEncoder().encode(body)
+  );
+  return `${body}.${b64urlEncode(new Uint8Array(sig))}`;
+}
+
+async function verifySession(env, token) {
+  if (!token || !env || !env.SESSION_SECRET) return null;
+  const [body, sig] = String(token).split('.');
+  if (!body || !sig) return null;
+
+  try {
+    // crypto.subtle.verify compares in constant time — don't hand-roll this.
+    const ok = await crypto.subtle.verify(
+      'HMAC', await hmacKey(env.SESSION_SECRET),
+      b64urlDecode(sig), new TextEncoder().encode(body)
+    );
+    if (!ok) return null;
+    const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(body)));
+    if (!payload.sub || !payload.exp || Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/* ─── Per-account settings (KV) ───
+   Keyed by the Google subject ID rather than email — the subject is stable
+   even if the account's email address changes. */
+async function handleSettings(request, env) {
+  if (!env || !env.SETTINGS || !env.SESSION_SECRET) {
+    return jsonResponse({ error: 'Settings sync not configured' }, 501);
+  }
+
+  const header = request.headers.get('authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const session = await verifySession(env, token);
+  if (!session) return jsonResponse({ error: 'Not authenticated' }, 401);
+
+  const kvKey = `settings:${session.sub}`;
+
+  if (request.method === 'GET') {
+    const stored = await env.SETTINGS.get(kvKey);
+    return jsonResponse({ settings: stored ? JSON.parse(stored) : null });
+  }
+
+  if (request.method === 'PUT' || request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { body = null; }
+    const settings = body && body.settings;
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return jsonResponse({ error: 'Missing settings object' }, 400);
+    }
+    await env.SETTINGS.put(kvKey, JSON.stringify(settings));
+    return jsonResponse({ ok: true, savedAt: Date.now() });
+  }
+
+  return jsonResponse({ error: 'Method not allowed' }, 405);
 }
 
 // ─── Google Sign-In verification ───
@@ -123,11 +218,22 @@ async function handleGoogleAuth(request, env) {
     }
   }
 
+  // Mint a long-lived session so settings sync survives the Google token's
+  // ~1h lifetime. Absent SESSION_SECRET the app still works, just device-local.
+  const token = (env && env.SESSION_SECRET)
+    ? await mintSession(env, {
+        sub: info.sub,
+        email: info.email,
+        exp: Date.now() + SESSION_TTL_MS,
+      })
+    : '';
+
   return jsonResponse({
     email: info.email,
     name: info.name || info.email,
     picture: info.picture || '',
     sub: info.sub,
+    token,
   });
 }
 
